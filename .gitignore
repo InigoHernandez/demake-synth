@@ -8,3 +8,6 @@ __pycache__/
 # references read or measured locally, never committed: other products' audio and firmware,
 # moodboard images, commercial fonts, other projects' sources
 reference/
+
+# the owner's font files, copied for local previews only (web/build.sh)
+web/fonts/

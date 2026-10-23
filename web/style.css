@@ -1,0 +1,118 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Demake's site: reown.com's grid (8 px margin and gutters, a 12-column bento, rounded cards, pill bars and chips),
+ * in the moodboard's colour and wear (docs/plan.md, 6): iridescent pastels, fog, dither, grain, tape. */
+
+@font-face { font-family: "Tomato"; src: url("fonts/TomatoGrotesk-Light.otf") format("opentype"); font-weight: 300; }
+@font-face { font-family: "Tomato"; src: url("fonts/TomatoGrotesk-Regular.otf") format("opentype"); font-weight: 400; }
+@font-face { font-family: "Tomato"; src: url("fonts/TomatoGrotesk-Medium.otf") format("opentype"); font-weight: 500; }
+@font-face { font-family: "Tomato"; src: url("fonts/TomatoGrotesk-SemiBold.otf") format("opentype"); font-weight: 600; }
+@font-face { font-family: "Tomato"; src: url("fonts/TomatoGrotesk-Bold.otf") format("opentype"); font-weight: 700; }
+
+:root {
+  --gap: 8px;
+  --r: 16px;
+  --r-small: 40px;
+  --fog0: #f2f0ea;
+  --fog1: #dedcd7;
+  --fog2: #b3b1ac;
+  --fog3: #74747a;
+  --ink: #16171a;
+  --night: #1d1e23;
+  --amber: #f0a33c;
+  --peach: #f2c6a8;
+  --pink: #e8b4cf;
+  --lilac: #c9b8e8;
+  --mint: #aee3cf;
+  --sky: #b9cde8;
+  --title1: #1f2c66;
+  --title2: #4f7fb8;
+  --dither: url("img/dither.png");
+}
+
+* { box-sizing: border-box; }
+html { background: var(--fog2); }
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Tomato", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  background:
+    var(--dither) repeat,
+    linear-gradient(180deg, #c7c5c0 0%, #9a9893 60%, #7f7e7c 100%) fixed;
+  background-size: 8px 8px, auto;
+  min-height: 100vh;
+}
+
+/* the wear: grain and faint scanlines over everything, never catching the pointer */
+.grain, .scan { position: fixed; inset: 0; pointer-events: none; z-index: 50; }
+.grain { background: url("img/grain.png"); opacity: 0.16; mix-blend-mode: multiply; }
+.scan { background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.035) 0 1px, transparent 1px 3px); }
+
+/* ---- the chips */
+.nav { display: flex; gap: var(--gap); padding: var(--gap); align-items: center; flex-wrap: wrap; }
+.nav .grow { flex: 1; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 18px; border-radius: 999px; border: 0;
+  background: var(--fog1); color: var(--ink);
+  font: 500 13px/1 "Tomato", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none;
+  cursor: pointer; transition: transform 0.12s, background 0.12s;
+}
+.chip:hover { transform: translateY(-1px); }
+.chip.dark { background: var(--night); color: var(--fog0); }
+.chip.warm { background: var(--amber); color: var(--ink); }
+.chip.ghost { background: transparent; box-shadow: inset 0 0 0 1px rgba(22, 23, 26, 0.35); cursor: default; opacity: 0.75; }
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 1px var(--ink); }
+
+/* ---- the grid */
+.grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--gap); padding: 0 var(--gap) var(--gap); }
+.span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-6 { grid-column: span 6; }
+.span-4 { grid-column: span 4; } .span-3 { grid-column: span 3; }
+.card { border-radius: var(--r); padding: 28px; position: relative; overflow: hidden; background: var(--fog0); }
+.card.dark { background: var(--night); color: var(--fog0); }
+.card.round { border-radius: var(--r-small); }
+.bar {
+  grid-column: span 12; height: 48px; border-radius: 88px; background: rgba(242, 240, 234, 0.72);
+  display: flex; align-items: center; justify-content: center;
+  font: 500 15px "Tomato", sans-serif; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.label { font: 500 12px/1.4 "Tomato", sans-serif; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.72; margin: 0 0 14px; }
+h1 { font-weight: 300; font-size: clamp(34px, 5vw, 64px); line-height: 1.02; letter-spacing: -0.02em; margin: 0 0 18px; }
+h2 { font-weight: 400; font-size: clamp(22px, 2.4vw, 30px); line-height: 1.1; margin: 0 0 12px; }
+p { font-weight: 300; font-size: 17px; line-height: 1.45; margin: 0 0 12px; max-width: 42ch; }
+
+/* the moodboard's iridescence, dithered so it reads as a screen's, not a print's */
+.tex-iris { background: var(--dither) repeat, linear-gradient(115deg, var(--peach), var(--pink) 30%, var(--lilac) 55%, var(--sky) 75%, var(--mint)); background-size: 8px 8px, auto; }
+.tex-peach { background: var(--dither) repeat, linear-gradient(160deg, #f6e7da, var(--peach)); background-size: 8px 8px, auto; }
+.tex-lilac { background: var(--dither) repeat, linear-gradient(160deg, #ece6f6, var(--lilac)); background-size: 8px 8px, auto; }
+.tex-mint { background: var(--dither) repeat, linear-gradient(160deg, #e5f4ee, var(--mint)); background-size: 8px 8px, auto; }
+.tex-snow { background: var(--dither) repeat, linear-gradient(180deg, #e9e8e4, #b3b1ac); background-size: 8px 8px, auto; }
+
+/* a worn tape on hover: a small fringe and jitter */
+.wear:hover h2, .wear:hover h1 { text-shadow: 1px 0 rgba(200, 65, 59, 0.45), -1px 0 rgba(79, 127, 184, 0.45); animation: jitter 0.24s steps(2) 2; }
+@keyframes jitter { 50% { transform: translateX(1px); } }
+
+/* ---- the hero: a stadium */
+.hero { border-radius: 220px; padding: clamp(28px, 5vw, 72px); display: grid; grid-template-columns: 1fr 1.25fr; gap: 32px; align-items: center; min-height: 620px; }
+.hero p { font-size: 19px; }
+.hero .actions { display: flex; gap: var(--gap); flex-wrap: wrap; margin-top: 20px; }
+
+/* ---- the emulator */
+.emu { background: var(--night); border-radius: var(--r); padding: 14px; box-shadow: 0 18px 40px rgba(22, 23, 26, 0.28); }
+.panel { position: relative; width: 100%; }
+.panel svg { display: block; width: 100%; height: auto; touch-action: none; user-select: none; }
+.panel canvas { position: absolute; image-rendering: pixelated; border-radius: 6px; }
+.emu .hint { color: var(--fog2); font: 500 11px/1.5 "Tomato", sans-serif; letter-spacing: 0.08em; text-transform: uppercase; margin: 10px 4px 0; }
+
+footer.card { margin: 0 var(--gap) var(--gap); }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: 1fr; border-radius: 48px; }
+  .span-8, .span-6, .span-4, .span-3 { grid-column: span 12; }
+}
+@media (max-width: 520px) {
+  :root { --gap: 8px; }
+  .card { padding: 20px; }
+  .hero { padding: 24px 16px; border-radius: 32px; }
+  .nav .chip.ghost { display: none; }
+}
