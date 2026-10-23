@@ -4,82 +4,114 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>demake</title>
-  <meta name="description" content="demake: an ambient lofi machine for the m-vave fm-1. three synths, a chord machine, eight patterns.">
-  <link rel="stylesheet" href="style.css?v=2">
+  <title>Demake</title>
+  <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths, a chord machine, eight patterns a song.">
+  <link rel="icon" href="img/icon.png">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
-<div class="page">
-  <nav class="rail" aria-hidden="true">
-    <span><i class="mark"></i></span><span>01</span><span>02</span><span>03</span><span>04</span>
-  </nav>
+<main class="canvas">
 
-  <main class="main">
-    <header class="row bar">
-      <a href="./">demake</a>
-      <span class="span2">an ambient lofi machine for the m-vave fm-1, on the open platform of cs-1 and felucca</span>
-      <span>
-        <a href="#play">play</a> · <a href="#screens">screens</a> · <span>manual soon</span>
-      </span>
-    </header>
+  <!-- the header: the isotype, then the site's parts, as a product maker's index -->
+  <header class="g head">
+    <a href="./" class="iso" aria-label="Demake"><img src="img/iso.png" width="48" height="48" alt=""></a>
+    <a href="#play" class="nav n1"><b>Play</b><span>The emulator<br>Keys and knobs</span></a>
+    <a href="#machine" class="nav n2"><b>Machine</b><span>Three synths<br>Eight patterns</span></a>
+    <a href="#screens" class="nav n3"><b>Screens</b><span>The display<br>Paper and night</span></a>
+    <a href="https://github.com/InigoHernandez" class="nav n4"><b>Source</b><span>GitHub<br>GPL-3.0</span></a>
+    <a href="https://ko-fi.com/sequencist" class="kofi pill" target="_blank" rel="noopener">Support on Ko&#8209;fi</a>
+    <a href="#play" class="cta lit">Play it</a>
+  </header>
 
-    <h1 class="l">demake</h1>
+  <!-- the hero: the wordmark, lit as the screen lights it, and what it is -->
+  <section class="g hero">
+    <h1 class="mark"><img src="img/wordmark.png" width="1152" height="288" alt="Demake"></h1>
+    <p class="say">An ambient lofi machine for the M&#8209;VAVE&nbsp;FM&#8209;1.</p>
+    <p class="meta">Firmware for the FM-1, on the open platform of CS-1 and Felucca. Phase 0: the shell, the screen and the
+      core, here in the browser.</p>
+  </section>
 
-    <div class="row bar">
-      <span><span class="dot"></span>phase 0</span>
-      <span>volume <span class="slider" id="vol"><i style="left: 80%"></i></span></span>
-      <span>keys: a s d f g h j k l ; '</span>
-      <button class="act" id="power">power on</button>
-    </div>
-
-    <section class="emu" id="play">
-      <div class="win">
-        <div class="title"><b></b><span>fm-1 — demake</span></div>
-        <div class="body">
-          <div class="panel" id="panel">
-            <svg id="svg" viewBox="14 14 876 538" role="application" aria-label="the fm-1's panel"></svg>
-            <canvas id="lcd" width="240" height="240" aria-label="the screen"></canvas>
-          </div>
-        </div>
+  <!-- 01 play: the device as the product shot -->
+  <section class="g strip" id="play"><span class="no">01</span><span class="lb">Play</span></section>
+  <section class="g play">
+    <div class="emu card">
+      <div class="panel" id="panel">
+        <svg id="svg" viewBox="14 14 876 538" role="application" aria-label="The FM-1's panel"></svg>
+        <canvas id="lcd" width="240" height="240" aria-label="The screen"></canvas>
       </div>
-    </section>
+    </div>
+    <button class="power lit" id="power">Power on</button>
+    <div class="vol"><span class="lb">Volume</span><span class="ticks" id="vol" role="slider" aria-label="Volume"
+      aria-valuemin="0" aria-valuemax="100" aria-valuenow="80" tabindex="0"></span></div>
+    <p class="keys"><span class="lb">Keys</span> A S D F G H J K L ; ' play, W E R Y U O P [ the sharps, Z and X the
+      octave</p>
+  </section>
 
-    <div class="row">
-      <span class="label">01 · three synths</span>
-      <p class="m span3">sample, pad, drone, pluck. each with its own sequence in a piano roll, and a layer from your own
-        recordings under it.</p>
+  <!-- 02 the machine: cards as the screen draws them, of the sizes their content asks -->
+  <section class="g strip" id="machine"><span class="no">02</span><span class="lb">Machine</span></section>
+  <section class="g machine">
+    <div class="card c1 glow">
+      <p class="tt"><b>Synths</b><span>Each its own roll</span></p>
+      <p class="big">3</p>
+      <p class="cap"><span>Sample, pad, drone, pluck</span></p>
     </div>
-    <div class="row">
-      <span class="label">02 · eight patterns</span>
-      <p class="m span3">hold home, press a key: the next pattern comes in at the bar. the sounds stay; the notes and the
-        chords change.</p>
+    <i class="link l1"></i>
+    <div class="card c2 wide">
+      <p class="tt"><b>Patterns</b><span>A song, switched live</span></p>
+      <p class="big">8</p>
+      <p class="cap"><span>Hold Home, press a key</span></p>
     </div>
-    <div class="row">
-      <span class="label">03 · the wear</span>
-      <p class="m span3">crush, codec smear, tape, cassette, vhs, chorus, and reverbs voiced after console rooms and
-        halls.</p>
+    <div class="tiles" aria-hidden="true">
+      <i class="on">1</i><i>2</i><i>3</i><i>4</i><i class="next">5</i><i>6</i><i>7</i><i>8</i>
     </div>
+    <i class="link l2"></i>
+    <div class="card c3">
+      <p class="tt"><b>Voices</b><span>Shared by the three</span></p>
+      <p class="big">12</p>
+      <p class="cap"><span>A chord machine on top</span></p>
+    </div>
+  </section>
 
-    <div class="row bar" id="screens"><span class="span4">04 · the screen: one typeface, eight colours, each a state</span></div>
-    <div class="screens">
-      <figure><img src="img/screens/01_home.png" alt="home: the three synths"><figcaption>home</figcaption></figure>
-      <figure><img src="img/screens/02_roll.png" alt="the piano roll"><figcaption>roll</figcaption></figure>
-      <figure><img src="img/screens/07_chord.png" alt="the chord machine"><figcaption>chord</figcaption></figure>
-      <figure><img src="img/screens/03_sound.png" alt="the sound"><figcaption>sound</figcaption></figure>
-      <figure><img src="img/screens/05_amp.png" alt="the envelope"><figcaption>amp</figcaption></figure>
-      <figure><img src="img/screens/06_fx.png" alt="the effects"><figcaption>fx</figcaption></figure>
-      <figure><img src="img/screens/18_discs.png" alt="the songs"><figcaption>songs</figcaption></figure>
-      <figure><img src="img/screens/19_home_night.png" alt="home, the night theme"><figcaption>night</figcaption></figure>
-    </div>
+  <!-- 03 the sound: a statement, as a report's, then the letters in line and in light -->
+  <section class="g strip"><span class="no">03</span><span class="lb">Sound</span></section>
+  <section class="g text">
+    <p class="say">Your own recordings under every synth, worn by tape, codec and a room.</p>
+    <p class="meta">A layer from your samples under each sound. Crush, codec smear, tape, cassette, VHS and chorus, then
+      reverbs voiced after console rooms and halls. Integer DSP, both of the FM&#8209;1's cores.</p>
+    <img class="plate" src="img/plate.png" width="1152" height="288" alt="">
+  </section>
 
-    <footer class="row">
-      <span>gpl-3.0</span>
-      <span class="span2">by sequencist. m-vave and fm-1 are their owners' marks; demake is not made or endorsed by
-        m-vave. geist: sil ofl 1.1.</span>
-      <span><a href="https://github.com/InigoHernandez">github</a></span>
-    </footer>
-  </main>
-</div>
-<script src="app.js?v=2"></script>
+  <!-- 04 the light: the art on the grid, each piece its own proportion -->
+  <section class="g strip"><span class="no">04</span><span class="lb">Light</span></section>
+  <section class="g art">
+    <figure class="a1"><img src="img/art/flow.jpg" alt="Blue, magenta and a pale core on black"><figcaption><b>Image</b> Flow</figcaption></figure>
+    <figure class="a2"><img src="img/art/pool.jpg" alt="Thermal pools on black"><figcaption><b>Image</b> Pool</figcaption></figure>
+    <figure class="a3 seal"><img src="img/seal.png" width="192" height="192" alt="The seal: a ring of ticks round the D"><figcaption><b>Seal</b> Phase 0</figcaption></figure>
+    <figure class="a4"><img src="img/art/rise.jpg" alt="A rising thermal shape"><figcaption><b>Image</b> Rise</figcaption></figure>
+    <figure class="a5"><img src="img/art/drift.jpg" alt="Drifting thermal shapes"><figcaption><b>Image</b> Drift</figcaption></figure>
+    <figure class="a6"><img src="img/art/twin.jpg" alt="Two thermal shapes"><figcaption><b>Image</b> Twin</figcaption></figure>
+    <figure class="a7"><img src="img/art/wave.jpg" alt="A thermal wave"><figcaption><b>Image</b> Wave</figcaption></figure>
+  </section>
+
+  <!-- 05 the screens: one at twice its pixels, the rest at their own -->
+  <section class="g strip dark" id="screens"><span class="no">05</span><span class="lb">Screens</span></section>
+  <section class="g screens dark">
+    <figure class="s1"><img src="img/screens/01_home.png" width="240" height="240" alt="Home: the three synths"><figcaption><b>Home</b> The synths, the one sounding lit</figcaption></figure>
+    <figure class="s2"><img src="img/screens/02_roll.png" width="240" height="240" alt="The piano roll"><figcaption><b>Roll</b> A sequence</figcaption></figure>
+    <figure class="s3"><img src="img/screens/07_chord.png" width="240" height="240" alt="The chord machine"><figcaption><b>Chord</b> The chord now</figcaption></figure>
+    <figure class="s4"><img src="img/screens/16_home_held.png" width="240" height="240" alt="The patterns, Home held"><figcaption><b>Patterns</b> Home held</figcaption></figure>
+    <figure class="s5 night"><img src="img/screens/19_home_night.png" width="240" height="240" alt="Home, the night theme"><figcaption><b>Night</b> The dark theme</figcaption></figure>
+  </section>
+
+  <div class="g bandrow"><img class="band" src="img/band.png" width="1152" height="384" alt=""></div>
+
+  <footer class="g strip foot">
+    <span class="f1">GPL-3.0</span>
+    <span class="f2">By Sequencist. M-VAVE and FM-1 are their owners' marks; Demake is not made or endorsed by M-VAVE.
+      Geist: SIL OFL 1.1. Kiloy: Marvadesign.</span>
+    <span class="f3"><a href="https://ko-fi.com/sequencist" target="_blank" rel="noopener">Support on Ko&#8209;fi</a><br><a href="https://github.com/InigoHernandez">GitHub</a></span>
+  </footer>
+</main>
+<script src="app.js?v=4"></script>
 </body>
 </html>

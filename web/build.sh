@@ -13,3 +13,4 @@ emcc -O3 -std=gnu11 -Wall -Wno-unused-function -Ifirmware/src -Ifirmware/gen web
     -o web/dmk.wasm
 ls -l web/dmk.wasm
 cp "assets/fonts/Geist[wght].ttf" web/fonts/Geist.ttf      # Geist, SIL OFL 1.1 (LICENSES/OFL-1.1-Geist.txt)
+# Kiloy is not served: the wordmark and the D are rendered by tools/gen_art.py, as the screen renders them

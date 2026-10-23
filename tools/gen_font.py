@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Demake's fonts: Geist (SIL OFL 1.1, The Geist Project Authors; assets/fonts/, LICENSES/OFL-1.1-Geist.txt) rendered
-at the screen's three sizes into firmware/gen/dmk_font.h (docs/plan.md, 5.3).
+"""Demake's fonts, rendered at the screen's five sizes into firmware/gen/dmk_font.h (docs/plan.md, 5.3): Geist (SIL OFL
+1.1, The Geist Project Authors; assets/fonts/, LICENSES/OFL-1.1-Geist.txt) for text, Kiloy (Marvadesign, the owner's
+copy, read from DMK_KILOY and never committed) for the wordmark alone.
 
   .venv/bin/python tools/gen_font.py [--sheet build/fonts.png]
 
-The scale is rigid: S 11 px (labels), M 16 px (values, names), L 32 px (one number or word a screen). All text is
-lowercase; the capitals are kept for note names in a sharp's place (none are drawn by the UI). 2 bits a pixel
+The scale is rigid: FS 12, FM 20, FH 24, FN 36 px Geist (labels and captions; values and names; a page's title; the
+one big thing in a card) and FL 40 px Kiloy (the wordmark; it has one case). Text is in sentence case. 2 bits a pixel
 (anti-aliased, four levels), so a glyph's middle tones come from the palette's ramps against what is under it.
 
 Glyphs: ASCII 32..126 and a few more the screens use (— – · … × ° ’ →). Characters the face lacks (♭ ♯) are drawn
@@ -20,12 +21,16 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "firmware" / "gen" / "dmk_font.h"
-FONT = ROOT / "assets" / "fonts" / "Geist[wght].ttf"
+GEIST = ROOT / "assets" / "fonts" / "Geist[wght].ttf"
+# Kiloy (Marvadesign, the owner's copy): titles and headings. Not in the repo; only its bitmaps are committed
+KILOY = Path(os.environ.get("DMK_KILOY", Path.home() / "Documents/Music/Git/Demake/Kiloy — Rounded Techno Font/Kiloy.ttf"))
 
-FACES = [  # name, weight, size in px (the em), bits a pixel
-    ("FS", int(os.environ.get("DMK_FS_WEIGHT", 500)), 11, int(os.environ.get("DMK_FS_BITS", 2))),
-    ("FM", 500, 16, 2),
-    ("FL", 500, 32, 2),
+FACES = [  # name, font, weight (a variable font's axis, or None), size in px (the em), bits a pixel
+    ("FS", GEIST, 500, 12, 2),                       # labels, small text
+    ("FM", GEIST, 500, 20, 2),                       # values, names
+    ("FH", GEIST, 500, 24, 2),                       # a page's title (its row the grey half)
+    ("FN", GEIST, 400, 36, 2),                       # the one big thing in a card: the chord now
+    ("FL", KILOY, None, 40, 2),                      # the wordmark (the boot): Kiloy, used sparingly
 ]
 EXTRA = "—–·…×°’♭♯→−"
 CHARS = [chr(c) for c in range(32, 127)] + list(EXTRA)
@@ -81,18 +86,30 @@ def levels(v, bits):
     return max(0, min(3, q))
 
 
-def face_data(name, weight, size, bits):
-    font = ImageFont.truetype(str(FONT), size)
-    font.set_variation_by_axes([weight])
+def missing(font, ch, bits):
+    """the face has no glyph for ch: it draws what it draws for a code point it lacks"""
+    a, b = render(font, ch, bits), render(font, "\uffff", bits)
+    return a.tobytes() == b.tobytes()
+
+
+def face_data(name, path, weight, size, bits):
+    font = ImageFont.truetype(str(path), size)
+    if weight is not None:
+        font.set_variation_by_axes([weight])
     hbox = render(font, "H", bits).getbbox()
     cap = PAD * 2 - hbox[1]
     ibox = render(font, "l", bits).getbbox()
     stem = max(1, round((ibox[2] - ibox[0])))
     glyphs = []
     for ch in CHARS:
-        im = own_glyph(ch, cap, stem, bits) if ch in OWN else render(font, ch, bits)
-        adv = round(font.getlength(ch)) if ch not in OWN else (im.getbbox()[2] - PAD + max(1, size // 8)
-                                                                if im.getbbox() else size // 3)
+        own = ch in OWN or (ch in "→♭♯" and missing(font, ch, bits))
+        if not own and ch not in " " and missing(font, ch, bits):
+            ch_draw = "?"                                 # the face lacks it: a question mark in its place
+        else:
+            ch_draw = ch
+        im = own_glyph(ch, cap, stem, bits) if own else render(font, ch_draw, bits)
+        adv = round(font.getlength(ch_draw)) if not own else (im.getbbox()[2] - PAD + max(1, size // 8)
+                                                               if im.getbbox() else size // 3)
         box = im.getbbox()
         if not box:
             glyphs.append((ch, adv, 0, 0, 0, 0, []))
@@ -198,7 +215,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sheet", help="write a specimen PNG here")
     a = ap.parse_args()
-    faces = [face_data(n, w, s, b) for n, w, s, b in FACES]
+    if not KILOY.exists():
+        raise SystemExit(f"no Kiloy at {KILOY} (DMK_KILOY)")
+    faces = [face_data(n, f, w, s, b) for n, f, w, s, b in FACES]
     write(faces)
     if a.sheet:
         sheet(faces, a.sheet)

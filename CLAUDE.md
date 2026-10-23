@@ -16,23 +16,28 @@ song, a chain of colour, media, motion and space effects per synth. The plan, an
   `Source/` only; float), hugelton/Felucca (GPL-3.0, integer) and Felucca-Engines (MIT). Keep their notices in
   `LICENSES/` when code from them lands.
 - The samples are the owner's own recordings (`../Demake/sample sounds/`); every factory sound gets a new short name.
-- **The design rules (plan 5.1), for the screen, the emulator and the website:** Geist only (`assets/fonts/`, SIL
-  OFL 1.1), completely lowercase (the text audit fails a capital), a rigid scale (screen: 11, 16, 32 px; site: 13, 24
-  and the name); eight exact colours on the screen, each a state (PAPER LINE LABEL INK FOCUS PLAY REC HARM), three on
-  the site (paper, ink, focus); a rigid grid of 1 px rules; every value a slider or a segment bar; no gradients,
-  dither, icons, soft shadows or decoration.
+- **The design (plan 5 and 6), for the screen, the emulator and the website:** Geist for all text (`assets/fonts/`,
+  SIL OFL 1.1) in sentence case, names as written (FX, LFO, Am(add9)); Kiloy only in the wordmark and its D, never
+  committed as a font (only its renders: `tools/gen_art.py`, the bitmap FL face); Kiloy's shapes in the UI (corners
+  14 on the screen, 24 on the site, pills, round ends). Four greys (PAPER LINE LABEL INK) and one light for what is
+  lit: the thermal ramp (a blue rim, a magenta body, a pale core) by each shape's depth, dithered (`HOLO`,
+  `holo_done`); never a sweep of hues across the screen (the owner rejected rainbows twice). Cards and spacing for
+  structure, a two-line title (ink, then grey), tick meters. The site: every box on the 48 px module's lines.
 - The browser runs the same core: after any change to `firmware/src`, rebuild with `sh web/build.sh`.
 - Never publish a package that has not run on the owner's FM-1.
 
 ## Build, test
 
-- Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_font.py [--sheet build/fonts.png]`.
+- Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_font.py [--sheet build/fonts.png]`,
+  `tools/gen_art.py` (the site's art, wordmark, D, icon, plate, band, seal and the screens' frames; Kiloy from
+  `DMK_KILOY`).
 - Host: `cc -std=c99 -D_DARWIN_C_SOURCE -O2 -Wall -Wextra -Wno-unused-function -Ifirmware/src -Ifirmware/gen -o
   build/host/dmk_host host/dmk_host.c`, then `build/host/dmk_host build/host/tour` (every screen as a PNG, the text
   audit over each) and `.venv/bin/python tools/montage.py build/host/tour build/screens.png 4`.
   `build/host/dmk_host --selftest`, `--wav FILE`. With `-DDMK_BENCH` and the FM-1's flags (`-fno-builtin
   -fno-vectorize -fno-slp-vectorize`): `--bench`, the bench's instructions a sample (27 + 6.0 a level).
-- Web: `sh web/build.sh`, then the `demake-web` preview (port 8761, in `../.claude/launch.json`).
+- Web: `sh web/build.sh`, then the `demake-web` preview (port 8761, in `../.claude/launch.json`). After a layout
+  change, measure every card, pill and image against the 48 px lines in the browser at 24, 16 and 7 modules.
 - Checks: `sh tools/check.sh`: warnings, the soft-float symbol check on armv7m, ASan + UBSan over the self-test and
   the tour with its text audit, the browser build.
 - The FM-1: `.venv/bin/python tools/fm1/build.py [--diag] [--bench] [--release 0.Y]` makes `build/fm1/demake*.fwsc`
@@ -42,12 +47,13 @@ song, a chain of colour, media, motion and space effects per synth. The plan, an
 
 ## The screen
 
-- 240 x 240, 4 bits a pixel: the theme's eight state colours and eight anti-aliasing tones (`tools/gen_tables.py`,
-  plan 5.2). A colour means its state and nothing else (FOCUS only what is being edited, PLAY only what sounds).
-- The grid: status 0-19, four 60 px fields under K1-K4 20-67, the stage 68-219, the footer 220-239; 1 px rules between
-  cells; text 6 px into its cell. Boxes over the stage are an ink frame with a hard 2 px shadow (`box`).
-- The host's text audit (`DMK_TEXT_AUDIT`) fails the tour on any two texts that touch, any text cut, any capital;
-  boxes call `ta_cover`. Fit text with `text_fit`, never guess widths. No overlapping text, ever.
+- 240 x 240, 4 bits a pixel: four greys, the thermal ramp HOLO0-7 and its mark HMARK, three anti-aliasing tones
+  (`tools/gen_tables.py`, plan 5.2). Draw lit things with `HOLO` as the colour; the primitive finishes the shape
+  (`holo_done`). Rounded shapes: `round_fill`, `round_line` (anti-aliased like the text).
+- The layout: head 0-39, four 60 px fields under K1-K4 40-101, the stage's cards 102-219 (6 px margins and gaps,
+  `cell_x`/`cell_w`), the foot 224-239. Overlays are rounded ink cards (`box`).
+- The host's text audit (`DMK_TEXT_AUDIT`) fails the tour on any two texts that touch and any text cut; boxes call
+  `ta_cover`. Fit text with `text_fit`, never guess widths. No overlapping text, ever.
 
 ## How the work runs
 

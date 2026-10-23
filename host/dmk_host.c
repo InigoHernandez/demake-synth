@@ -131,8 +131,11 @@ static void tour(const char *dir)
     tap(B_GLO); tap(B_GLO); tap(B_GLO); tap(B_GLO);     /* to SETUP */
     for (int t = 1; t < DMK_THEMES; t++) {
         dmk_encoder(E_K1, 1);
-        tap(B_HOME); char n[24]; snprintf(n, sizeof n, "home_%s", THEME_NAME[theme]); shot(dir, n);
-        tap(B_SEQ); snprintf(n, sizeof n, "roll_%s", THEME_NAME[theme]); shot(dir, n);
+        char n[24], lc[12]; int i;
+        for (i = 0; i < 11 && THEME_NAME[theme][i]; i++) lc[i] = (char)(THEME_NAME[theme][i] | 0x20);   /* a file's name: lowercase */
+        lc[i] = 0;
+        tap(B_HOME); snprintf(n, sizeof n, "home_%s", lc); shot(dir, n);
+        tap(B_SEQ); snprintf(n, sizeof n, "roll_%s", lc); shot(dir, n);
         tap(B_GLO);
     }
     printf("tour: %d screens%s%s, text audit %s\n", shots, dir ? " in " : "", dir ? dir : "", ta_bad ? "FAILED" : "clean");

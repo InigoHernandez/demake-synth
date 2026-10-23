@@ -14,6 +14,21 @@ static void clip_set(int x, int y, int w, int h)
 }
 static void clip_all(void) { cx0 = cy0 = 0; cx1 = DMK_W; cy1 = DMK_H; }
 
+/* the thermal light (the owner's reference): a lit shape glows from its own edge in, a blue rim, a magenta body, a
+ * pale core, read from each pixel's depth in its shape (the chessboard distance to the nearest unlit pixel), the
+ * rings dithered into each other by the 4 x 4 ordered dither: the bit texture. HOLO as a colour marks the pixels
+ * (HMARK); when the shape is drawn, holo_done() turns its marks into the ramp. Text and a hairline are the magenta
+ * body; a thin bar a blue rim on it; only a big shape reaches the pale core */
+#define HOLO (-1)
+#define TH_MAX (DMK_W * 64)                              /* the largest lit shape's box, in pixels */
+static uint8_t th_d[TH_MAX] POOL;
+static int hx0 = DMK_W, hy0 = DMK_H, hx1 = -1, hy1 = -1; /* the marks' box */
+static int holo_hold;                                    /* >0: inside a shape made of several fills */
+static int holo_flat;                                    /* text: all body, its strokes too thin for rings */
+/* [the shape's greatest depth]: how far in its deepest ring goes, sixteenths of a tone (64: the magenta body; 112:
+ * the core). Between the rim and that, the rings share the ramp, dithered */
+static const uint8_t TH_PMAX[10] = {64, 64, 64, 76, 88, 100, 112, 112, 112, 112};
+
 static inline int px_get(int x, int y)
 {
     uint8_t b = fb[(y * DMK_W + x) >> 1];
@@ -24,13 +39,72 @@ static inline void px_put(int x, int y, int c)
 {
     uint8_t *b;
     if (x < cx0 || y < cy0 || x >= cx1 || y >= cy1) return;
+    if (c < 0) {
+        c = C_HMARK;
+        if (x < hx0) hx0 = x;
+        if (x > hx1) hx1 = x;
+        if (y < hy0) hy0 = y;
+        if (y > hy1) hy1 = y;
+    }
     b = &fb[(y * DMK_W + x) >> 1];
     *b = x & 1 ? (uint8_t)((*b & 0xF0) | c) : (uint8_t)((*b & 0x0F) | c << 4);
 }
 
+/* the marks to the ramp: depth by two chamfer passes over their box (outside it: unlit) */
+static void holo_done(void)
+{
+    int w = hx1 - hx0 + 1, h = hy1 - hy0 + 1, x, y, i, dmax = 1, pmax;
+    if (hx1 < 0 || holo_hold) return;
+    if (w * h > TH_MAX) {                               /* too big a box: the body's tone, flat */
+        for (y = hy0; y <= hy1; y++) for (x = hx0; x <= hx1; x++) if (px_get(x, y) == C_HMARK) px_put(x, y, C_HOLO4);
+    } else {
+        for (y = 0, i = 0; y < h; y++) for (x = 0; x < w; x++, i++) th_d[i] = px_get(hx0 + x, hy0 + y) == C_HMARK ? 9 : 0;
+        for (y = 0, i = 0; y < h; y++)
+            for (x = 0; x < w; x++, i++) {
+                int m;
+                if (!th_d[i]) continue;
+                m = x ? th_d[i - 1] : 0;
+                if (y) {
+                    int u = th_d[i - w], ul = x ? th_d[i - w - 1] : 0, ur = x < w - 1 ? th_d[i - w + 1] : 0;
+                    if (u < m) m = u;
+                    if (ul < m) m = ul;
+                    if (ur < m) m = ur;
+                } else m = 0;
+                if (m + 1 < th_d[i]) th_d[i] = (uint8_t)(m + 1);
+            }
+        for (y = h - 1, i = w * h - 1; y >= 0; y--)
+            for (x = w - 1; x >= 0; x--, i--) {
+                int m;
+                if (!th_d[i]) continue;
+                m = x < w - 1 ? th_d[i + 1] : 0;
+                if (y < h - 1) {
+                    int d = th_d[i + w], dl = x ? th_d[i + w - 1] : 0, dr = x < w - 1 ? th_d[i + w + 1] : 0;
+                    if (d < m) m = d;
+                    if (dl < m) m = dl;
+                    if (dr < m) m = dr;
+                } else m = 0;
+                if (m + 1 < th_d[i]) th_d[i] = (uint8_t)(m + 1);
+                if (th_d[i] > dmax) dmax = th_d[i];
+            }
+        /* the shape's own ramp: its rim blue, its deepest ring as far in as its size allows; a hairline is body */
+        if (holo_flat && dmax > 2) holo_flat = 0;      /* a heavy face (the wordmark) keeps its rings */
+        pmax = TH_PMAX[holo_flat ? 1 : dmax];
+        for (y = 0, i = 0; y < h; y++)
+            for (x = 0; x < w; x++, i++) {
+                int p, t, X = hx0 + x, Y = hy0 + y;
+                if (!th_d[i]) continue;
+                p = dmax > 1 && !holo_flat ? (th_d[i] - 1) * pmax / (dmax - 1) : pmax;
+                t = p >> 4;
+                if (t < 7 && T_BAYER[(Y & 3) * 4 + (X & 3)] < (p & 15)) t++;
+                px_put(X, Y, C_HOLO0 + t);
+            }
+    }
+    hx0 = DMK_W; hy0 = DMK_H; hx1 = hy1 = -1;
+}
+
 /* ---- the text audit (host builds): every text's ink box; a fill that covers one hides it */
 #ifdef DMK_TEXT_AUDIT
-typedef struct { int16_t x0, y0, x1, y1; uint8_t hidden, cut, upper; char s[24]; } ta_rec_t;
+typedef struct { int16_t x0, y0, x1, y1; uint8_t hidden, cut; char s[24]; } ta_rec_t;
 static ta_rec_t ta[256];
 static int ta_n, ta_bad;
 static char ta_why[4][96];
@@ -53,13 +127,12 @@ static void ta_add(int x0, int y0, int x1, int y1, const char *s, int cut)
     int i;
     if (ta_n >= 256) return;
     ta[ta_n].x0 = (int16_t)x0; ta[ta_n].y0 = (int16_t)y0; ta[ta_n].x1 = (int16_t)x1; ta[ta_n].y1 = (int16_t)y1;
-    ta[ta_n].hidden = 0; ta[ta_n].cut = (uint8_t)cut; ta[ta_n].upper = 0;
-    for (i = 0; s[i]; i++) if (s[i] >= 'A' && s[i] <= 'Z') ta[ta_n].upper = 1;   /* the rule: all lowercase */
+    ta[ta_n].hidden = 0; ta[ta_n].cut = (uint8_t)cut;
     for (i = 0; i < 23 && s[i]; i++) ta[ta_n].s[i] = s[i];
     ta[ta_n].s[i] = 0;
     ta_n++;
 }
-/* texts that touch or sit a dot apart, texts cut by a clip or the screen, and capitals: their number this frame */
+/* texts that touch or sit a dot apart, and texts cut by a clip or the screen: their number this frame */
 static int ta_check(void)
 {
     int i, j, n = 0;
@@ -67,10 +140,6 @@ static int ta_check(void)
         if (ta[i].hidden) continue;
         if (ta[i].cut) {
             if (n < 4) snprintf(ta_why[n], sizeof ta_why[n], "cut: \"%s\"", ta[i].s);
-            n++;
-        }
-        if (ta[i].upper) {
-            if (n < 4) snprintf(ta_why[n], sizeof ta_why[n], "capitals: \"%s\"", ta[i].s);
             n++;
         }
         for (j = i + 1; j < ta_n; j++) {
@@ -92,8 +161,13 @@ static int ta_check(void)
 static void fill(int x, int y, int w, int h, int c)
 {
     int i, j, x0 = x < cx0 ? cx0 : x, y0 = y < cy0 ? cy0 : y, x1 = x + w > cx1 ? cx1 : x + w, y1 = y + h > cy1 ? cy1 : y + h;
-    uint8_t two = (uint8_t)(c << 4 | c);
+    uint8_t two = (uint8_t)(c < 0 ? 0 : c << 4 | c);
     ta_hide(x, y, w, h);
+    if (c < 0) {                                        /* lit: pixel by pixel, then to the ramp */
+        for (j = y0; j < y1; j++) for (i = x0; i < x1; i++) px_put(i, j, c);
+        holo_done();
+        return;
+    }
     for (j = y0; j < y1; j++) {
         i = x0;
         if (i & 1 && i < x1) px_put(i++, j, c);
@@ -151,6 +225,84 @@ static void tile(int x, int y, int w, int h, int r, int c, int line)
         }
 }
 
+/* ---- Kiloy's shapes: rounded rectangles and pills, their edges anti-aliased like the text (four tones from T_AA;
+ * the field takes no edge tones). The grid's rules stay straight; what sits in it is round */
+
+/* the share of pixel (i, j), 0..16, inside a w x h rectangle with corners of radius r: 4 x 4 samples in a corner */
+static int rr_cov(int i, int j, int w, int h, int r)
+{
+    int cx, cy, sx, sy, n = 0;
+    if (i < 0 || j < 0 || i >= w || j >= h) return 0;
+    cx = i < r ? r : i >= w - r ? w - r : -1;
+    cy = j < r ? r : j >= h - r ? h - r : -1;
+    if (cx < 0 || cy < 0) return 16;
+    for (sy = 0; sy < 4; sy++)
+        for (sx = 0; sx < 4; sx++) {
+            int dx = 8 * i + 2 * sx + 1 - 8 * cx, dy = 8 * j + 2 * sy + 1 - 8 * cy;
+            n += dx * dx + dy * dy <= 64 * r * r;
+        }
+    return n;
+}
+
+/* c over the pixel at share v of 16 */
+static void px_cov(int x, int y, int c, int v)
+{
+    int l = (v * 3 + 8) >> 4;                           /* 0..3, as a glyph's levels */
+    if (x < cx0 || y < cy0 || x >= cx1 || y >= cy1 || !l) return;
+    if (c < 0) { if (l >= 2) px_put(x, y, c); return; }
+    if (l == 3) { px_put(x, y, c); return; }
+    {
+        uint8_t m = T_AA[theme][c][px_get(x, y)];
+        px_put(x, y, l == 1 ? m & 15 : m >> 4);
+    }
+}
+
+static int r_fit(int w, int h, int r) { if (r > w / 2) r = w / 2; if (r > h / 2) r = h / 2; return r < 0 ? 0 : r; }
+
+/* a filled rounded rectangle; r = h / 2 makes a pill */
+static void round_fill(int x, int y, int w, int h, int r, int c)
+{
+    int i, j;
+    r = r_fit(w, h, r);
+    if (w <= 0 || h <= 0) return;
+    if (!r) { fill(x, y, w, h, c); return; }
+    holo_hold++;
+    fill(x + r, y, w - 2 * r, h, c);
+    fill(x, y + r, r, h - 2 * r, c);
+    fill(x + w - r, y + r, r, h - 2 * r, c);
+    for (j = 0; j < r; j++)
+        for (i = 0; i < r; i++) {
+            px_cov(x + i, y + j, c, rr_cov(i, j, w, h, r));
+            px_cov(x + w - 1 - i, y + j, c, rr_cov(w - 1 - i, j, w, h, r));
+            px_cov(x + i, y + h - 1 - j, c, rr_cov(i, h - 1 - j, w, h, r));
+            px_cov(x + w - 1 - i, y + h - 1 - j, c, rr_cov(w - 1 - i, h - 1 - j, w, h, r));
+        }
+    holo_hold--;
+    if (c < 0) holo_done();
+}
+
+/* a rounded rectangle's outline, t pixels thick */
+static void round_line(int x, int y, int w, int h, int r, int t, int c)
+{
+    int i, j, k;
+    r = r_fit(w, h, r);
+    if (!r) { for (k = 0; k < t; k++) rect(x + k, y + k, w - 2 * k, h - 2 * k, c); return; }
+    for (k = 0; k < t; k++) {                           /* the straight runs */
+        hline(x + r, y + k, w - 2 * r, c); hline(x + r, y + h - 1 - k, w - 2 * r, c);
+        vline(x + k, y + r, h - 2 * r, c); vline(x + w - 1 - k, y + r, h - 2 * r, c);
+    }
+    for (j = 0; j < r; j++)
+        for (i = 0; i < r; i++) {
+            int q[4][2] = {{i, j}, {w - 1 - i, j}, {i, h - 1 - j}, {w - 1 - i, h - 1 - j}};
+            for (k = 0; k < 4; k++) {
+                int a = rr_cov(q[k][0], q[k][1], w, h, r);
+                int b = rr_cov(q[k][0] - t, q[k][1] - t, w - 2 * t, h - 2 * t, r - t > 0 ? r - t : 0);
+                px_cov(x + q[k][0], y + q[k][1], c, a > b ? a - b : 0);
+            }
+        }
+    if (c < 0) holo_done();
+}
+
 /* ---- text */
 static int utf8_next(const char **s)
 {
@@ -203,7 +355,8 @@ static int text(int x, int y, const char *s, const dmk_font_t *f, int fg)
                 if (Y < iy0) iy0 = Y;
                 if (Y > iy1) iy1 = Y;
                 if (X < cx0 || Y < cy0 || X >= cx1 || Y >= cy1) { cut = 1; continue; }
-                if (v == 3) px_put(X, Y, fg);
+                if (fg < 0) { if (v >= 2) px_put(X, Y, fg); }   /* the field: its body, no edge tones */
+                else if (v == 3) px_put(X, Y, fg);
                 else {
                     uint8_t m = T_AA[theme][fg][px_get(X, Y)];
                     px_put(X, Y, v == 1 ? m & 15 : m >> 4);
@@ -211,6 +364,7 @@ static int text(int x, int y, const char *s, const dmk_font_t *f, int fg)
             }
         x += g->adv + (ch == ' ' ? 0 : track);
     }
+    if (fg < 0) { holo_flat = 1; holo_done(); holo_flat = 0; }
 #ifdef DMK_TEXT_AUDIT
     if (ix1 >= ix0) ta_add(ix0, iy0, ix1, iy1, s0, cut);
 #else

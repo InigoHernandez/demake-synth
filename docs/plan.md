@@ -16,20 +16,21 @@ throwaway integer prototypes of each kernel.
   other synths' notes follow its chords.
 - **Playful first:** nearly every task in one or two presses (the few exceptions are flagged in 3.7). Keys write
   where the cursor is, a held key is the note you edit, OCT− takes away, OCT+ copies, and everything undoes.
-- **The look:** one disciplined system for the screen, the emulator and the website (5.1): Geist, all lowercase, a
-  rigid scale; eight exact colours on the screen, each a state (three on the website); a rigid grid of rules; sliders
-  and segment bars; nothing decorative.
-- **The website** (section 6): KH Teka's specimen table of 1 px rules, an old desktop's windows, three colours, the
-  emulator as rounded line art.
+- **The look:** one system for the screen, the emulator and the website (5.1): Geist in sentence case, Kiloy only in
+  the wordmark and its D (the isotype); a monotone UI in the screen's four greys and one thermal light for what is
+  lit (a blue rim, a magenta body, a pale core, read from each shape's depth, dithered: the bit texture); cards with
+  Kiloy's corners, a two-line title (ink, then grey), big numerals, tick meters.
+- **The website** (section 6): a canvas of 48 px modules after a node canvas's graph paper, every edge on its lines;
+  the device as the product shot; cards and images of mixed proportions; graphics after Kiloy's specimens.
 - **The sound:** the owner's 64 recordings as 4-bit block ADPCM at 11–22 kHz, a per-synth GRIT (22 kHz, ADPCM),
   and reverbs voiced by ear after console rooms, halls and space echoes.
 - **It fits.** The yardstick is 1650 instructions a core (1.1); Hortator's device calibration puts a core at ~3470.
   - Every effect on every synth at once: 82 % of the yardstick on each of the two cores.
   - Typical effects with a sample layer on every voice: 95 % (1.4).
 
-**Decided by the owner:** Geist for everything, lowercase, and the design rules of 5.1 (they replaced Tomato Grotesk
-and a late-90s desktop look); 12 shared voices; three synths with patterns for performance; the website after KH Teka
-and an old desktop, in three colours.
+**Decided by the owner:** the design of 5.1 and 6 (it replaced, in turn, Tomato Grotesk and a late-90s desktop,
+an all-lowercase Geist table in eight state colours, a rainbow holographic field and a heat ramp swept across the
+screen); 12 shared voices; three synths with patterns for performance.
 
 **Still the owner's decisions** (each is also in its section):
 
@@ -673,110 +674,110 @@ pattern stores which progression it plays.
 
 ### 5.1 The rules
 
-The owner set these on 2026-10-23, for the screen, the emulator and the website alike. They replaced the late-90s
-desktop look (title bars, bevels, cassettes, a buddy list) of the first draft.
+The owner's direction, as it settled on 2026-10-23 (each line was the owner's call; the earlier looks are in the
+history):
 
-1. **One typeface, completely lowercase, a rigid scale.** Geist (SIL OFL 1.1), three sizes on the screen. Not a capital
-   letter anywhere: the host's text audit fails any.
-2. **Eight exact colours, each tied to one state** (5.2). Nothing is coloured for decoration.
-3. **Strict mechanical controls:** every value is a slider (a track and its share) or a segment bar (one segment per
-   choice), every value in a cell with its label, nothing free-floating.
-4. **A rigid structural grid:** four 60 px columns under K1–K4, bands on an 8 px rhythm, 1 px rules between cells.
-5. **Raw, structural, transparently mechanical:** no gradients, no dither, no icons, no shadows, no animation but a
-   value changing. Square corners. The only boxes over the stage (a notice, a held layer's name) are an ink frame with a
-   hard 2 px shadow, as an old desktop's.
+1. **Geist for all text, in sentence case;** names as they are written (FX, LFO, MIDI, LP24, Am(add9), A4). **Kiloy**
+   (Marvadesign, the owner's copy) only for the wordmark and its D, the isotype; its shapes lead the UI's: corners of
+   14 on the screen and 24 on the site, pills, round ends, slits.
+2. **A monotone UI** in four greys (PAPER, LINE, LABEL, INK; the ink never pure black) **and one light for what is
+   lit**: the thermal ramp the owner chose from four (a blue rim, a magenta body, a pale core), read from each lit
+   shape's depth, its rings dithered by the 4 × 4 ordered dither, the bit texture. Never a sweep of hues: that read
+   as a rainbow.
+3. **Cards and spacing are the structure,** not rules: the stage is cards 6 px from the edge and apart; a card's
+   title is two lines in its corner (what, in ink; which, in grey); one big thing in it.
+4. **Every value has a meter:** a row of ticks, ink up to the value, its own tick tall (lit while it turns); a choice is
+   a row of dots.
+5. **Minimal and big:** few things a screen, a title in the large size with its row as the grey half.
 
-### 5.2 Eight colours, each a state
+### 5.2 The palette: four greys and the thermal light
 
-| Role | What it marks | paper (default) | night |
+| Role | What it marks | paper | night |
 | --- | --- | --- | --- |
-| PAPER | the ground | `#F4F3EE` | `#111111` |
-| LINE | the structure: rules, empty cells, slider tracks, the grid | `#D5D3CC` | `#2E2E2E` |
-| LABEL | what a thing is: labels, idle marks, a muted synth | `#8B8A85` | `#7A7A7A` |
-| INK | what it holds: values, notes, names | `#141414` | `#EDEDEA` |
-| FOCUS | what is being edited: the field turning (for a second), the cursor, a held note, a queued pattern | `#FF5A1F` | `#FF6A2A` |
-| PLAY | what sounds: the playhead, a sounding synth, the pattern playing | `#1FA463` | `#2FCB7A` |
-| REC | what records or deletes: recording, a delete's warning | `#E5322D` | `#FF4A40` |
-| HARM | the harmony: the chord now, its tones in the roll and on the keyboard, the key | `#2F6BFF` | `#5B8CFF` |
+| PAPER | the ground | `#F5F5F2` | `#141416` |
+| LINE | cards, empty ticks, the roll's grid | `#DCDCD8` | `#2A2A2D` |
+| LABEL | what a thing is: labels, the grey half of a title, a muted synth | `#8E8E8A` | `#77777A` |
+| INK | what it holds: values, notes, names, the chosen card | `#18181A` | `#EDEDEA` |
+| HOLO0–7 | the thermal ramp, rim to core: `2459FF 5A48F6 8E3AEA C02FD2 E52BC2 FF45C2 FF8CDA FFDDF2` | same | same |
+| HMARK | a lit pixel's mark until its shape is finished (never shown) | | |
 
-The framebuffer is 4 bits a pixel (240 × 240 × 4 bits = 28,800 B in the pool), so the palette has 16 entries: these
-eight, then eight tones made from them (INK, LABEL, LINE and each signal colour mixed with PAPER) that only the glyphs'
-anti-aliasing uses. Each changed 8-line strip goes to the LCD through a 16-entry RGB565 table. GLO > SETUP > THEME
-switches paper and night; the roles never move.
+What is lit: the value turning (for a second), the cursor, a sounding synth, the pattern playing (a queued one is a
+magenta ring), the chord now. HOLO as a colour marks the pixels; when the shape is drawn, `holo_done` measures each
+pixel's chessboard depth (two chamfer passes over the shape's box) and lays the ramp from the rim to as far in as the
+shape's size allows (`TH_PMAX`): text and hairlines are the magenta body, a 4 px bar a blue rim on it, a big card the
+whole ramp to its pale core. The other three entries are the glyphs' anti-aliasing tones. The framebuffer is 4 bits a
+pixel (28,800 B in the pool); each changed strip goes to the LCD through a 16-entry RGB565 table.
 
 ### 5.3 Type
 
-| Size | Where | Weight |
+| Face | Size | Where |
 | --- | --- | --- |
-| **s** 11 px | labels, lists, the status bar, the footer, note names, notices | Medium |
-| **m** 16 px | values in the fields, synth names, row names | Medium |
-| **l** 32 px | one word or number a screen at most: the sound's name, the chord now, the boot | Medium |
+| FS, Geist 500 | 12 px | labels, captions, a card's two-line title, the foot |
+| FM, Geist 500 | 20 px | values, names, rows |
+| FH, Geist 500 | 24 px | a page's title and its row (ink, then grey) |
+| FN, Geist 400 | 36 px | the one big thing in a card: the chord now |
+| FL, Kiloy | 40 px | the wordmark (the boot) |
 
-All three are rendered from `assets/fonts/Geist[wght].ttf` by `tools/gen_font.py` at 2 bits a pixel (four levels of
-anti-aliasing, whose middle tones come from the palette against what is under each pixel). The capitals exist in the
-font table for safety; the UI draws none. Text is fitted with `text_fit` (tighter tracking, then a shorter string),
-never guessed. ♭ and ♯, which Geist lacks, are drawn by the generator to its x-height.
+Rendered by `tools/gen_font.py` at 2 bits a pixel. Text is fitted with `text_fit`, never guessed. ♭ and ♯, which
+Geist lacks, are drawn by the generator to its x-height.
 
-### 5.4 The grid
+### 5.4 The layout
 
 | Band | Rows (px) | What is there |
 | --- | --- | --- |
-| status | 0–19 | the page · its row · the synth's sound (s, INK); the three synths (the current one inverted); the transport mark; the tempo |
-| fields | 20–67 | four cells of 60 px under K1–K4, split by rules: label (s, LABEL), value (m, INK, FOCUS while it turns), slider or segment bar |
-| stage | 68–219 | the page's picture, on the same columns and rules |
-| footer | 220–239 | the ALGORITHM cell (its label and value, by the encoder's side); then what OCT− / OCT+ do now, or the chord and the key in HARM |
-
-Text sits 6 px into its cell. Every line, cell and value lands on the grid.
+| head | 0–39 | the page and its row, one size, ink then grey; the three synths as dots, the current one filled |
+| fields | 40–101 | four columns of 60 px under K1–K4: label, value (lit while it turns), meter |
+| stage | 102–219 | cards, 6 px from the edge and apart, corners of 14 |
+| foot | 224–239 | the ALGORITHM encoder's label and value |
 
 ### 5.5 The pages, as built in phase 0
 
 ![The screens, rendered by the host from the firmware's code](img/phase0-screens.png)
 
-- **home:** the three synths as rows (a PLAY square while it sounds, its name, what it does, its sequence in
-  miniature), the eight patterns (the playing one in PLAY, a queued one framed in FOCUS), the progression with the chord
-  now in HARM.
-- **roll:** note names in a column (the key's root in INK, chord tones marked in HARM), the grid in LINE with the beats
-  in LABEL, notes in INK, the cursor in FOCUS, VIEW as a thin scroll bar.
-- **sound:** the sound's name large, its facts small, its sample as a drawn envelope, the loop's ends in FOCUS.
-- **filter, amp, lfo:** the response or the envelope as an ink line on a grid of rules; the point being turned in FOCUS.
-- **fx, global:** four rows, a check box each, the open row marked by a FOCUS bar on its left edge.
-- **chord:** the chord now large in HARM, the progression's slots as cells (the playing one inverted), two octaves of
-  keys with the voicing's notes in HARM.
-- **songs:** a numbered list, one row a song.
+- **Home:** a card a synth: its name in two lines, a thermal blob while it sounds (a ring when muted), its engine.
+  HOME held: the eight patterns as cards, the playing one lit, the next a magenta ring.
+- **Roll:** a card: note names, the beats as rules and the steps as dots, notes as pills, the cursor lit.
+- **Sound:** a card: the sample's name and engine, its envelope as a line, the loop's ends lit.
+- **Filter, Amp, LFO:** a card: the response or the envelope, its points round.
+- **FX, Global:** four rows as pills, a switch each, the open one framed in ink.
+- **Chord:** a card: the key in its corner, the chord now big and lit, the progression as chips (now, an ink pill).
+- **Songs:** a list of pills.
 
 ### 5.6 The text audit
 
 Every text records its ink box; a fill hides what it covers, and a box over the stage hides everything under it. The
-check fails on texts that touch or sit a dot apart, text cut by a clip or the screen, text past its window, and **any
-capital letter**, over the whole host tour (21 screens) and, as pages are built, a sweep of every page, value and held
-layer. No overlapping text, ever.
+host's tour (21 screens) fails on texts that touch or sit a dot apart and on text cut by a clip or the screen. No
+overlapping text, ever.
 
 ## 6. The website
 
-**After KH Teka's specimen page, with an old desktop's windows, in three colours** (the owner's direction,
-2026-10-23; it replaced a first page after reown.com with gradients and textures).
+**A canvas of 48 px modules** (the owner's direction, 2026-10-23, after a node canvas, a design report's labels over
+hairlines, and a product maker's index; it replaced the specimen table and the old desktop's windows):
 
-- **Three colours, each a job:** paper `#FFFFFF` the ground, ink `#000000` every rule and letter, focus `#FF5A1F` (the
-  screen's own FOCUS) for the one thing to act on and what is lit on the panel. No texture, no gradient, no soft
-  shadow.
-- **The table:** a 52 px left rail, then rows of four columns, every edge a 1 px ink rule; a header row (the name, what
-  it is, the links, and one inverted cell for the action), the name set huge, a control row as the specimen page's
-  (a square on a rule for a slider), then the sections as rows: a small label cell and a medium text cell.
-- **Type:** Geist only, all lowercase, three sizes: s 13 px, m 24 px, l (the name) 88–236 px with the viewport.
-- **Windows** as an old desktop's: an ink frame, a striped title bar with a close box, a hard 3 px ink shadow.
-- **The emulator:** the FM-1's panel drawn as line art in one ink (MONO2K's simplicity), rounded: a 44 px body, 16 px
-  screen bezel, 12 px buttons with their page named under them, 10 px keys; what is lit turns focus orange. Mouse,
-  touch and the computer's keys play it.
-- **Phone width:** one column, the same rules, no sideways scroll.
+- **The grid is the canvas:** its lines drawn faintly; every box spans whole modules, its 1 px edge on the lines at
+  both ends (a box is n × 48 + 1 px); every section a whole number of rows. 24 modules wide on a desktop, 16 on a
+  tablet, 7 on a phone; a check in the browser measures every card, pill and image against the lines.
+- **The screen's system at the site's size:** the device's four greys; the thermal light in rings for what is lit
+  (the action, the playing tile, the panel's lit keys as an SVG filter of erosions: the same chessboard depth); cards
+  with corners of 24 and a two-line title; Geist 13, 15, 24, 32 and 144 (one big number).
+- **Kiloy, rendered as the screen renders it:** the wordmark (its ink from line to line), the D in the top-left
+  module, the icon (`tools/gen_art.py`; only the renders are committed).
+- **Mixed proportions:** cards and images of the sizes their content asks (a square, a wide, a tall), linked as
+  nodes; the art in the thermal family; the screens on an inverted ground, one at twice its pixels, each framed by a
+  Kiloy stroke (a paper ring with a slit).
+- **Graphics after Kiloy's specimens:** a word in line and in light by turns, the machine's words cropped in rows,
+  a seal of ticks round the D.
+- **Ko-fi** (`ko-fi.com/sequencist`) beside the action and in the footer.
 
 | Page | What is on it |
 | --- | --- |
-| home | the name, the control row with the power cell, the emulator in its window, the sections (three synths, eight patterns, the wear), the screens as a 4-column table, the footer |
-| manual | one article at a time in the same table; screens from the host's tour; every page, layer and combo from the core's own tables |
+| home | the D and the index, the wordmark, the emulator (power, volume as a meter, the keys), the machine's cards, the sound, the light, the screens, the band, the footer |
+| manual | one article at a time on the same canvas; screens from the host's tour; every page, layer and combo from the core's own tables |
 | install | the installer (Felucca's files, as MONO2K's site uses them): what an install may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware |
 | changes | the change log, an entry a day, written for the player |
 
-Phase 0 has the home page; the rest come in phase 5.
+Phase 0 has the home page; the rest come in phase 5. The design is also in the owner's Figma (the MONO2K file's
+Demake page): the tokens as variables (Paper and Night), the wordmark and the D as vectors, the display's components.
 
 ## 7. Build order
 

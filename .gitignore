@@ -9,3 +9,5 @@ __pycache__/
 # moodboard images, commercial fonts, other projects' sources
 reference/
 
+# Kiloy, the owner's font, copied for local previews only (web/build.sh)
+web/fonts/kiloy*
