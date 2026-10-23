@@ -5,9 +5,17 @@ samples, eight patterns a song to switch between live, a chord machine for melan
 colour, media, motion and space effects per synth. It is voiced like a late-90s console demake and drawn like a
 late-90s desktop: windows, a messenger's buddy list, cassettes and CDs, over snow and fog.
 
-**Status: plan only, no code yet.** The plan is [docs/plan.md](docs/plan.md). It covers the effects and their CPU
-budget, the engines and the sample format, the workflow mapped onto the FM-1's controls, the chord machine, the
-screen, and the build order.
+**Status: phase 0, the groundwork.** The plan is [docs/plan.md](docs/plan.md): the effects and their CPU budget,
+the engines and the sample format, the workflow on the FM-1's controls, the chord machine, the screen, the website,
+and the build order. Built so far: the FM-1 platform and package, the core's screen shell (every page as a window, 16
+colours, Tomato Grotesk, the text audit), a sine a key, the browser build with a first page, and a bench build to
+measure the FM-1's load against the host's instruction counts.
+
+```bash
+sh tools/check.sh                              # warnings, soft-float symbols, sanitizers, the tour's text audit, wasm
+sh web/build.sh                                # web/dmk.wasm; serve web/ to play it in the browser
+.venv/bin/python tools/fm1/build.py            # build/fm1/demake.fwsc (identity FM-1_965); --diag, --bench
+```
 
 It will run on the open FM-1 platform of CS-1 and Felucca, as MONO2K does, so it is GPL-3.0-only (see
 [LICENSE](LICENSE)). The credits and the notices of every source it uses will live in `LICENSES/`.

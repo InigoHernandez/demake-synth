@@ -198,9 +198,8 @@ static void bench(void)
 {
 #if defined(DMK_BENCH) && defined(__APPLE__)
     static int16_t b[128 * 2];
-    int levels[] = {0, 10, 20, 40, 80, 160};
-    dmk_init(5);
-    for (int k = 0; k < 12; k++) dmk_key(k * 2, 1);
+    int levels[] = {0, 100, 200, 400, 600, 800, 1000};
+    dmk_init(5);                                        /* no key held: the bench alone over the idle render */
     for (unsigned l = 0; l < sizeof levels / sizeof levels[0]; l++) {
         bench_level = levels[l];
         for (int i = 0; i < 100; i++) dmk_render(b, 128);
@@ -208,7 +207,7 @@ static void bench(void)
         int frames = DMK_SR * 10;
         for (int i = 0; i < frames; i += 128) dmk_render(b, 128);
         uint64_t z = instructions();
-        printf("bench level %3d: %7.1f instructions a sample (12 voices sounding)\n", levels[l], (double)(z - a) / frames);
+        printf("bench level %4d: %7.1f instructions a sample\n", levels[l], (double)(z - a) / frames);
     }
 #else
     printf("bench: build with -DDMK_BENCH on a Mac\n");

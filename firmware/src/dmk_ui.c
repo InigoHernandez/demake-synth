@@ -471,7 +471,7 @@ static void ui_encoder(int e, int d)
     k = e == E_ALGO ? 4 : e >= E_K1 && e <= E_K4 ? e - E_K1 : -1;
     if (k < 0) return;
 #ifdef DMK_BENCH
-    if (k == 0) { bench_level += d; if (bench_level < 0) bench_level = 0; if (bench_level > 200) bench_level = 200; }
+    if (k == 0) { bench_level += d * 10; if (bench_level < 0) bench_level = 0; if (bench_level > 1000) bench_level = 1000; }
 #endif
     if (ui.page == PG_GLOBAL && r == 3 && k == 0) {    /* THEME */
         int t = theme + (d > 0 ? 1 : -1);

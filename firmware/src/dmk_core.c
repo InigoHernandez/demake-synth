@@ -42,3 +42,6 @@ const uint32_t *dmk_palette_rgb(void) { return T_PALRGB[theme]; }
 const uint8_t *dmk_leds(void) { return ui_leds(); }
 int dmk_playing(void) { return 0; }
 uint32_t dmk_samples(void) { return samples; }
+#ifdef DMK_BENCH
+int dmk_bench_level(void) { return bench_level; }   /* the FM-1's meter shows it (dmk_fm1.c) */
+#endif
