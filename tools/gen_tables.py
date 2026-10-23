@@ -107,6 +107,9 @@ def main():
     lines.append("enum { " + ", ".join(f"C_{r} = {i}" for i, r in enumerate(ROLES)) + " };")
     lines.append(f"#define DMK_THEMES {len(THEMES)}")
     lines.append("static const char *const THEME_NAME[DMK_THEMES] = {" + ", ".join(f'"{n}"' for n in THEMES) + "};")
+    dark = [1 if lab(pal[0])[0] < 50 else 0 for pal in THEMES.values()]
+    lines.append("/* a dark theme (its paper darker than its ink): text on the title colour is ink, not highlight */")
+    lines.append("static const uint8_t THEME_DARK[DMK_THEMES] = {" + ",".join(map(str, dark)) + "};")
     lines.append("static const uint16_t T_PAL565[DMK_THEMES][16] = {")
     for pal in THEMES.values():
         lines.append("    {" + ",".join(f"0x{rgb565(h):04X}" for h in pal) + "},")

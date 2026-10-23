@@ -9,6 +9,8 @@ static const uint32_t T_INC[128] = {796254u,843601u,893765u,946911u,1003217u,106
 enum { C_PAPER = 0, C_HILITE = 1, C_FACE = 2, C_SHADOW = 3, C_DARK = 4, C_INK = 5, C_FOG1 = 6, C_FOG2 = 7, C_FOG3 = 8, C_TITLE1 = 9, C_TITLE2 = 10, C_LIGHT = 11, C_ALERT = 12, C_TIP = 13, C_PINK = 14, C_MINT = 15 };
 #define DMK_THEMES 4
 static const char *const THEME_NAME[DMK_THEMES] = {"SNOW", "NIGHT", "VENDING", "PEACH"};
+/* a dark theme (its paper darker than its ink): text on the title colour is ink, not highlight */
+static const uint8_t THEME_DARK[DMK_THEMES] = {0,1,1,0};
 static const uint16_t T_PAL565[DMK_THEMES][16] = {
     {0xF79D,0xFFFF,0xCE38,0x8C50,0x3186,0x10A3,0xDEFA,0xB595,0x73AF,0x196C,0x4BF7,0xF507,0xCA07,0xFFB8,0xEDB9,0xAF19},
     {0x2125,0x5AEC,0x39E8,0x18C3,0x0862,0xEF5C,0x2986,0x4A6A,0x6B8F,0x38E2,0xA285,0xF4C6,0xDA27,0x4A06,0xBBD3,0x6D93},
