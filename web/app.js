@@ -84,7 +84,7 @@
     wm.onload = () => document.fonts.load("500 12px geist").then(() => {
       if (node) return;
       lg.imageSmoothingEnabled = false;
-      lg.drawImage(wm, 24, 96, 192, 48);
+      lg.drawImage(wm, 0, 0, 384, 96, 24, 96, 192, 48);   /* the sprite's first frame */
       lg.fillStyle = LABEL; lg.font = "500 12px geist, sans-serif"; lg.textAlign = "center"; lg.fillText("Power on to start", 120, 170);
     });
     wm.src = "img/wordmark.png";
@@ -98,11 +98,11 @@
     if (ctx) { ctx.resume(); return; }
     try {
       ctx = new AudioContext({ sampleRate: 44100 });
-      await ctx.audioWorklet.addModule("worklet.js?v=4");
+      await ctx.audioWorklet.addModule("worklet.js?v=5");
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=4")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=5")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0 });
       power.textContent = "On";
@@ -144,11 +144,15 @@
   }
 
   // ---- the controls
-  const held = new Map();
+  const held = new Map(), latched = new Set();
   svg.addEventListener("pointerdown", (ev) => {
     const t = ev.target;
     if (t.dataset.k !== undefined) { send({ t: "key", k: +t.dataset.k, d: 1 }); held.set(ev.pointerId, { t: "key", k: +t.dataset.k }); }
-    else if (t.dataset.b !== undefined) { send({ t: "btn", b: +t.dataset.b, d: 1 }); held.set(ev.pointerId, { t: "btn", b: +t.dataset.b }); }
+    else if (t.dataset.b !== undefined) {
+      const b = +t.dataset.b;
+      if (ev.shiftKey) { const on = !latched.has(b); on ? latched.add(b) : latched.delete(b); send({ t: "btn", b, d: on ? 1 : 0 }); return; }   /* Shift-click holds it */
+      send({ t: "btn", b, d: 1 }); held.set(ev.pointerId, { t: "btn", b });
+    }
     else {
       const g = t.closest("g");
       if (g && g.dataset.e !== undefined) held.set(ev.pointerId, { t: "drag", e: +g.dataset.e, y: ev.clientY });
@@ -185,21 +189,117 @@
     send({ t: "enc", e, d });
   }
 
-  // the computer's keyboard: two rows of keys from F3, Z and X the octave
-  const WHITE = "asdfghjkl;'", BLACK = "weryuop[";
-  const whites = [], blacks = [];
-  for (let k = 0; k < 27; k++) (isBlack(k) ? blacks : whites).push(k);
-  const keyOf = (c) => { const w = WHITE.indexOf(c); if (w >= 0) return whites[w]; const b = BLACK.indexOf(c); return b >= 0 ? blacks[b] : -1; };
+  // the computer's keyboard, as the Felucca emulator has it: F3..A4 on the Z row (white) and the A row (black), B4..G5
+  // on Q..O, the twelve buttons on the number row in the panel's order, [ ] OCT, the arrows SELECT and ALGORITHM
+  const whites = [];
+  for (let k = 0; k < 27; k++) if (!isBlack(k)) whites.push(k);
+  const KEYMAP = {};
+  ["KeyZ", "KeyX", "KeyC", "KeyV", "KeyB", "KeyN", "KeyM", "Comma", "Period", "Slash"].forEach((c, i) => KEYMAP[c] = { k: whites[i] });
+  [["KeyS", 1], ["KeyD", 3], ["KeyF", 5], ["KeyH", 8], ["KeyJ", 10], ["KeyL", 13], ["Semicolon", 15], ["Quote", 17]].forEach(([c, k]) => KEYMAP[c] = { k });
+  ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO"].forEach((c, i) => KEYMAP[c] = { k: 18 + i });
+  ["Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8", "Digit9", "Digit0", "Minus", "Equal"].forEach((c, i) => KEYMAP[c] = { b: i });
+  KEYMAP.BracketLeft = { b: 12 }; KEYMAP.BracketRight = { b: 13 };
+  const ARROWS = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowRight: [1, 1], ArrowLeft: [1, -1] };
   const down = new Set();
   window.addEventListener("keydown", (ev) => {
-    if (ev.repeat || ev.metaKey || ev.ctrlKey) return;
-    const c = ev.key.toLowerCase();
-    if (c === "z" || c === "x") { send({ t: "btn", b: c === "z" ? 12 : 13, d: 1 }); send({ t: "btn", b: c === "z" ? 12 : 13, d: 0 }); return; }
-    const k = keyOf(c);
-    if (k >= 0 && !down.has(k)) { down.add(k); send({ t: "key", k, d: 1 }); ev.preventDefault(); }
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || (ev.target.closest && ev.target.closest("#vol, input, textarea"))) return;
+    if (ARROWS[ev.code]) { if (!node) return; const [e, d] = ARROWS[ev.code]; turn(e, d); ev.preventDefault(); return; }
+    const m = KEYMAP[ev.code];
+    if (!m || !node) return;
+    ev.preventDefault();
+    if (ev.repeat || down.has(ev.code)) return;
+    down.add(ev.code);
+    send(m.k !== undefined ? { t: "key", k: m.k, d: 1 } : { t: "btn", b: m.b, d: 1 });
   });
   window.addEventListener("keyup", (ev) => {
-    const k = keyOf(ev.key.toLowerCase());
-    if (k >= 0 && down.has(k)) { down.delete(k); send({ t: "key", k, d: 0 }); }
+    const m = KEYMAP[ev.code];
+    if (!m || !down.has(ev.code)) return;
+    down.delete(ev.code);
+    send(m.k !== undefined ? { t: "key", k: m.k, d: 0 } : { t: "btn", b: m.b, d: 0 });
   });
+  window.addEventListener("blur", () => { for (const c of down) { const m = KEYMAP[c]; send(m.k !== undefined ? { t: "key", k: m.k, d: 0 } : { t: "btn", b: m.b, d: 0 }); } down.clear(); });
+})();
+
+// ---- the 8-bit light, as the screen draws it: every lit thing steps at random through the dither's six arrangements
+// (tools/gen_art.py makes the same six), so its bits move and its light stays; the art is drawn here at 2 px a cell
+// through the ground, a deep blue and the thermal ramp
+(() => {
+  "use strict";
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], at = (x, y) => B[(y & 3) * 4 + (x & 3)];
+  const B6 = [(x, y) => at(x, y), (x, y) => at(x + 2, y + 1), (x, y) => at(3 - x, y), (x, y) => at(x, 3 - y),
+    (x, y) => at(y, x), (x, y) => at(x + 1, y + 3)].map((f) => { const m = new Uint8Array(16); for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) m[y * 4 + x] = f(x, y); return m; });
+  const rnd = (n, not) => { let k = (Math.random() * n) | 0; if (k === not) k = (k + 1) % n; return k; };
+
+  // the rings (border-image) and the sprites (six frames, one under another)
+  for (const r of [24, 12]) for (let k = 0; k < 6; k++) new Image().src = `img/bits/ring${r}_${k}.png`;
+  const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .hov")];
+  const visible = new Set();
+  const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));
+  [...sprites, ...ringed].forEach((el) => io.observe(el));
+
+  // the art: each piece's heat (a grey PNG) laid through the tones at 2 px a cell, dithered
+  const TONES = ["141416", "10229a", "2459ff", "5a48f6", "8e3aea", "c02fd2", "e52bc2", "ff45c2", "ff8cda", "ffddf2"].map((h) => [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)));
+  const POS = [0.2, 0.34, 0.46, 0.53, 0.6, 0.66, 0.72, 0.81, 0.9, 1];
+  const LI = new Uint8Array(256), LF = new Uint8Array(256);
+  for (let v = 0; v < 256; v++) {
+    const t = v / 255;
+    let i = 0;
+    while (i < POS.length - 1 && t >= POS[i + 1]) i++;
+    let f = t <= POS[0] ? 0 : i >= POS.length - 1 ? 0 : Math.round((t - POS[i]) / (POS[i + 1] - POS[i]) * 16);
+    if (f >= 16) { i++; f = 0; }
+    LI[v] = Math.min(i, 9); LF[v] = f;
+  }
+  const heats = [...document.querySelectorAll("canvas.heat")].map((cv) => {
+    const h = { cv, ctx: cv.getContext("2d"), img: new Image(), w: 0, h: 0, idx: null, frac: null, data: null, pat: 0 };
+    h.img.onload = () => size(h);
+    h.img.src = cv.dataset.heat;
+    new ResizeObserver(() => size(h)).observe(cv.parentElement);
+    io.observe(cv);
+    return h;
+  });
+  function size(h) {
+    if (!h.img.complete || !h.img.naturalWidth) return;
+    const r = h.cv.parentElement.getBoundingClientRect(), w = Math.ceil(r.width / 2), ht = Math.ceil(r.height / 2);
+    if (!w || !ht || (w === h.w && ht === h.h)) return;
+    h.w = w; h.h = ht;
+    h.cv.width = w; h.cv.height = ht; h.cv.style.width = w * 2 + "px"; h.cv.style.height = ht * 2 + "px";
+    const o = document.createElement("canvas"); o.width = w; o.height = ht;
+    const oc = o.getContext("2d"), iw = h.img.naturalWidth, ih = h.img.naturalHeight, k = Math.max(w / iw, ht / ih);
+    oc.imageSmoothingEnabled = true;
+    oc.drawImage(h.img, (w - iw * k) / 2, (ht - ih * k) / 2, iw * k, ih * k);   /* cover */
+    const src = oc.getImageData(0, 0, w, ht).data;
+    h.idx = new Uint8Array(w * ht); h.frac = new Uint8Array(w * ht);
+    for (let j = 0; j < w * ht; j++) { const v = src[j * 4]; h.idx[j] = LI[v]; h.frac[j] = LF[v]; }
+    h.data = h.ctx.createImageData(w, ht);
+    draw(h);
+  }
+  function draw(h) {
+    if (!h.data) return;
+    const d = h.data.data, m = B6[h.pat];
+    for (let y = 0, j = 0; y < h.h; y++)
+      for (let x = 0; x < h.w; x++, j++) {
+        let i = h.idx[j];
+        if (h.frac[j] > m[(y & 3) * 4 + (x & 3)] && i < 9) i++;
+        const c = TONES[i];
+        d[j * 4] = c[0]; d[j * 4 + 1] = c[1]; d[j * 4 + 2] = c[2]; d[j * 4 + 3] = 255;
+      }
+    h.ctx.putImageData(h.data, 0, 0);
+  }
+
+  // the clock: every 140 ms, about half of what shows takes a new arrangement
+  if (!still) setInterval(() => {
+    if (document.hidden) return;
+    for (const el of sprites) if (visible.has(el) && Math.random() < 0.5) { const k = rnd(6, +el.dataset.k); el.dataset.k = k; el.style.backgroundPositionY = k * 20 + "%"; }
+    for (const el of ringed) if (visible.has(el) && Math.random() < 0.5) { const k = rnd(6); el.style.setProperty("--ring24", `url(img/bits/ring24_${k}.png)`); el.style.setProperty("--ring12", `url(img/bits/ring12_${k}.png)`); }
+    for (const h of heats) if (visible.has(h.cv) && Math.random() < 0.5) { h.pat = rnd(6, h.pat); draw(h); }
+  }, 140);
+
+  // the screens: a page pressed is shown at twice its pixels, lit in the strip
+  const pages = [...document.querySelectorAll(".page")], shown = document.getElementById("shown"), name = document.getElementById("shownname");
+  pages.forEach((p) => p.addEventListener("click", () => {
+    pages.forEach((q) => q.classList.toggle("on", q === p));
+    shown.src = p.dataset.src; shown.alt = p.dataset.name;
+    name.innerHTML = `<b>${p.dataset.name}</b> ${p.dataset.say}`;
+  }));
 })();

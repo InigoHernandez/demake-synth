@@ -14,7 +14,7 @@ firmware/gen/dmk_tables.h (never edited by hand).
 - T_AA: for each theme, each text colour and each background, the two palette entries nearest to a third and two
   thirds of the way from the background to the text: the 2-bit glyphs' middle tones on an indexed screen. A pair
   with no near enough entry falls back to the background and the text colour (no anti-aliasing there).
-- T_BAYER: the 4 x 4 ordered dither.
+- T_BAYER: the 4 x 4 ordered dither; T_BAYER6, it in six arrangements, the bits' animation.
 """
 import math
 from pathlib import Path
@@ -100,6 +100,14 @@ def aa_table(pal):
     return t
 
 
+def BAYER6(b):
+    """the ordered dither in six arrangements: as it is, moved by (2, 1), mirrored, flipped, turned, moved by (1, 3)"""
+    at = lambda x, y: b[(y & 3) * 4 + (x & 3)]
+    T = [lambda x, y: at(x, y), lambda x, y: at(x + 2, y + 1), lambda x, y: at(3 - x, y),
+         lambda x, y: at(x, 3 - y), lambda x, y: at(y, x), lambda x, y: at(x + 1, y + 3)]
+    return [[t(x, y) for y in range(4) for x in range(4)] for t in T]
+
+
 def main():
     THEMES = {n: MONO[n] + HOLO[n] + [mix(MONO[n][f], MONO[n][t], k) for f, t, k in HELP] for n in MONO}
     lines = ["/* SPDX-License-Identifier: GPL-3.0-only */",
@@ -135,6 +143,12 @@ def main():
     lines.append("};")
     bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
     lines.append("static const uint8_t T_BAYER[16] = {" + ",".join(map(str, bayer)) + "};")
+    lines.append("/* the bits' six patterns: the ordered dither moved, mirrored and turned, the same share of each tone in every")
+    lines.append(" * 4 x 4 cell, so the light stays and its bits move (tools/gen_art.py makes the same six) */")
+    lines.append("static const uint8_t T_BAYER6[6][16] = {")
+    for pat in BAYER6(bayer):
+        lines.append("    {" + ",".join(map(str, pat)) + "},")
+    lines.append("};")
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text("\n".join(lines) + "\n")
     print(f"{OUT.relative_to(ROOT)}: {len(lines)} lines")

@@ -7,34 +7,35 @@
   <title>Demake</title>
   <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths, a chord machine, eight patterns a song.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=4">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <main class="canvas">
 
-  <!-- the header: the isotype, then the site's parts, as a product maker's index -->
+  <!-- the header: the D in its module, the index, the two actions -->
   <header class="g head">
-    <a href="./" class="iso" aria-label="Demake"><img src="img/iso.png" width="48" height="48" alt=""></a>
-    <a href="#play" class="nav n1"><b>Play</b><span>The emulator<br>Keys and knobs</span></a>
-    <a href="#machine" class="nav n2"><b>Machine</b><span>Three synths<br>Eight patterns</span></a>
-    <a href="#screens" class="nav n3"><b>Screens</b><span>The display<br>Paper and night</span></a>
-    <a href="https://github.com/InigoHernandez" class="nav n4"><b>Source</b><span>GitHub<br>GPL-3.0</span></a>
+    <a href="./" class="iso bits" style="--src: url(img/iso.png)" aria-label="Demake"></a>
+    <a href="#play" class="nav n1"><b>Play</b><span>The emulator</span><span>Keys and knobs</span></a>
+    <a href="#machine" class="nav n2"><b>Machine</b><span>Three synths</span><span>Eight patterns</span></a>
+    <a href="#screens" class="nav n3"><b>Screens</b><span>The display</span><span>Twelve pages</span></a>
+    <a href="https://github.com/InigoHernandez" class="nav n4"><b>Source</b><span>GitHub</span><span>GPL-3.0</span></a>
     <a href="https://ko-fi.com/sequencist" class="kofi pill" target="_blank" rel="noopener">Support on Ko&#8209;fi</a>
     <a href="#play" class="cta lit">Play it</a>
   </header>
 
   <!-- the hero: the wordmark, lit as the screen lights it, and what it is -->
   <section class="g hero">
-    <h1 class="mark"><img src="img/wordmark.png" width="1152" height="288" alt="Demake"></h1>
+    <h1 class="mark bits" style="--src: url(img/wordmark.png)" role="img" aria-label="Demake"></h1>
     <p class="say">An ambient lofi machine for the M&#8209;VAVE&nbsp;FM&#8209;1.</p>
-    <p class="meta">Firmware for the FM-1, on the open platform of CS-1 and Felucca. Phase 0: the shell, the screen and the
-      core, here in the browser.</p>
+    <p class="meta">Firmware for the FM&#8209;1 on the open platform of CS&#8209;1 and Felucca. Phase 0: the shell, the
+      screen and the core, here in the browser.</p>
   </section>
 
-  <!-- 01 play: the device as the product shot -->
+  <!-- 01 play: the device on its light -->
   <section class="g strip" id="play"><span class="no">01</span><span class="lb">Play</span></section>
   <section class="g play">
     <div class="emu card">
+      <canvas class="heat" data-heat="img/art/hero.png" aria-hidden="true"></canvas>
       <div class="panel" id="panel">
         <svg id="svg" viewBox="14 14 876 538" role="application" aria-label="The FM-1's panel"></svg>
         <canvas id="lcd" width="240" height="240" aria-label="The screen"></canvas>
@@ -43,75 +44,110 @@
     <button class="power lit" id="power">Power on</button>
     <div class="vol"><span class="lb">Volume</span><span class="ticks" id="vol" role="slider" aria-label="Volume"
       aria-valuemin="0" aria-valuemax="100" aria-valuenow="80" tabindex="0"></span></div>
-    <p class="keys"><span class="lb">Keys</span> A S D F G H J K L ; ' play, W E R Y U O P [ the sharps, Z and X the
-      octave</p>
+    <p class="keys">
+      <span><kbd>Z</kbd>–<kbd>/</kbd> <kbd>S</kbd>–<kbd>'</kbd> <kbd>Q</kbd>–<kbd>O</kbd> Keys</span>
+      <span><kbd>1</kbd>–<kbd>=</kbd> FX … REC</span>
+      <span><kbd>[</kbd> <kbd>]</kbd> OCT</span>
+      <span><kbd>↑</kbd> <kbd>↓</kbd> Select</span>
+      <span><kbd>←</kbd> <kbd>→</kbd> Algorithm</span>
+      <span><kbd>Shift</kbd>-click holds a button</span>
+    </p>
   </section>
 
-  <!-- 02 the machine: cards as the screen draws them, of the sizes their content asks -->
+  <!-- 02 the machine: cards of the sizes their content asks, linked as nodes -->
   <section class="g strip" id="machine"><span class="no">02</span><span class="lb">Machine</span></section>
   <section class="g machine">
-    <div class="card c1 glow">
+    <div class="card c1 glow hov">
+      <canvas class="heat" data-heat="img/art/pool.png" aria-hidden="true"></canvas>
       <p class="tt"><b>Synths</b><span>Each its own roll</span></p>
       <p class="big">3</p>
-      <p class="cap"><span>Sample, pad, drone, pluck</span></p>
+      <p class="cap">Sample, pad, drone, pluck</p>
     </div>
     <i class="link l1"></i>
-    <div class="card c2 wide">
+    <div class="card c2 wide hov">
       <p class="tt"><b>Patterns</b><span>A song, switched live</span></p>
       <p class="big">8</p>
-      <p class="cap"><span>Hold Home, press a key</span></p>
+      <p class="cap">Hold Home, press a key</p>
     </div>
     <div class="tiles" aria-hidden="true">
       <i class="on">1</i><i>2</i><i>3</i><i>4</i><i class="next">5</i><i>6</i><i>7</i><i>8</i>
     </div>
     <i class="link l2"></i>
-    <div class="card c3">
+    <div class="card c3 hov">
       <p class="tt"><b>Voices</b><span>Shared by the three</span></p>
       <p class="big">12</p>
-      <p class="cap"><span>A chord machine on top</span></p>
+      <p class="cap">A chord machine on top</p>
     </div>
   </section>
 
-  <!-- 03 the sound: a statement, as a report's, then the letters in line and in light -->
+  <!-- 03 the sound: a statement, then a word of it in line and in light -->
   <section class="g strip"><span class="no">03</span><span class="lb">Sound</span></section>
   <section class="g text">
     <p class="say">Your own recordings under every synth, worn by tape, codec and a room.</p>
     <p class="meta">A layer from your samples under each sound. Crush, codec smear, tape, cassette, VHS and chorus, then
-      reverbs voiced after console rooms and halls. Integer DSP, both of the FM&#8209;1's cores.</p>
-    <img class="plate" src="img/plate.png" width="1152" height="288" alt="">
+      reverbs voiced after console rooms and halls. Integer DSP, on both of the FM&#8209;1's cores.</p>
+    <div class="plate bits" style="--src: url(img/plate.png)" role="img" aria-label="Ambient, in line and in light"></div>
   </section>
 
-  <!-- 04 the light: the art on the grid, each piece its own proportion -->
+  <!-- 04 the light: the art on the grid, each piece its own proportion, 8-bit -->
   <section class="g strip"><span class="no">04</span><span class="lb">Light</span></section>
   <section class="g art">
-    <figure class="a1"><img src="img/art/flow.jpg" alt="Blue, magenta and a pale core on black"><figcaption><b>Image</b> Flow</figcaption></figure>
-    <figure class="a2"><img src="img/art/pool.jpg" alt="Thermal pools on black"><figcaption><b>Image</b> Pool</figcaption></figure>
-    <figure class="a3 seal"><img src="img/seal.png" width="192" height="192" alt="The seal: a ring of ticks round the D"><figcaption><b>Seal</b> Phase 0</figcaption></figure>
-    <figure class="a4"><img src="img/art/rise.jpg" alt="A rising thermal shape"><figcaption><b>Image</b> Rise</figcaption></figure>
-    <figure class="a5"><img src="img/art/drift.jpg" alt="Drifting thermal shapes"><figcaption><b>Image</b> Drift</figcaption></figure>
-    <figure class="a6"><img src="img/art/twin.jpg" alt="Two thermal shapes"><figcaption><b>Image</b> Twin</figcaption></figure>
-    <figure class="a7"><img src="img/art/wave.jpg" alt="A thermal wave"><figcaption><b>Image</b> Wave</figcaption></figure>
+    <figure class="a1 hov"><canvas class="heat" data-heat="img/art/flow.png"></canvas><figcaption><b>Image</b> Flow</figcaption></figure>
+    <figure class="a2 hov"><canvas class="heat" data-heat="img/art/pool.png"></canvas><figcaption><b>Image</b> Pool</figcaption></figure>
+    <figure class="a3 seal"><div class="bits" style="--src: url(img/seal.png)" role="img" aria-label="The seal: a ring of ticks round the D"></div><figcaption><b>Seal</b> Phase 0</figcaption></figure>
+    <figure class="a4 hov"><canvas class="heat" data-heat="img/art/rise.png"></canvas><figcaption><b>Image</b> Rise</figcaption></figure>
+    <figure class="a5 hov"><canvas class="heat" data-heat="img/art/drift.png"></canvas><figcaption><b>Image</b> Drift</figcaption></figure>
+    <figure class="a6 hov"><canvas class="heat" data-heat="img/art/twin.png"></canvas><figcaption><b>Image</b> Twin</figcaption></figure>
+    <figure class="a7 hov"><canvas class="heat" data-heat="img/art/wave.png"></canvas><figcaption><b>Image</b> Wave</figcaption></figure>
   </section>
 
-  <!-- 05 the screens: one at twice its pixels, the rest at their own -->
+  <!-- 05 the screens: the display's anatomy, then its pages, one press each -->
   <section class="g strip dark" id="screens"><span class="no">05</span><span class="lb">Screens</span></section>
   <section class="g screens dark">
-    <figure class="s1"><img src="img/screens/01_home.png" width="240" height="240" alt="Home: the three synths"><figcaption><b>Home</b> The synths, the one sounding lit</figcaption></figure>
-    <figure class="s2"><img src="img/screens/02_roll.png" width="240" height="240" alt="The piano roll"><figcaption><b>Roll</b> A sequence</figcaption></figure>
-    <figure class="s3"><img src="img/screens/07_chord.png" width="240" height="240" alt="The chord machine"><figcaption><b>Chord</b> The chord now</figcaption></figure>
-    <figure class="s4"><img src="img/screens/16_home_held.png" width="240" height="240" alt="The patterns, Home held"><figcaption><b>Patterns</b> Home held</figcaption></figure>
-    <figure class="s5 night"><img src="img/screens/19_home_night.png" width="240" height="240" alt="Home, the night theme"><figcaption><b>Night</b> The dark theme</figcaption></figure>
+    <figure class="big2">
+      <div class="frame f528 bits" style="--src: url(img/frame528.png)" aria-hidden="true"></div>
+      <div class="frame f288 bits" style="--src: url(img/frame288.png)" aria-hidden="true"></div>
+      <img id="shown" src="img/screens/01_home.png" width="480" height="480" alt="Home: the three synths">
+    </figure>
+    <p class="call c-title"><b>Title</b> The page in ink, its row in grey, one size</p>
+    <p class="call c-fields"><b>Fields</b> Four columns under K1–K4: a label, a value</p>
+    <p class="call c-meter"><b>Meter</b> Ticks in ink up to the value, its own tick tall</p>
+    <p class="call c-cards"><b>Cards</b> 6 px from the edge and apart, corners of 14</p>
+    <p class="call c-light"><b>Light</b> A blue rim, a magenta body, a pale core</p>
+    <p class="call c-note" id="shownname"><b>Home</b> The synths, the one sounding lit</p>
+    <div class="pages" id="pages" aria-label="The pages">
+      <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-say="The synths, the one sounding lit"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/01_home.png" width="240" height="240" alt=""><span class="cap"><kbd>HOME</kbd> Home</span></button>
+      <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-say="A sequence, the cursor lit"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/02_roll.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>SEQ</kbd> Roll</span></button>
+      <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-say="The chord now, the progression"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/07_chord.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>ARP</kbd> Chord</span></button>
+      <button class="page" data-src="img/screens/16_home_held.png" data-name="Patterns" data-say="Home held: the playing one lit, the next a ring"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/16_home_held.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>HOME</kbd> held, Patterns</span></button>
+      <button class="page" data-src="img/screens/03_sound.png" data-name="Sound" data-say="The sample, its loop lit"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/03_sound.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>EDIT</kbd> Sound</span></button>
+      <button class="page" data-src="img/screens/04_filter.png" data-name="Filter" data-say="The response, its cutoff a point"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/04_filter.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>SEL</kbd> Filter</span></button>
+      <button class="page" data-src="img/screens/05_amp.png" data-name="Amp" data-say="The envelope, its points round"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/05_amp.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>ENV</kbd> Amp</span></button>
+      <button class="page" data-src="img/screens/06_fx.png" data-name="FX" data-say="Colour, media, motion, space"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/06_fx.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>FX</kbd> FX</span></button>
+      <button class="page" data-src="img/screens/08_global.png" data-name="Global" data-say="The sends, the song, the setup"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/08_global.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>GLO</kbd> Global</span></button>
+      <button class="page" data-src="img/screens/09_lfo.png" data-name="LFO" data-say="Its shape and its target"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/09_lfo.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>LFO</kbd> LFO</span></button>
+      <button class="page" data-src="img/screens/18_discs.png" data-name="Songs" data-say="The songs, a pill each"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/18_discs.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>SAVE</kbd> held, Songs</span></button>
+      <button class="page" data-src="img/screens/19_home_night.png" data-name="Night" data-say="The same pages, the night theme"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/19_home_night.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>GLO</kbd> Setup, Night</span></button>
+    </div>
   </section>
 
-  <div class="g bandrow"><img class="band" src="img/band.png" width="1152" height="384" alt=""></div>
-
-  <footer class="g strip foot">
-    <span class="f1">GPL-3.0</span>
-    <span class="f2">By Sequencist. M-VAVE and FM-1 are their owners' marks; Demake is not made or endorsed by M-VAVE.
+  <!-- the footer: the words, whole; the links -->
+  <div class="g bandrow"><div class="band bits" style="--src: url(img/band.png)" role="img" aria-label="Lofi, snow, tape, echo, chord, pad"></div></div>
+  <nav class="g foot links" aria-label="Sequencist, the author">
+    <span>By Sequencist</span>
+    <a href="https://github.com/InigoHernandez" target="_blank" rel="noopener">GitHub ↗</a>
+    <a href="https://sequencist.bandcamp.com/" target="_blank" rel="noopener">Bandcamp ↗</a>
+    <a href="https://www.youtube.com/@sequencist" target="_blank" rel="noopener">YouTube ↗</a>
+    <a href="https://www.instagram.com/sequencist.fm" target="_blank" rel="noopener">Instagram ↗</a>
+    <a href="https://soundcloud.com/sequencist" target="_blank" rel="noopener">SoundCloud ↗</a>
+  </nav>
+  <footer class="g foot fin">
+    <span>Demake</span><span class="w2">An ambient lofi machine</span>
+    <a class="w2" href="https://ko-fi.com/sequencist" target="_blank" rel="noopener">Support on Ko&#8209;fi ↗</a><span class="r">2026</span>
+    <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.
       Geist: SIL OFL 1.1. Kiloy: Marvadesign.</span>
-    <span class="f3"><a href="https://ko-fi.com/sequencist" target="_blank" rel="noopener">Support on Ko&#8209;fi</a><br><a href="https://github.com/InigoHernandez">GitHub</a></span>
   </footer>
 </main>
-<script src="app.js?v=4"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

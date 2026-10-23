@@ -5,17 +5,22 @@ rainbow). Our own, generated; the references were a bought gradient pack and are
 
   .venv/bin/python tools/gen_art.py
 
-- web/img/art/{flow,pool,rise,wave,twin,drift}.jpg (1600 x 1000): fields of blobs strung along paths, their coordinates
-  warped so the edges run like liquid, mapped through the ramp, grained. Seeds are fixed: a run makes the same files.
+- web/img/art/{flow,pool,rise,wave,twin,drift,hero}.png (800 x 500, grey): fields of blobs strung along paths, their
+  coordinates warped so the edges run like liquid; each pixel the heat, 0..255. The site maps it through the ground,
+  a deep blue and the thermal ramp at 2 px a cell, dithered (8-bit, as everything lit). Seeds are fixed.
 - web/img/wordmark.png, web/img/iso.png, web/img/icon.png: the wordmark, its D (the isotype, 48 cells) and the
   tab's icon (64), in
   Kiloy (the owner's copy, DMK_KILOY; only these renders are committed), lit exactly as the screen lights a shape:
   each pixel's depth in the shape (the chessboard distance to its edge), the ramp from the rim to as far in as the
   shape's size allows, the rings dithered by the 4 x 4 ordered dither (dmk_gfx.c, holo_done). One pixel here is a cell
   of the site's bit texture.
-- web/img/plate.png, band.png, seal.png: graphics after Kiloy's specimens: a word of the sound in line and in light by
-  turns; three rows of the machine's words too big for their rows, cropped, paper on ink; a seal, a ring of ticks
-  round the lit D.
+- web/img/plate.png, band.png, seal.png, frame288.png, frame528.png: graphics after Kiloy's specimens ("ambient" in
+  line and in light by turns; the machine's words in three rows, ink on paper, every letter whole; a seal of ticks
+  round the lit D) and the screens' lit frames.
+- Every lit thing in six frames, one under another, its dither in the six arrangements of T_BAYER6: the site steps
+  through them at random, as the screen does (the bits move, the light stays).
+- web/img/bits/ring24_0..5.png, ring12_0..5.png: the lit state for any box, a 12 px ring of the ramp for
+  border-image round a pale core (the action, the playing tile, a hover).
 """
 import os
 from pathlib import Path
@@ -79,20 +84,41 @@ def walk(seed, start, step, n, wander):
 
 
 def render(name, path, sigma, seed, warp=0.035, gain=1.0):
+    """the piece's heat, 0..255 (the ground to the core), as a grey PNG at half size: the site lays it through the
+    system's tones at 2 px a cell, dithered, its bits moving (web/app.js, the heat)"""
     x, y = coords(seed, warp)
     f = field(x, y, path, sigma)
     f = np.clip(f / np.percentile(f, 99.7) * gain, 0, 1) ** 0.85
-    img = ramp(f, HEAT)
-    img = np.asarray(Image.fromarray(img.astype(np.uint8)).filter(ImageFilter.GaussianBlur(7)), np.float32)
-    r = np.random.default_rng(seed + 100)
-    img += r.normal(0, 11, (H, W, 1)).astype(np.float32) + r.normal(0, 3, (H, W, 3)).astype(np.float32)
+    im = Image.fromarray((f * 255).astype(np.uint8), "L").filter(ImageFilter.GaussianBlur(7)).resize((W // 2, H // 2), Image.LANCZOS)
     OUT.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.clip(img, 0, 255).astype(np.uint8)).save(OUT / f"{name}.jpg", quality=86, optimize=True)
-    print(f"web/img/art/{name}.jpg")
+    im.save(OUT / f"{name}.png", optimize=True)
+    print(f"web/img/art/{name}.png")
 
 
 def hexrgb(h):
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def bayer6():
+    """the ordered dither in six arrangements, as tools/gen_tables.py makes them (T_BAYER6): the bits' animation"""
+    b = BAYER.reshape(-1).tolist()
+    at = lambda x, y: b[(y & 3) * 4 + (x & 3)]
+    T = [lambda x, y: at(x, y), lambda x, y: at(x + 2, y + 1), lambda x, y: at(3 - x, y),
+         lambda x, y: at(x, 3 - y), lambda x, y: at(y, x), lambda x, y: at(x + 1, y + 3)]
+    return [np.array([[t(x, y) for x in range(4)] for y in range(4)]) for t in T]
+
+
+B6 = bayer6()
+PAL = np.array([hexrgb(c) for c in THERMAL], np.uint8)
+INK, PAPER = hexrgb("18181A"), hexrgb("F5F5F2")
+
+
+def tones(p, pat):
+    """a place on the ramp (sixteenths of a tone) to a tone, dithered by arrangement pat"""
+    h, w = p.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    t = p >> 4
+    return np.clip(np.where((t < 7) & (B6[pat][yy & 3, xx & 3] < (p & 15)), t + 1, t), 0, 7)
 
 
 def depth(mask):
@@ -114,25 +140,36 @@ def depth(mask):
     return d
 
 
-def lit_rgb(mask, d=None):
-    """the thermal tones of a lit shape, per pixel (RGB; meaningless where unlit)"""
-    h, w = mask.shape
+def lit_p(mask, d=None):
+    """a lit shape's place on the ramp per pixel, as holo_done lays it"""
     d = depth(mask) if d is None else d
     dmax = int(d.max()) or 1
     pmax = TH_PMAX[dmax]
-    p = np.where(d > 0, pmax if dmax == 1 else (d - 1) * pmax // (dmax - 1), 0)
-    t = p >> 4
-    yy, xx = np.mgrid[0:h, 0:w]
-    t = np.where((t < 7) & (BAYER[yy & 3, xx & 3] < (p & 15)), t + 1, t)
-    return np.array([hexrgb(c) for c in THERMAL], np.uint8)[t]
+    return np.where(d > 0, pmax if dmax == 1 else (d - 1) * pmax // (dmax - 1), 0)
 
 
-def lit(mask):
-    """a mask lit as the screen lights it: RGBA, transparent where unlit"""
-    out = np.zeros(mask.shape + (4,), np.uint8)
-    out[..., :3] = lit_rgb(mask)
-    out[..., 3] = np.where(mask, 255, 0)
-    return Image.fromarray(out, "RGBA")
+def lit_rgb(mask, pat=0, p=None):
+    return PAL[tones(lit_p(mask) if p is None else p, pat)]
+
+
+def sprite(frames, path):
+    """six frames, one under another: the site steps through them at random (web/app.js, the bits)"""
+    h = frames[0].shape[0]
+    out = np.zeros((h * len(frames),) + frames[0].shape[1:], np.uint8)
+    for i, f in enumerate(frames):
+        out[i * h:(i + 1) * h] = f
+    Image.fromarray(out, "RGBA" if out.shape[2] == 4 else "RGB").save(path, optimize=True)
+
+
+def lit_frames(mask):
+    p = lit_p(mask)
+    frames = []
+    for k in range(6):
+        f = np.zeros(mask.shape + (4,), np.uint8)
+        f[mask, :3] = PAL[tones(p, k)][mask]
+        f[mask, 3] = 255
+        frames.append(f)
+    return frames
 
 
 def glyph_mask(s, size, w, h, inset=0, span=False, fit=False):
@@ -140,8 +177,8 @@ def glyph_mask(s, size, w, h, inset=0, span=False, fit=False):
     edges on the grid's lines; fit: to the full box, all four edges on them); thresholded as the screen's 2-bit text"""
     f4 = ImageFont.truetype(str(KILOY), size * 4)
     l, t, r, b = f4.getbbox(s)
-    im = Image.new("L", (r - l + 64, b - t + 64), 0)    # the whole word, never clipped
-    ImageDraw.Draw(im).text((32 - l, 32 - t), s, font=f4, fill=255)
+    im = Image.new("L", (r - l + 64, b - t + 64), 0)
+    ImageDraw.Draw(im).text((32 - l, 32 - t), s, font=f4, fill=255)   # the whole word, never clipped
     box = im.getbbox()
     k = (w - 2 * inset) / (box[2] - box[0]) if span else 1 / 4
     size2 = (w, h) if fit else (round((box[2] - box[0]) * k), round((box[3] - box[1]) * k))
@@ -151,25 +188,8 @@ def glyph_mask(s, size, w, h, inset=0, span=False, fit=False):
     return np.array(m) >= 128
 
 
-def marks():
-    if not KILOY.exists():
-        print(f"no Kiloy at {KILOY}: the wordmark, the isotype and the icon are kept as they are")
-        return
-    # the wordmark: 384 x 96 cells, shown at 2 px a cell (16 x 4 of the site's 48 px modules), ink from x = 0
-    wm = glyph_mask("demake", 92, 384, 96, span=True)
-    lit(wm).save(ROOT / "web" / "img" / "wordmark.png", optimize=True)
-    # the isotype: the D, its ink filling 48 x 48 cells (two by two modules at 2 px a cell, every edge on a line),
-    # and the tab's icon, 64 x 64
-    lit(glyph_mask("d", 44, 48, 48, fit=True)).save(ROOT / "web" / "img" / "iso.png", optimize=True)
-    lit(glyph_mask("d", 58, 64, 64, fit=True)).save(ROOT / "web" / "img" / "icon.png", optimize=True)
-    print("web/img/wordmark.png, iso.png, icon.png")
-
-
-INK, PAPER = hexrgb("18181A"), hexrgb("F5F5F2")
-
-
 def letters(word, size, w, h):
-    """each letter's mask, the word laid out by Kiloy's advances and its ink scaled to the full width"""
+    """each letter's mask, the word laid out by Kiloy's advances and its ink scaled to the full width, centred in h"""
     f4 = ImageFont.truetype(str(KILOY), size * 4)
     l, t, r, b = f4.getbbox(word)
     W, H = r - l + 64, b - t + 64
@@ -188,84 +208,140 @@ def letters(word, size, w, h):
     return out
 
 
-def graphics():
-    """after Kiloy's specimens: letters in line and in light; the word cropped as a pattern; a seal of ticks"""
+def rr(n, m, x0, y0, x1, y1, r):
+    """a rounded rectangle's mask on an n x m grid of cells, drawn at 4x and brought down"""
+    im = Image.new("L", (n * 4, m * 4), 0)
+    ImageDraw.Draw(im).rounded_rectangle((x0 * 4, y0 * 4, x1 * 4 - 1, y1 * 4 - 1), r * 4, fill=255)
+    return np.array(im.resize((n, m), Image.LANCZOS)) >= 128
+
+
+def ramp_in(outer, band):
+    """the place on the ramp from a shape's outer edge (the rim) to band cells in (the core)"""
+    d = np.minimum(depth(outer), band)
+    return (d - 1) * 112 // max(band - 1, 1)
+
+
+def big(a, k=2):
+    """cells to pixels: each cell k x k, for the browser to show without scaling"""
+    return np.repeat(np.repeat(a, k, 0), k, 1)
+
+
+IMG = ROOT / "web" / "img"
+BITS = IMG / "bits"
+
+
+def marks():
     if not KILOY.exists():
-        return
-    # the plate: 576 x 144 cells (24 x 6 modules at 2 px): a word of the sound, its letters in line and in light by
-    # turns; the line the rim, in ink
-    out = np.zeros((144, 576, 4), np.uint8)
-    for i, m in enumerate(letters("ambient", 120, 576, 144)):
-        if i % 2:
-            out[m, :3] = lit_rgb(m)[m]
-        else:
-            rim = m & (depth(m) == 1)
-            out[rim, :3] = INK
-            m = rim
-        out[m, 3] = 255
-    Image.fromarray(out, "RGBA").save(OUT.parent / "plate.png", optimize=True)
-    # the band: 576 x 192 cells, three rows of the machine's words, each too tall for its row and run off the sides,
-    # paper on ink, one letter lit (after Kiloy's specimen of cropped rows)
-    band = np.zeros((192, 576, 3), np.uint8)
-    band[:] = INK
-    for r, (word, off, hot) in enumerate([("lofisnow", 40, -1), ("tapedrone", 150, 4), ("echochord", 90, -1)]):
-        hgt = 84
-        ms = letters(word, 200, round(hgt * 1.04 * len(word)), hgt)
+        print(f"no Kiloy at {KILOY}: the wordmark, the isotype and the graphics are kept as they are")
+        return False
+    BITS.mkdir(parents=True, exist_ok=True)
+    # the wordmark: 384 x 96 cells, its ink from line to line; the D, its ink filling 48 x 48 cells; the tab's icon
+    sprite(lit_frames(glyph_mask("demake", 92, 384, 96, span=True)), IMG / "wordmark.png")
+    sprite(lit_frames(glyph_mask("d", 44, 48, 48, fit=True)), IMG / "iso.png")
+    Image.fromarray(lit_frames(glyph_mask("d", 58, 64, 64, fit=True))[0], "RGBA").save(IMG / "icon.png", optimize=True)
+    print("web/img/wordmark.png, iso.png (six frames each), icon.png")
+    return True
+
+
+def graphics():
+    """after Kiloy's specimens, with the machine's words; every lit thing in six frames"""
+    # the plate: 576 x 144 cells, "ambient" in line and in light by turns, the line the rim in ink
+    ms = letters("ambient", 120, 576, 144)
+    frames = []
+    for k in range(6):
+        out = np.zeros((144, 576, 4), np.uint8)
         for i, m in enumerate(ms):
-            m = m[10:74, off:off + 576]                  # the row: 64 cells, cropped top and bottom, run off the sides
-            if m.shape[1] < 576:
-                m = np.pad(m, ((0, 0), (0, 576 - m.shape[1])))
-            sl = band[r * 64:(r + 1) * 64]
-            if i == hot:
-                sl[m] = lit_rgb(m)[m]
+            if i % 2:
+                out[m, :3] = lit_rgb(m, k)[m]
+                out[m, 3] = 255
             else:
-                sl[m] = PAPER
-    Image.fromarray(band).save(OUT.parent / "band.png", optimize=True)
-    # the seal: 96 x 96 cells, a ring of 60 ticks (a meter around), ten of them lit, the D lit in the middle
-    seal = np.zeros((96, 96, 4), np.uint8)
+                rim = m & (depth(m) == 1)
+                out[rim, :3] = INK
+                out[rim, 3] = 255
+        frames.append(out)
+    sprite(frames, IMG / "plate.png")
+    # the band: the machine's words in three rows of eight letters, all of one size (the widest row's ink from line to
+    # line), every letter whole, ink on paper, one letter lit a row (after Kiloy's specimen of rows of letters)
+    rows = [("lofisnow", 3), ("tapeecho", 5), ("chordpad", 1)]
+    f4 = ImageFont.truetype(str(KILOY), 800)
+    nat = [f4.getbbox(w) for w, _ in rows]
+    widest = max(b[2] - b[0] for b in nat)
+    k = 576 / widest
+    hs = [round((b[3] - b[1]) * k) for b in nat]
+    gap = 12
+    H = (sum(hs) + gap * (len(rows) - 1) + 23) // 24 * 24   # whole modules at 2 px a cell
+    masks = [letters(w, 200, round((b[2] - b[0]) * k), h) for (w, _), b, h in zip(rows, nat, hs)]
+    frames = []
+    for fk in range(6):
+        band = np.zeros((H, 576, 4), np.uint8)
+        y = (H - (sum(hs) + gap * (len(rows) - 1))) // 2
+        for ms, (word, hot), h in zip(masks, rows, hs):
+            for i, m in enumerate(ms):
+                sl = band[y:y + h, :m.shape[1]]
+                if i == hot:
+                    sl[m, :3] = lit_rgb(m, fk)[m]
+                else:
+                    sl[m, :3] = INK
+                sl[m, 3] = 255
+            y += h + gap
+        frames.append(band)
+    sprite(frames, IMG / "band.png")
+    # the seal: 96 x 96 cells, a ring of 60 ticks, ten of them lit, round the lit D
     yy, xx = np.mgrid[0:96, 0:96]
-    cx = cy = 47.5
-    r = np.hypot(xx - cx, yy - cy)
-    a = (np.degrees(np.arctan2(yy - cy, xx - cx)) + 90) % 360
+    r = np.hypot(xx - 47.5, yy - 47.5)
+    a = (np.degrees(np.arctan2(yy - 47.5, xx - 47.5)) + 90) % 360
     ring = (np.abs(r - 46.5) < 0.6) | (np.abs(r - 33.5) < 0.6)
     tick = (r > 37) & (r < 43) & (np.abs((a + 3) % 6 - 3) < 0.9)
-    seal[ring | tick] = (*INK, 255)
-    on = tick & (a < 60)
-    seal[on, :3] = hexrgb(THERMAL[4])
     d = glyph_mask("d", 60, 96, 96, 0)
-    dm = np.zeros_like(d)
     bx = np.argwhere(d)
     (y0, x0), (y1, x1) = bx.min(0), bx.max(0)
-    dm[48 - (y1 - y0 + 1) // 2:48 - (y1 - y0 + 1) // 2 + (y1 - y0 + 1), 48 - (x1 - x0 + 1) // 2:48 - (x1 - x0 + 1) // 2 + (x1 - x0 + 1)] = d[y0:y1 + 1, x0:x1 + 1]
-    seal[dm, :3] = lit_rgb(dm)[dm]
-    seal[dm, 3] = 255
-    Image.fromarray(seal, "RGBA").save(OUT.parent / "seal.png", optimize=True)
-    # the screens' frames: the padding round a screen lit, the thermal ramp from the frame's outer edge (the rim) to
-    # the screen's (the core), dithered: 288 and 528 px at 2 px a cell, the screen's hole 24 px in, corners 24 and 8
+    dm = np.zeros_like(d)
+    oy, ox = 48 - (y1 - y0 + 1) // 2, 48 - (x1 - x0 + 1) // 2
+    dm[oy:oy + y1 - y0 + 1, ox:ox + x1 - x0 + 1] = d[y0:y1 + 1, x0:x1 + 1]
+    frames = []
+    for k in range(6):
+        seal = np.zeros((96, 96, 4), np.uint8)
+        seal[ring | tick] = (*INK, 255)
+        seal[tick & (a < 60), :3] = PAL[4]
+        seal[dm, :3] = lit_rgb(dm, k)[dm]
+        seal[dm, 3] = 255
+        frames.append(seal)
+    sprite(frames, IMG / "seal.png")
+    # the screens' frames: the padding round a screen lit from the frame's outer edge (the rim) to the screen's (the
+    # core); 288 and 528 px at 2 px a cell, the screen 24 px in, corners 24 and 8
     for px in (288, 528):
         n, b = px // 2, 12
-        big = Image.new("L", (n * 4, n * 4), 0)
-        ImageDraw.Draw(big).rounded_rectangle((0, 0, n * 4 - 1, n * 4 - 1), 12 * 4, fill=255)
-        outer = np.array(big.resize((n, n), Image.LANCZOS)) >= 128
-        hole = Image.new("L", (n * 4, n * 4), 0)
-        ImageDraw.Draw(hole).rounded_rectangle((b * 4, b * 4, (n - b) * 4 - 1, (n - b) * 4 - 1), 4 * 4, fill=255)
-        hole = np.array(hole.resize((n, n), Image.LANCZOS)) >= 128
-        d = np.minimum(depth(outer), b)                  # from the outer edge in, capped at the band
-        ring = outer & ~hole
-        p = (d - 1) * 112 // (b - 1)
-        t = p >> 4
-        yy, xx = np.mgrid[0:n, 0:n]
-        t = np.where((t < 7) & (BAYER[yy & 3, xx & 3] < (p & 15)), t + 1, t)
-        fr = np.zeros((n, n, 4), np.uint8)
-        fr[..., :3] = np.array([hexrgb(c) for c in THERMAL], np.uint8)[np.clip(t, 0, 7)]
-        fr[..., 3] = np.where(ring, 255, 0)
-        Image.fromarray(fr, "RGBA").save(OUT.parent / f"frame{px}.png", optimize=True)
-    print("web/img/plate.png, band.png, seal.png, frame288.png, frame528.png")
+        outer = rr(n, n, 0, 0, n, n, 12)
+        ring = outer & ~rr(n, n, b, b, n - b, n - b, 4)
+        p = ramp_in(outer, b)
+        frames = []
+        for k in range(6):
+            f = np.zeros((n, n, 4), np.uint8)
+            f[..., :3] = PAL[tones(p, k)]
+            f[..., 3] = np.where(ring, 255, 0)
+            frames.append(f)
+        sprite(frames, IMG / f"frame{px}.png")
+    # the lit state, for any box: a ring 12 px wide (6 cells), the ramp from its outer edge in, to be drawn by
+    # border-image round a pale core (the active, the hover, the playing); corners 24 (pills, cards) and 12 (tiles),
+    # in pixels already (2 x 2 a cell), six arrangements each
+    for rad in (24, 12):
+        n = (rad + 12) // 2 * 2 // 2 + 8                 # cells: the corner, the ring and a stretch of edge
+        n = max(n, 2 * (rad // 2) + 8)
+        outer = rr(n, n, 0, 0, n, n, rad // 2)
+        inner = rr(n, n, 6, 6, n - 6, n - 6, max(rad // 2 - 6, 0))
+        p = ramp_in(outer, 6)
+        for k in range(6):
+            f = np.zeros((n, n, 4), np.uint8)
+            f[..., :3] = PAL[tones(p, k)]
+            f[..., 3] = np.where(outer & ~inner, 255, 0)
+            Image.fromarray(big(f), "RGBA").save(BITS / f"ring{rad}_{k}.png", optimize=True)
+        print(f"web/img/bits/ring{rad}_0..5.png: {2 * n} px, slice {rad if rad >= 12 else 12}")
+    print("web/img/plate.png, band.png (%d cells tall), seal.png, frame288.png, frame528.png: six frames each" % H)
 
 
 def main():
-    marks()
-    graphics()
+    if marks():
+        graphics()
     a = 0.625                                            # the page's height in its own units
     flow = walk(1, (0.02, 0.02), (0.075, 0.045), 14, 0.03)
     render("flow", flow, [0.05 + 0.03 * ((i * 7) % 3) for i in range(len(flow))], 1)

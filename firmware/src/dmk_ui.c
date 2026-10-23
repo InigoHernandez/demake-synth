@@ -414,6 +414,12 @@ static void overlays(void)
 
 static const uint8_t *ui_frame(uint32_t ms)
 {
+    {                                                   /* the bits: a new arrangement every 140 ms, at random */
+        uint32_t k = ms / 140u, h = k * 2654435761u;
+        int p = (int)((h >> 16) % 5u);
+        holo_pat = (uint8_t)(p >= holo_pat ? p + 1 : p);   /* never the same twice running */
+        if (holo_pat > 5) holo_pat = 0;
+    }
     ui.now = ms;
     clip_all();
 #ifdef DMK_TEXT_AUDIT

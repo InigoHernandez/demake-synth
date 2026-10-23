@@ -16,7 +16,8 @@ static void clip_all(void) { cx0 = cy0 = 0; cx1 = DMK_W; cy1 = DMK_H; }
 
 /* the thermal light (the owner's reference): a lit shape glows from its own edge in, a blue rim, a magenta body, a
  * pale core, read from each pixel's depth in its shape (the chessboard distance to the nearest unlit pixel), the
- * rings dithered into each other by the 4 x 4 ordered dither: the bit texture. HOLO as a colour marks the pixels
+ * rings dithered into each other by the 4 x 4 ordered dither: the bit texture, its arrangement changed at random
+ * every few frames (holo_pat, one of six), so the light stays and its bits move. HOLO as a colour marks the pixels
  * (HMARK); when the shape is drawn, holo_done() turns its marks into the ramp. Text and a hairline are the magenta
  * body; a thin bar a blue rim on it; only a big shape reaches the pale core */
 #define HOLO (-1)
@@ -25,6 +26,7 @@ static uint8_t th_d[TH_MAX] POOL;
 static int hx0 = DMK_W, hy0 = DMK_H, hx1 = -1, hy1 = -1; /* the marks' box */
 static int holo_hold;                                    /* >0: inside a shape made of several fills */
 static int holo_flat;                                    /* text: all body, its strokes too thin for rings */
+static uint8_t holo_pat;                                 /* which of the dither's six arrangements: the bits move */
 /* [the shape's greatest depth]: how far in its deepest ring goes, sixteenths of a tone (64: the magenta body; 112:
  * the core). Between the rim and that, the rings share the ramp, dithered */
 static const uint8_t TH_PMAX[10] = {64, 64, 64, 76, 88, 100, 112, 112, 112, 112};
@@ -95,7 +97,7 @@ static void holo_done(void)
                 if (!th_d[i]) continue;
                 p = dmax > 1 && !holo_flat ? (th_d[i] - 1) * pmax / (dmax - 1) : pmax;
                 t = p >> 4;
-                if (t < 7 && T_BAYER[(Y & 3) * 4 + (X & 3)] < (p & 15)) t++;
+                if (t < 7 && T_BAYER6[holo_pat][(Y & 3) * 4 + (X & 3)] < (p & 15)) t++;
                 px_put(X, Y, C_HOLO0 + t);
             }
     }

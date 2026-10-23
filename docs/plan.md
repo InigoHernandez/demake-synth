@@ -705,7 +705,9 @@ What is lit: the value turning (for a second), the cursor, a sounding synth, the
 magenta ring), the chord now. HOLO as a colour marks the pixels; when the shape is drawn, `holo_done` measures each
 pixel's chessboard depth (two chamfer passes over the shape's box) and lays the ramp from the rim to as far in as the
 shape's size allows (`TH_PMAX`): text and hairlines are the magenta body, a 4 px bar a blue rim on it, a big card the
-whole ramp to its pale core. The other three entries are the glyphs' anti-aliasing tones. The framebuffer is 4 bits a
+whole ramp to its pale core. Every 140 ms the dither takes one of six arrangements at random (T_BAYER6: moved,
+mirrored, turned), so the light holds and its bits move. The other three entries are the glyphs' anti-aliasing
+tones. The framebuffer is 4 bits a
 pixel (28,800 B in the pool); each changed strip goes to the LCD through a 16-entry RGB565 table.
 
 ### 5.3 Type
@@ -757,19 +759,21 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 - **The grid is the canvas:** its lines drawn faintly; every box spans whole modules, its 1 px edge on the lines at
   both ends (a box is n × 48 + 1 px); every section a whole number of rows. 24 modules wide on a desktop, 16 on a
   tablet, 7 on a phone; a check in the browser measures every card, pill and image against the lines.
-- **The screen's system at the site's size:** the device's four greys; the thermal light in rings for what is lit
-  (the action, the playing tile, the panel's lit keys as an SVG filter of erosions: the same chessboard depth); cards
-  with corners of 24 and a two-line title; Geist 13, 15, 24, 32 and 144 (one big number).
-- **Kiloy, rendered as the screen renders it:** the wordmark (its ink from line to line), the D in the top-left
-  module, the icon (`tools/gen_art.py`; only the renders are committed).
-- **Mixed proportions:** cards and images of the sizes their content asks (a square, a wide, a tall), linked as
-  nodes; the art in the thermal family; the machine on its light (the art behind the panel); the screens on an
-  inverted ground, one at twice its pixels, each in padding lit by the thermal ramp, dithered, from the frame's outer
-  edge to the screen (a paper ring with a slit was tried and dropped).
-- **Graphics after Kiloy's specimens,** with the machine's words, not the name over and over: "ambient" in line and
-  in light by turns; rows of lofi, snow, tape, drone, echo, chord cropped like the specimen, one letter lit; a seal
-  of ticks round the D.
-- **Ko-fi** (`ko-fi.com/sequencist`) beside the action and in the footer.
+- **The owner's rules, held on the site too:** one typeface (Geist; Kiloy only as renders), a rigid scale (16, 24,
+  48, 144; a phone 16, 24, 32, 96), exact colours with a job each (the screen's paper, grid, line, label and ink, the
+  same five at night for the screens' section, and the thermal light for what is lit), the module's grid.
+- **8-bit, everywhere it is lit:** the wordmark, the D, the plate, the band's lit letters, the seal, the screens'
+  frames and the art (drawn in the browser at 2 px a cell through the ground, a deep blue and the thermal ramp), and
+  the lit state of any box (the action, a hover, the playing tile: a dithered ring round a pale core, by
+  border-image). Every lit thing steps at random through the dither's six arrangements (T_BAYER6, as the screen
+  does), so its bits move and its light stays; none when the reader asks for less motion.
+- **The sections:** the D and the index; the wordmark; the machine on its light, power, volume as a meter, the keys
+  as keycaps (the Felucca emulator's map: Z–/ and S–' the lower keys, Q–O the upper, 1–= the buttons, [ ] OCT, the
+  arrows SELECT and ALGORITHM, Shift-click holds a button); the machine's cards linked as nodes; the sound and
+  "ambient" in line and in light; the art in mixed proportions; **the screens** on the night ground: the display's
+  anatomy at twice its pixels in its lit frame, callouts drawn to the title, fields, meter, cards and light, and the
+  twelve pages under it, each with the button that opens it, pressed to be shown large; the footer: the machine's
+  words whole, ink on paper, then the owner's links and Ko-fi, as MONO2K's.
 
 | Page | What is on it |
 | --- | --- |

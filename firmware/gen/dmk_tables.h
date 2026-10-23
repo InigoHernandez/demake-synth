@@ -59,3 +59,13 @@ static const uint8_t T_AA[DMK_THEMES][16][16] = {
     },
 };
 static const uint8_t T_BAYER[16] = {0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5};
+/* the bits' six patterns: the ordered dither moved, mirrored and turned, the same share of each tone in every
+ * 4 x 4 cell, so the light stays and its bits move (tools/gen_art.py makes the same six) */
+static const uint8_t T_BAYER6[6][16] = {
+    {0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5},
+    {14,6,12,4,1,9,3,11,13,5,15,7,2,10,0,8},
+    {10,2,8,0,6,14,4,12,9,1,11,3,5,13,7,15},
+    {15,7,13,5,3,11,1,9,12,4,14,6,0,8,2,10},
+    {0,12,3,15,8,4,11,7,2,14,1,13,10,6,9,5},
+    {7,13,5,15,8,2,10,0,4,14,6,12,11,1,9,3},
+};
