@@ -1,8 +1,8 @@
 # Demake
 
 An ambient lofi machine for the M-VAVE FM-1: three synths, a piano roll each, a chord machine, eight patterns a
-song, a chain of colour, media, motion and space effects per synth, a late-90s desktop on a 16-colour screen. The plan,
-and every decision so far, is `docs/plan.md`; read it first. The build order is its section 7.
+song, a chain of colour, media, motion and space effects per synth. The plan, and every decision so far, is
+`docs/plan.md`; read it first. The design rules are its 5.1, the build order its section 7.
 
 ## Hard rules
 
@@ -16,15 +16,17 @@ and every decision so far, is `docs/plan.md`; read it first. The build order is 
   `Source/` only; float), hugelton/Felucca (GPL-3.0, integer) and Felucca-Engines (MIT). Keep their notices in
   `LICENSES/` when code from them lands.
 - The samples are the owner's own recordings (`../Demake/sample sounds/`); every factory sound gets a new short name.
-- Tomato Grotesk is the only typeface (the owner's licence). Its OTF files never enter the repo; `tools/gen_font.py`
-  reads them from `DMK_FONT_DIR` and only the bitmaps are committed. `web/fonts/` is a local copy, git-ignored.
+- **The design rules (plan 5.1), for the screen, the emulator and the website:** Geist only (`assets/fonts/`, SIL
+  OFL 1.1), completely lowercase (the text audit fails a capital), a rigid scale (screen: 11, 16, 32 px; site: 13, 24
+  and the name); eight exact colours on the screen, each a state (PAPER LINE LABEL INK FOCUS PLAY REC HARM), three on
+  the site (paper, ink, focus); a rigid grid of 1 px rules; every value a slider or a segment bar; no gradients,
+  dither, icons, soft shadows or decoration.
 - The browser runs the same core: after any change to `firmware/src`, rebuild with `sh web/build.sh`.
 - Never publish a package that has not run on the owner's FM-1.
 
 ## Build, test
 
-- Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_font.py [--sheet build/fonts.png]`,
-  `tools/gen_web_textures.py`.
+- Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_font.py [--sheet build/fonts.png]`.
 - Host: `cc -std=c99 -D_DARWIN_C_SOURCE -O2 -Wall -Wextra -Wno-unused-function -Ifirmware/src -Ifirmware/gen -o
   build/host/dmk_host host/dmk_host.c`, then `build/host/dmk_host build/host/tour` (every screen as a PNG, the text
   audit over each) and `.venv/bin/python tools/montage.py build/host/tour build/screens.png 4`.
@@ -40,12 +42,12 @@ and every decision so far, is `docs/plan.md`; read it first. The build order is 
 
 ## The screen
 
-- 240 x 240, 4 bits a pixel, the theme's 16 colours (roles in `tools/gen_tables.py`, plan 5.2). Text never sits on
-  dither. The light colour marks one thing at a time.
-- Every page is a window: title bar 0-15, four fields under K1-K4 16-55, the stage 56-211, the taskbar 212-239. Inside
-  a window, a 4 px grid of rounded tiles, pill bars and chips (after reown.com's layout, plan 5.7).
-- The host's text audit (`DMK_TEXT_AUDIT`) fails the tour on any two texts that touch or any text cut; overlays call
-  `ta_cover`. Fit text with `text_fit`, never guess widths. No overlapping text, ever.
+- 240 x 240, 4 bits a pixel: the theme's eight state colours and eight anti-aliasing tones (`tools/gen_tables.py`,
+  plan 5.2). A colour means its state and nothing else (FOCUS only what is being edited, PLAY only what sounds).
+- The grid: status 0-19, four 60 px fields under K1-K4 20-67, the stage 68-219, the footer 220-239; 1 px rules between
+  cells; text 6 px into its cell. Boxes over the stage are an ink frame with a hard 2 px shadow (`box`).
+- The host's text audit (`DMK_TEXT_AUDIT`) fails the tour on any two texts that touch, any text cut, any capital;
+  boxes call `ta_cover`. Fit text with `text_fit`, never guess widths. No overlapping text, ever.
 
 ## How the work runs
 

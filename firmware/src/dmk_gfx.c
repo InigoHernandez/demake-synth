@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* Demake's drawing: a 4-bit indexed framebuffer (16 colours, the theme's), fills, ordered dither, rounded tiles,
- * text in Tomato Grotesk (1-bit and 2-bit glyphs; a 2-bit glyph's middle tones are looked up per pixel against what
+/* Demake's drawing: a 4-bit indexed framebuffer (the theme's 8 state colours and their 8 anti-aliasing tones), fills,
+ * lines, rectangles, rounded tiles, text in Geist (2-bit glyphs whose middle tones are looked up per pixel against what
  * is under it, T_AA), and the text audit's records (host builds, DMK_TEXT_AUDIT). Included by dmk_core.c. */
 
 static uint8_t fb[DMK_FB_BYTES] POOL;
@@ -30,7 +30,7 @@ static inline void px_put(int x, int y, int c)
 
 /* ---- the text audit (host builds): every text's ink box; a fill that covers one hides it */
 #ifdef DMK_TEXT_AUDIT
-typedef struct { int16_t x0, y0, x1, y1; uint8_t hidden, cut; char s[24]; } ta_rec_t;
+typedef struct { int16_t x0, y0, x1, y1; uint8_t hidden, cut, upper; char s[24]; } ta_rec_t;
 static ta_rec_t ta[256];
 static int ta_n, ta_bad;
 static char ta_why[4][96];
@@ -53,12 +53,13 @@ static void ta_add(int x0, int y0, int x1, int y1, const char *s, int cut)
     int i;
     if (ta_n >= 256) return;
     ta[ta_n].x0 = (int16_t)x0; ta[ta_n].y0 = (int16_t)y0; ta[ta_n].x1 = (int16_t)x1; ta[ta_n].y1 = (int16_t)y1;
-    ta[ta_n].hidden = 0; ta[ta_n].cut = (uint8_t)cut;
+    ta[ta_n].hidden = 0; ta[ta_n].cut = (uint8_t)cut; ta[ta_n].upper = 0;
+    for (i = 0; s[i]; i++) if (s[i] >= 'A' && s[i] <= 'Z') ta[ta_n].upper = 1;   /* the rule: all lowercase */
     for (i = 0; i < 23 && s[i]; i++) ta[ta_n].s[i] = s[i];
     ta[ta_n].s[i] = 0;
     ta_n++;
 }
-/* texts that touch or sit a dot apart, and texts cut by a clip or the screen: their number this frame */
+/* texts that touch or sit a dot apart, texts cut by a clip or the screen, and capitals: their number this frame */
 static int ta_check(void)
 {
     int i, j, n = 0;
@@ -66,6 +67,10 @@ static int ta_check(void)
         if (ta[i].hidden) continue;
         if (ta[i].cut) {
             if (n < 4) snprintf(ta_why[n], sizeof ta_why[n], "cut: \"%s\"", ta[i].s);
+            n++;
+        }
+        if (ta[i].upper) {
+            if (n < 4) snprintf(ta_why[n], sizeof ta_why[n], "capitals: \"%s\"", ta[i].s);
             n++;
         }
         for (j = i + 1; j < ta_n; j++) {
@@ -108,18 +113,6 @@ static void dither(int x, int y, int w, int h, int c0, int c1, int level)
         for (i = x; i < x + w; i++) px_put(i, j, dith(i, j, level) ? c1 : c0);
 }
 
-/* a gradient from c0 to c1 across (horiz) or down the box, dithered */
-static void grad(int x, int y, int w, int h, int c0, int c1, int horiz)
-{
-    int i, j, n = horiz ? w : h, k;
-    ta_hide(x, y, w, h);
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++) {
-            k = horiz ? i : j;
-            px_put(x + i, y + j, dith(x + i, y + j, n > 1 ? (k * 17) / n : 0) ? c1 : c0);
-        }
-}
-
 static void hline(int x, int y, int w, int c) { int i; for (i = 0; i < w; i++) px_put(x + i, y, c); }
 static void vline(int x, int y, int h, int c) { int i; for (i = 0; i < h; i++) px_put(x, y + i, c); }
 static void rect(int x, int y, int w, int h, int c) { hline(x, y, w, c); hline(x, y + h - 1, w, c); vline(x, y, h, c); vline(x + w - 1, y, h, c); }
@@ -156,33 +149,6 @@ static void tile(int x, int y, int w, int h, int r, int c, int line)
                 px_put(x + i, y + j, line);
             else if (c >= 0) px_put(x + i, y + j, c);
         }
-}
-
-/* a rounded tile filled with a dithered gradient, top to bottom */
-static void tile_grad(int x, int y, int w, int h, int r, int c0, int c1, int line)
-{
-    int i, j;
-    if (r > h / 2) r = h / 2;
-    if (r > w / 2) r = w / 2;
-    tile_r = r; tile_w = w; tile_h = h;
-    ta_hide(x, y, w, h);
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++) {
-            if (!tile_in(i, j)) continue;
-            if (line >= 0 && (!tile_in(i - 1, j) || !tile_in(i + 1, j) || !tile_in(i, j - 1) || !tile_in(i, j + 1)))
-                px_put(x + i, y + j, line);
-            else px_put(x + i, y + j, dith(x + i, y + j, h > 1 ? j * 17 / h : 0) ? c1 : c0);
-        }
-}
-
-/* the late-90s bevel: lit top-left, dark bottom-right (sunken: the other way round) */
-static void bevel(int x, int y, int w, int h, int sunken)
-{
-    int a = sunken ? C_SHADOW : C_HILITE, b = sunken ? C_HILITE : C_DARK, a2 = sunken ? C_DARK : C_FACE, b2 = sunken ? C_FACE : C_SHADOW;
-    hline(x, y, w - 1, a); vline(x, y, h - 1, a);
-    hline(x, y + h - 1, w, b); vline(x + w - 1, y, h, b);
-    hline(x + 1, y + 1, w - 3, a2); vline(x + 1, y + 1, h - 3, a2);
-    hline(x + 1, y + h - 2, w - 2, b2); vline(x + w - 2, y + 1, h - 2, b2);
 }
 
 /* ---- text */

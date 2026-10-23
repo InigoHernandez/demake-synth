@@ -4,67 +4,82 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Demake</title>
-  <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths, a chord machine, eight patterns, and the snow outside.">
-  <link rel="stylesheet" href="style.css?v=1">
+  <title>demake</title>
+  <meta name="description" content="demake: an ambient lofi machine for the m-vave fm-1. three synths, a chord machine, eight patterns.">
+  <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
-  <div class="grain" aria-hidden="true"></div>
-  <div class="scan" aria-hidden="true"></div>
-
-  <nav class="nav" aria-label="Site">
-    <a class="chip dark" href="./"><span class="dot"></span>Demake</a>
-    <a class="chip" href="#play">Play</a>
-    <span class="chip ghost">Manual · soon</span>
-    <span class="chip ghost">Changes · soon</span>
-    <span class="grow"></span>
-    <span class="chip ghost">Install · soon</span>
+<div class="page">
+  <nav class="rail" aria-hidden="true">
+    <span><i class="mark"></i></span><span>01</span><span>02</span><span>03</span><span>04</span>
   </nav>
 
-  <main class="grid">
-    <section class="card hero tex-iris span-12 wear" id="play">
-      <div>
-        <p class="label">An ambient lofi machine for the M-VAVE FM-1</p>
-        <h1>Three synths, a chord machine, and the snow outside.</h1>
-        <p>Write a melody with the keys, let the chords carry it, and wear it down through tape, cassette and a
-          console's reverb. This is phase 0: the screen's shell and a sine a key.</p>
-        <div class="actions">
-          <button class="chip warm" id="power">Power on</button>
-          <span class="chip ghost" id="status">Off</span>
+  <main class="main">
+    <header class="row bar">
+      <a href="./">demake</a>
+      <span class="span2">an ambient lofi machine for the m-vave fm-1, on the open platform of cs-1 and felucca</span>
+      <span>
+        <a href="#play">play</a> · <a href="#screens">screens</a> · <span>manual soon</span>
+      </span>
+    </header>
+
+    <h1 class="l">demake</h1>
+
+    <div class="row bar">
+      <span><span class="dot"></span>phase 0</span>
+      <span>volume <span class="slider" id="vol"><i style="left: 80%"></i></span></span>
+      <span>keys: a s d f g h j k l ; '</span>
+      <button class="act" id="power">power on</button>
+    </div>
+
+    <section class="emu" id="play">
+      <div class="win">
+        <div class="title"><b></b><span>fm-1 — demake</span></div>
+        <div class="body">
+          <div class="panel" id="panel">
+            <svg id="svg" viewBox="14 14 876 538" role="application" aria-label="the fm-1's panel"></svg>
+            <canvas id="lcd" width="240" height="240" aria-label="the screen"></canvas>
+          </div>
         </div>
-      </div>
-      <div class="emu">
-        <div class="panel" id="panel">
-          <svg id="svg" viewBox="14 14 876 538" role="application" aria-label="The FM-1's panel"></svg>
-          <canvas id="lcd" width="240" height="240" aria-label="The screen"></canvas>
-        </div>
-        <p class="hint">Keys: A S D F G H J K L ; ' and W E R Y U O P [ · Z X octave · wheel or drag a knob · click a button, hold it for its layer</p>
       </div>
     </section>
 
-    <div class="bar">The instrument</div>
-    <section class="card tex-peach span-4 wear">
-      <p class="label">Three synths</p>
-      <h2>Sample, pad, drone, pluck</h2>
-      <p>Each with its own sequence in a piano roll, and a layer from the owner's own recordings under it.</p>
-    </section>
-    <section class="card tex-lilac span-4 wear">
-      <p class="label">Eight patterns</p>
-      <h2>Switch them live</h2>
-      <p>Hold HOME, press a key: the next pattern comes in at the bar. Sounds stay, the notes and chords change.</p>
-    </section>
-    <section class="card tex-mint span-4 wear">
-      <p class="label">The wear</p>
-      <h2>Colour, media, motion, space</h2>
-      <p>Crush, codec smear, tape, cassette, VHS, chorus, and reverbs voiced after console rooms and halls.</p>
-    </section>
+    <div class="row">
+      <span class="label">01 · three synths</span>
+      <p class="m span3">sample, pad, drone, pluck. each with its own sequence in a piano roll, and a layer from your own
+        recordings under it.</p>
+    </div>
+    <div class="row">
+      <span class="label">02 · eight patterns</span>
+      <p class="m span3">hold home, press a key: the next pattern comes in at the bar. the sounds stay; the notes and the
+        chords change.</p>
+    </div>
+    <div class="row">
+      <span class="label">03 · the wear</span>
+      <p class="m span3">crush, codec smear, tape, cassette, vhs, chorus, and reverbs voiced after console rooms and
+        halls.</p>
+    </div>
+
+    <div class="row bar" id="screens"><span class="span4">04 · the screen: one typeface, eight colours, each a state</span></div>
+    <div class="screens">
+      <figure><img src="img/screens/01_home.png" alt="home: the three synths"><figcaption>home</figcaption></figure>
+      <figure><img src="img/screens/02_roll.png" alt="the piano roll"><figcaption>roll</figcaption></figure>
+      <figure><img src="img/screens/07_chord.png" alt="the chord machine"><figcaption>chord</figcaption></figure>
+      <figure><img src="img/screens/03_sound.png" alt="the sound"><figcaption>sound</figcaption></figure>
+      <figure><img src="img/screens/05_amp.png" alt="the envelope"><figcaption>amp</figcaption></figure>
+      <figure><img src="img/screens/06_fx.png" alt="the effects"><figcaption>fx</figcaption></figure>
+      <figure><img src="img/screens/18_discs.png" alt="the songs"><figcaption>songs</figcaption></figure>
+      <figure><img src="img/screens/19_home_night.png" alt="home, the night theme"><figcaption>night</figcaption></figure>
+    </div>
+
+    <footer class="row">
+      <span>gpl-3.0</span>
+      <span class="span2">by sequencist. m-vave and fm-1 are their owners' marks; demake is not made or endorsed by
+        m-vave. geist: sil ofl 1.1.</span>
+      <span><a href="https://github.com/InigoHernandez">github</a></span>
+    </footer>
   </main>
-
-  <footer class="card dark">
-    <p class="label">GPL-3.0 · on the open FM-1 platform of CS-1, Felucca, SLOOP, Dinghy, FM-106 and fm1-velocity</p>
-    <p>By Sequencist. M-VAVE and FM-1 are their owners' marks; Demake is not made or endorsed by M-VAVE.</p>
-  </footer>
-
-  <script src="app.js?v=1"></script>
+</div>
+<script src="app.js?v=2"></script>
 </body>
 </html>

@@ -16,19 +16,20 @@ throwaway integer prototypes of each kernel.
   other synths' notes follow its chords.
 - **Playful first:** nearly every task in one or two presses (the few exceptions are flagged in 3.7). Keys write
   where the cursor is, a held key is the note you edit, OCT− takes away, OCT+ copies, and everything undoes.
-- **The look:** a late-90s desktop over snow and fog. Every page is a window with a title bar, sunken fields and a
-  taskbar. HOME is a messenger-style buddy list of the three synths. Sounds are cassettes and songs are CDs. Sixteen
-  colours, ordered dithering, one warm light, and Tomato Grotesk for every word.
-- **The website** (section 6): reown.com's grid of rounded cards and pill chips, in the moodboard's iridescent
-  gradients, fog dither, grain and tape wear. The same grid lays out the inside of every window on the screen (5.7).
+- **The look:** one disciplined system for the screen, the emulator and the website (5.1): Geist, all lowercase, a
+  rigid scale; eight exact colours on the screen, each a state (three on the website); a rigid grid of rules; sliders
+  and segment bars; nothing decorative.
+- **The website** (section 6): KH Teka's specimen table of 1 px rules, an old desktop's windows, three colours, the
+  emulator as rounded line art.
 - **The sound:** the owner's 64 recordings as 4-bit block ADPCM at 11–22 kHz, a per-synth GRIT (22 kHz, ADPCM),
   and reverbs voiced by ear after console rooms, halls and space echoes.
 - **It fits.** The yardstick is 1650 instructions a core (1.1); Hortator's device calibration puts a core at ~3470.
   - Every effect on every synth at once: 82 % of the yardstick on each of the two cores.
   - Typical effects with a sample layer on every voice: 95 % (1.4).
 
-**Decided by the owner:** Tomato Grotesk everywhere (their licence); 12 shared voices; three synths with patterns
-for performance; the desktop, messenger, cassette and CD look.
+**Decided by the owner:** Geist for everything, lowercase, and the design rules of 5.1 (they replaced Tomato Grotesk
+and a late-90s desktop look); 12 shared voices; three synths with patterns for performance; the website after KH Teka
+and an old desktop, in three colours.
 
 **Still the owner's decisions** (each is also in its section):
 
@@ -37,7 +38,7 @@ for performance; the desktop, messenger, cassette and CD look.
 2. **The identity range** (2.7): `FM-1_965` (tests) and `966`+ (releases) look free.
 3. **The samples' licence** (2.5): your recordings ship in the package. The code is GPL-3.0; the sounds could be
    GPL-3.0 too, or CC BY 4.0 if you want others to reuse them.
-4. **Additions to the brief, to keep or drop:** a SOUND page with its LAYER row (EDIT), a HOME page (buddy list,
+4. **Additions to the brief, to keep or drop:** a SOUND page with its LAYER row (EDIT), a HOME page (the synths,
    mixer, performance layer), an LFO page (later), DRIFT as FILTER's fourth knob.
 5. **Integer only, as the brief says, though the chip has an FPU.** AMB-1, FoMni, FiMba and FuMi compile their DSP
    in single-precision float with the SDK's `-mcpu=r3 -mfprev1`; MONO2K, CS-1, OberVave and Clipper forbid float.
@@ -261,8 +262,8 @@ under that licence, with `PROCESSING.md`.
 | Part | Size |
 | --- | --- |
 | code (platform + core); MONO2K's is ~204 KB with fifteen machines | ~200 KB [E] |
-| fonts: Tomato Grotesk at 11 px (1 bit), 15 and 28 px (2 bits), 36 px for the boot | ~25 KB [E] |
-| icons (cassettes and CDs, 3 frames, 16 × 16 at 4 bits), the cassette deck and wallpaper art | ~20 KB [E] |
+| fonts: Geist at 11, 16 and 32 px, 2 bits | ~13 KB [M] |
+| pictures (none: the screens are drawn from rules and text) | 0 |
 | tables (sine, pitch, filter, tanh, mu-law, times, chords) | ~25 KB [E] |
 | PAD waves: 32 × 256 × 2 B, two band-limited versions | 32 KB |
 | factory songs (8 patterns each) and sounds | ~20 KB [E] |
@@ -271,7 +272,7 @@ under that licence, with `PROCESSING.md`.
 | Data area region | Use |
 | --- | --- |
 | `0x93000..0xB0000` (116 KiB) | bank B: the owner's extra samples, written by the website's editor over the link (header, CRC, loop points, as the store) |
-| `0xB0000..0xC0000` (64 KiB) | Demake's store: the discs (songs; a typical one of 8 patterns packs to ~3–4 KB, so ~15 fit), 32 USER sounds, settings; written as MONO2K writes (4 KiB sectors, the header with its CRC last) |
+| `0xB0000..0xC0000` (64 KiB) | Demake's store: the songs (a typical one of 8 patterns packs to ~3–4 KB, so ~15 fit), 32 USER sounds, settings; written as MONO2K writes (4 KiB sectors, the header with its CRC last) |
 | `0xC0000..0xE0000` | left alone: MONO2K's store (and Felucca's projects), so switching firmware keeps both firmwares' saves |
 
 Every part of the data area is someone's: OberVave keeps programs at `0x97000`, Clipper projects at
@@ -292,7 +293,7 @@ second (which then reads no flash) before every write.
 | MOTION lines, 3 × 2.1 KB | 6 KB |
 | PLUCK strings (12 voices × 1.35 KB, notes from C2) | 16 KB |
 | CODEC look-ahead, 3 × 0.8 KB | 2 KB |
-| framebuffer (4 bits, 16 colours) and strip | 33 KB |
+| framebuffer (4 bits, 16 entries) and strip | 33 KB |
 | the song open (8 patterns × 3 sequences × 128 notes × 4 B, 8 progressions, the sounds) | 13 KB |
 | undo (a 16-step journal and 2 snapshots) | 16 KB |
 | store and link buffers | 8 KB |
@@ -358,8 +359,8 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 | Control | Action | Presses |
 | --- | --- | --- |
 | a key | plays the current synth (snapped to the key and the chord, 4.6) | 1 |
-| SELECT | the synth, 1–3 (the task buttons in the taskbar) | 1 |
-| PRESETS | the synth's sound, a cassette: loads at once, so turning and playing auditions (GLO + OCT− brings the last one back) | 1 |
+| SELECT | the synth, 1–3 (shown in the status bar) | 1 |
+| PRESETS | the synth's sound: loads at once, so turning and playing auditions (GLO + OCT− brings the last one back) | 1 |
 | ALGORITHM | the page's left cell (see 3.4) | 1 |
 | K1–K4 | the page's four cells (see 3.4) | 1 |
 | OCT− / OCT+ | keyboard octave −2 … +2; the ROLL's view follows | 1 |
@@ -383,7 +384,7 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 | FX, SPACE row | the synth's sends | | — | VERB SEND | ECHO SEND | PAN | WIDTH |
 | ARP | **CHORD** | VOICE → KEY | PROGRESSION | VOICING | INVERSION | SPREAD | STRUM |
 | ARP, KEY row | | | PROGRESSION | KEY | MODE | CHANGE | RHYTHM |
-| HOME | **HOME** (the buddy list, the mixer) | LEVEL → VERB → ECHO → PAN | TEMPO | synth 1 | synth 2 | synth 3 | the row's bus: VERB RETURN · VERB TIME · ECHO FEEDBACK · WIDTH |
+| HOME | **HOME** (the synths, the mixer) | LEVEL → VERB → ECHO → PAN | TEMPO | synth 1 | synth 2 | synth 3 | the row's bus: VERB RETURN · VERB TIME · ECHO FEEDBACK · WIDTH |
 | GLO | **GLOBAL** | VERB → ECHO → SONG → SETUP | the bus TYPE | AMOUNT | TONE | TIME / SIZE | CHARACTER |
 | GLO, SONG row | | | — | SWING | SWITCH (BAR · PATTERN · NOW) | METRONOME | REC START |
 | GLO, SETUP row | | | VELOCITY (KEYS · FIXED) | THEME | KEYS | MIDI CH | CLOCK |
@@ -446,7 +447,7 @@ its end. SNAP is on by default, and the ROLL then shows only the scale's rows (G
 | GLO | HISTORY | — | — | undo | redo | |
 | EDIT | SOUND | — | — | INIT the sound | — | SAVE: the sound into the library (USER 01 …) |
 | FX | CHAIN | — | K1–K4: the AMOUNT of COLOR, MEDIA, MOTION, SPACE (its VERB SEND) | — | — | |
-| SAVE (1 s) | opens the DISCS window | — | K1 the disc, K2 yours / the demos | held 1 s: erase the disc (asks) | — | SAVE burns the song here (asks if it holds another); PLAY loads it (asks if the open song has unsaved edits); an empty disc loads as a new song |
+| SAVE (1 s) | opens the SONGS page | — | K1 the song slot, K2 yours / the demos | held 1 s: erase the slot (asks) | — | SAVE saves the song there (asks if it holds another); PLAY loads it (asks if the open song has unsaved edits); an empty slot loads as a new song |
 | SEL, ENV, LFO | the page's help card after 1 s | — | — | — | — | |
 
 #### 3.6.1 Patterns and performance
@@ -503,9 +504,9 @@ seamless while playing.
 | which synth the chords play | 2 | SEQ held, ALGORITHM (PLAYS CHORDS) |
 | save the song | 1 | SAVE |
 | save a sound | 2 | EDIT held, SAVE |
-| ⚑ save onto another disc | 4 | SAVE held 1 s, K1, SAVE, YES if it holds a song |
+| ⚑ save into another slot | 4 | SAVE held 1 s, K1, SAVE, YES if it holds a song |
 | ⚑ load a song | 3–4 | SAVE held 1 s, K1, PLAY, YES if the open song has unsaved edits |
-| ⚑ new song | 3 | SAVE held 1 s, K1 to an empty disc, PLAY |
+| ⚑ new song | 3 | SAVE held 1 s, K1 to an empty slot, PLAY |
 
 The flagged ones are either set once a song or a sound (key, mode, swing, a layer), protected on purpose (saving
 over and loading from flash), a chain (one press a pattern), or a deeper FX row; for that last one the held FX layer
@@ -670,372 +671,112 @@ pattern stores which progression it plays.
 
 ## 5. The screen
 
-### 5.1 The look
+### 5.1 The rules
 
-Three sources, one desktop:
+The owner set these on 2026-10-23, for the screen, the emulator and the website alike. They replaced the late-90s
+desktop look (title bars, bevels, cassettes, a buddy list) of the first draft.
 
-- **The moodboard's snow and fog** (the late-90s console scenes) give the wallpaper and the textures: dithered fog
-  gradients, falling snow, low-poly silhouettes, and one warm light in the dark (a campfire, headlights, a tower's
-  beacon, a vending machine).
-- **The moodboard's pastel plugin and its media** give the cream paper and the iridescent pastel sheens, and the idea
-  of presets as objects you hold. Here **sounds are cassettes and songs are CDs**.
-- **The late-90s desktop the owner asked for:**
-  - every page is a window with a title bar, bevelled buttons, sunken fields, sliders, check boxes and a scroll bar;
-  - there are segmented progress bars, message boxes, tooltips, and a taskbar with a clock;
-  - **HOME is a messenger's buddy list** (status dots, a line under each name), notices slide up from the corner,
-    and a refused action nudges the window.
+1. **One typeface, completely lowercase, a rigid scale.** Geist (SIL OFL 1.1), three sizes on the screen. Not a capital
+   letter anywhere: the host's text audit fails any.
+2. **Eight exact colours, each tied to one state** (5.2). Nothing is coloured for decoration.
+3. **Strict mechanical controls:** every value is a slider (a track and its share) or a segment bar (one segment per
+   choice), every value in a cell with its label, nothing free-floating.
+4. **A rigid structural grid:** four 60 px columns under K1–K4, bands on an 8 px rhythm, 1 px rules between cells.
+5. **Raw, structural, transparently mechanical:** no gradients, no dither, no icons, no shadows, no animation but a
+   value changing. Square corners. The only boxes over the stage (a notice, a held layer's name) are an ink frame with a
+   hard 2 px shadow, as an old desktop's.
 
-All of it is drawn as our own, generic versions:
-- no operating system's or messenger's name, logo, flag, butterfly, icons or sounds;
-- no brand on a cassette or a CD;
-- none of the plugin's layout, labels or Japanese subtitles, and none of the game's characters or vehicles.
+### 5.2 Eight colours, each a state
 
-### 5.2 Pixels: 16 colours, dithered
+| Role | What it marks | paper (default) | night |
+| --- | --- | --- | --- |
+| PAPER | the ground | `#F4F3EE` | `#111111` |
+| LINE | the structure: rules, empty cells, slider tracks, the grid | `#D5D3CC` | `#2E2E2E` |
+| LABEL | what a thing is: labels, idle marks, a muted synth | `#8B8A85` | `#7A7A7A` |
+| INK | what it holds: values, notes, names | `#141414` | `#EDEDEA` |
+| FOCUS | what is being edited: the field turning (for a second), the cursor, a held note, a queued pattern | `#FF5A1F` | `#FF6A2A` |
+| PLAY | what sounds: the playhead, a sounding synth, the pattern playing | `#1FA463` | `#2FCB7A` |
+| REC | what records or deletes: recording, a delete's warning | `#E5322D` | `#FF4A40` |
+| HARM | the harmony: the chord now, its tones in the roll and on the keyboard, the key | `#2F6BFF` | `#5B8CFF` |
 
-- **Framebuffer:** 4-bit indexed, 240 × 240 × 4 bits = 28,800 B in the pool.
-- **Output:** each 8-line strip that changed goes out through a 16-entry RGB565 table (a 3,840 B strip buffer), as
-  MONO2K's strips do, so the SPI cost per strip is the same.
-- **Precedent:** CoralFlower already draws an 8-bit indexed framebuffer with ordered dithering on this LCD; 4 bits is
-  half that.
+The framebuffer is 4 bits a pixel (240 × 240 × 4 bits = 28,800 B in the pool), so the palette has 16 entries: these
+eight, then eight tones made from them (INK, LABEL, LINE and each signal colour mixed with PAPER) that only the glyphs'
+anti-aliasing uses. Each changed 8-line strip goes to the LCD through a 16-entry RGB565 table. GLO > SETUP > THEME
+switches paper and night; the roles never move.
 
-| # | Role | SNOW (default) |
+### 5.3 Type
+
+| Size | Where | Weight |
 | --- | --- | --- |
-| 0 | paper: window backgrounds | `#F2F0EA` |
-| 1 | highlight: a bevel's lit edge | `#FFFFFF` |
-| 2 | face: buttons, chrome | `#C9C6C0` |
-| 3 | shadow: a bevel's dark edge | `#8C8984` |
-| 4 | dark: outer edges, grid lines | `#303236` |
-| 5 | ink: text | `#16171A` |
-| 6 | fog light | `#DEDCD7` |
-| 7 | fog | `#B3B1AC` |
-| 8 | fog deep | `#74747A` |
-| 9 | title bar, deep | `#1F2C66` |
-| 10 | title bar, light | `#4F7FB8` |
-| 11 | **light**: the one warm accent | `#F0A33C` |
-| 12 | alert: REC, a tail light | `#C8413B` |
-| 13 | tooltip | `#FFF4C4` |
-| 14 | sheen pink: CDs, the selection | `#E8B4CF` |
-| 15 | sheen mint: CDs, playing | `#AEE3CF` |
+| **s** 11 px | labels, lists, the status bar, the footer, note names, notices | Medium |
+| **m** 16 px | values in the fields, synth names, row names | Medium |
+| **l** 32 px | one word or number a screen at most: the sound's name, the chord now, the boot | Medium |
 
-**Themes** (GLO > SETUP > THEME) keep the roles and move the colours:
-- SNOW (above);
-- NIGHT: dark chrome, an ember title bar, snow-white text;
-- VENDING: deep blue chrome, the vending machine's glow for the title bar;
-- PEACH: the plugin's cream and peach, a terracotta title bar.
+All three are rendered from `assets/fonts/Geist[wght].ttf` by `tools/gen_font.py` at 2 bits a pixel (four levels of
+anti-aliasing, whose middle tones come from the palette against what is under each pixel). The capitals exist in the
+font table for safety; the UI draws none. Text is fitted with `text_fit` (tighter tracking, then a shorter string),
+never guessed. ♭ and ♯, which Geist lacks, are drawn by the generator to its x-height.
 
-They are first picks from the images, checked on the FM-1's panel (gamma, viewing angle) and in the browser.
+### 5.4 The grid
 
-**Dithering:** a 4 × 4 Bayer matrix between neighbouring entries.
-- **Where:** the title bar's gradient (9 → 10), the fog (6 → 7 → 8), a CD's sheen (14 ↔ 15 ↔ paper), filled curves.
-- **Never behind text:** text sits on flat paper, face or title colour.
-- **The light (11)** marks one thing at a time: the cursor or the playhead, the chord now, a queued pattern. It
-  appears in at most two places on a screen.
+| Band | Rows (px) | What is there |
+| --- | --- | --- |
+| status | 0–19 | the page · its row · the synth's sound (s, INK); the three synths (the current one inverted); the transport mark; the tempo |
+| fields | 20–67 | four cells of 60 px under K1–K4, split by rules: label (s, LABEL), value (m, INK, FOCUS while it turns), slider or segment bar |
+| stage | 68–219 | the page's picture, on the same columns and rules |
+| footer | 220–239 | the ALGORITHM cell (its label and value, by the encoder's side); then what OCT− / OCT+ do now, or the chord and the key in HARM |
 
-### 5.3 Type: Tomato Grotesk, everywhere
+Text sits 6 px into its cell. Every line, cell and value lands on the grid.
 
-The owner holds the licence, so it is the only face. The OTFs stay out of the repo (`reference/`, git-ignored);
-`tools/gen_font.py` reads them from a local path, and only the generated bitmaps are committed.
+### 5.5 The pages, as built in phase 0
 
-| Role | Weight | Size | Rendering |
-| --- | --- | --- | --- |
-| labels, lists, the taskbar, tooltips, note names | Medium | 11 px | 1 bit, hinted by the generator (drawn at 8×, stems snapped to whole pixels): the crisp system-font look |
-| values in the fields, window titles | SemiBold | 15 px | 2-bit anti-aliasing on the palette's ramps (ink → shadow → face; white → title light → title deep) |
-| the big name or chord on a stage, a message box's headline | Bold | 28 px | 2-bit |
-| the boot | Black | 36 px | 2-bit |
+![The screens, rendered by the host from the firmware's code](img/phase0-screens.png)
 
-- **One size per role**, with every capital between the same two rows.
-- **Fitting:** text is fitted with `text_fit` (tighter tracking, then a shorter string), never guessed.
-- **On the website**, the emulator shows the firmware's own bitmaps. Using the OTF as a web font for the site's
-  pages follows the licence's web terms.
+- **home:** the three synths as rows (a PLAY square while it sounds, its name, what it does, its sequence in
+  miniature), the eight patterns (the playing one in PLAY, a queued one framed in FOCUS), the progression with the chord
+  now in HARM.
+- **roll:** note names in a column (the key's root in INK, chord tones marked in HARM), the grid in LINE with the beats
+  in LABEL, notes in INK, the cursor in FOCUS, VIEW as a thin scroll bar.
+- **sound:** the sound's name large, its facts small, its sample as a drawn envelope, the loop's ends in FOCUS.
+- **filter, amp, lfo:** the response or the envelope as an ink line on a grid of rules; the point being turned in FOCUS.
+- **fx, global:** four rows, a check box each, the open row marked by a FOCUS bar on its left edge.
+- **chord:** the chord now large in HARM, the progression's slots as cells (the playing one inverted), two octaves of
+  keys with the voicing's notes in HARM.
+- **songs:** a numbered list, one row a song.
 
-### 5.4 The grid: a window and a taskbar
+### 5.6 The text audit
 
-| Band | Rows (px) | What is there | Rule |
-| --- | --- | --- | --- |
-| TITLE BAR | 0–15 | the synth's cassette icon (SELECT's synth), the page — the sound's name, three small window boxes (decorative), on the gradient | white 15 px text on the title colour |
-| FIELDS | 16–55 | four sunken fields of 60 px under K1–K4, in their order, at the knobs' height | label (11 px) above, value (15 px) inside, a slider groove and thumb at the foot |
-| STAGE | 56–211 | the window's content | message boxes, held maps, the cassette deck and DISCS open over it as windows of their own, with a 2-px drop shadow |
-| TASKBAR | 212–239 | left: the ALGORITHM button (its label and value), on the ALGORITHM encoder's side; then the S1 S2 S3 task buttons (the current one pressed in, a status dot each); right: the tray (▶ ■ ●, the tempo as the clock, the chord now in the light colour) | everything here is 11 px |
-
-- **Tooltips:** pale yellow balloons above the taskbar say what a held key or button does now ("OCT− delete ·
-  OCT+ duplicate").
-- **Notices:** a small window slides up from the tray's corner for 1.5 s, messenger style ("S2 → pattern 3",
-  "Burned to disc 4", "Undo: note deleted").
-- **Nudge:** when something is refused (no voice free, a pattern full, a save while playing), the window shakes 4 px
-  for half a second, with a notice.
-- **Message boxes:** the only questions (burning over another disc, erasing one) are a small window with a headline,
-  a line, and two bevelled buttons labelled with their keys: `[ YES · OCT+ ]  [ NO · OCT− ]`.
-
-The empty shell, the chrome and the text audit come first (phase 0), before any page.
-
-### 5.5 Icons and motion
-
-- **Cassettes (sounds):**
-  - 16 × 16 icons in 16 colours, three frames: the reels turn while the sound plays.
-  - The label's colour gives the category (PAD, KEYS, PLUCK, DRONE, BASS, TEXTURE).
-  - Turning PRESETS opens the **cassette deck**: the tape slides in, its label lettered in Tomato, the reels spinning
-    while you play.
-- **CDs (songs):** a jewel case with the disc in iridescent dither. The DISCS window lists them as icons; SAVE
-  "burns" with a segmented progress bar ("BURNING… DON'T SWITCH OFF").
-- **The buddy list (HOME):** a status dot per synth (● playing, ○ muted, ◐ queued), its cassette as the picture, and
-  a line under its name saying what it plays.
-- **Wallpaper:** our own snowy night in fog dither, behind the windows on HOME and on the boot.
-- **Snow:** on HOME while playing, a dozen one-pixel flakes drift over the wallpaper.
-- **Opening a page:** a window outline grows from the side of its button over four frames.
-- **Boot:** a desktop starting up (the wordmark, a progress bar, snow), ~1.5 s, skipped by any key.
-
-### 5.6 Sketches
-
-One character is about 6 × 8 px. The marks:
-- `▓` the title bar's gradient;
-- `▕ ▏` a sunken field, `─■─` a slider, `[ ]` a bevelled button;
-- `▓▓▓▓` a note, `████` a held note, `▌` the cursor (light);
-- `░ ▒` dither, `•` a chord tone's row.
-
-The real stages have more rows than the sketches.
-
-**ROLL, stopped.** The scroll bar on the right is VIEW (pitch); its thumb is the window shown.
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ▣ ROLL — FELT PIANO ▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
-│ CURSOR    VIEW      LENGTH    FINE     │
-│▕ 1.3   ▏ ▕ A3–C5 ▏ ▕ 1/8   ▏ ▕ 0     ▏ │
-│ ──■────   ───■───   ■──────   ───■───  │
-├────┬─────────────────────────────┬─────┤
-│    │1·······2·······3·······4····│  ▲  │
-│ C5•│                             │  █  │
-│ B4•│                             │  █  │
-│▐A4▌│▓▓▓▓▓▓▓▓            ▓▓▓▓     │  ░  │
-│ G4•│                             │  ░  │
-│ E4•│        ▓▓▓▓                 │  ░  │
-│ D4 │            ▌                │  ░  │
-│ C4•│            ▌       ▓▓▓▓▓▓▓▓ │  ░  │
-│▐A3▌│▓▓▓▓▓▓▓▓▓▓▓▓▌▓▓▓▓▓▓▓         │  ▼  │
-├────┴─────────────────────────────┴─────┤
-│[ZOOM 16 ] [▪S1][ S2 ][ S3 ]  ■ 72  Am9 │
-└────────────────────────────────────────┘
-```
-
-**ROLL, a key held** (A4 at step 1.1): the fields edit that note, and a tooltip names the two verbs.
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ▣ ROLL — FELT PIANO ▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
-│ MOVE      PITCH     LENGTH    NUDGE    │
-│▕ 1.1   ▏ ▕ A4    ▏ ▕ 2/4   ▏ ▕ +1/8  ▏ │
-│ ■──────   ───■───   ──■────   ────■──  │
-├────┬───────────────────────────────────┤
-│▐A4▌│████████            ▓▓▓▓           │
-│ G4•│                                   │
-│ E4•│        ▓▓▓▓                       │
-│    │   ┌─────────────────────────────┐ │
-│    │   │ OCT− delete · OCT+ duplicate│ │
-│    │   └─────────────────────────────┘ │
-├────┴───────────────────────────────────┤
-│[VELO 96 ] [▪S1][ S2 ][ S3 ]  ■ 72  Am9 │
-└────────────────────────────────────────┘
-```
-
-**HOME, the buddy list.** Pattern 1 plays and pattern 5 is queued; synth 3 is muted.
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ◆ HOME — 3 synths online ▓▓▓▓▓ ▫ ▫ ▫ │
-│ LEVEL 1   LEVEL 2   LEVEL 3   VERB     │
-│▕ 80    ▏ ▕ 64    ▏ ▕ 72    ▏ ▕ 40    ▏ │
-├────────────────────────────────────────┤
-│ ● ▣ SNOW PAD         ▬▬▬▬▬▬│▬▬▬▬▬▬▬▬   │
-│      plays the chords                  │
-│ ● ▣ FELT PIANO       ·▬·▬▬·│▬·▬··▬·▬   │
-│      a melody, on the key              │
-│ ○ ▣ GLASS PLUCK      ░░▒░░▒│░▒░░▒░░▒   │
-│      muted                             │
-│ PATTERNS  ▐1▌  2   3   4  ◐5   ·   ·   │
-│ Am(add9) │ Fmaj7 │▐Cmaj7▌│ Gsus2       │
-├────────────────────────────────────────┤
-│[TEMPO 72] [▪S1][ S2 ][ S3 ]  ▶ 72 Cmaj7│
-└────────────────────────────────────────┘
-```
-
-**A notice** sliding up from the tray, after HOME held + white key 3.
-
-```
-│                     ┌─────────────────┐│
-│                     │▓ notice ▓▓▓▓▓ ▫ ││
-│                     │ ▣ S2 → pattern 3││
-│                     │   at the bar    ││
-│                     └─────────────────┘│
-├────────────────────────────────────────┤
-│[TEMPO 72] [▪S1][ S2 ][ S3 ]  ▶ 72 Cmaj7│
-└────────────────────────────────────────┘
-```
-
-**SOUND, the cassette deck** (turning PRESETS, or the SOUND page of a SAMPLE sound).
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ▣ SOUND — FELT PIANO ▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
-│ SAMPLE    START     LOOP      GRIT     │
-│▕ FELT  ▏ ▕ 12 ms ▏ ▕ SHORT ▏ ▕ 22K+AD▏ │
-├────────────────────────────────────────┤
-│   ┌──────────────────────────────┐     │
-│   │ ┌──────────────────────────┐ │     │
-│   │ │ FELT PIANO          KEYS │ │     │
-│   │ └──────────────────────────┘ │     │
-│   │    (o)   ▭▭▭▭▭▭▭▭▭▭   (o)    │     │
-│   └──────────────────────────────┘     │
-│  ▁▃▆█▇▆▅▅▄▄▄▃▃▃▃▂▂▂▂▂▁▁  ▕▒ loop ▒▏    │
-├────────────────────────────────────────┤
-│[ENGINE SAMPLE] [▪S1][ S2 ][ S3 ]  ▶ 72 │
-└────────────────────────────────────────┘
-```
-
-**FILTER** and **AMP**
-
-```
-┌────────────────────────────────────────┐  ┌────────────────────────────────────────┐
-│▓▓ ▣ FILTER — SNOW PAD ▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │  │▓▓ ▣ AMP — SNOW PAD ▓▓▓▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
-│ CUTOFF    RESO      ENV AMT   DRIFT    │  │ ATTACK    DECAY     SUSTAIN   RELEASE  │
-│▕ 1.2 kHz▏▕ 30    ▏ ▕ +40   ▏ ▕ 20    ▏ │  │▕ 1.4 s ▏ ▕ 2.0 s ▏ ▕ 80    ▏ ▕ 4.5 s ▏ │
-├────────────────────────────────────────┤  ├────────────────────────────────────────┤
-│▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▄▅▆▄▃▂▁                │  │           ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄              │
-│▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▂▁              │  │       ▄▀▀              ▀▄              │
-│▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▓▂▁           │  │    ▄▀                    ▀▄▄           │
-│                ▲ cutoff, drifting      │  │  ▄▀          ● now           ▀▀▄▄▄     │
-├────────────────────────────────────────┤  ├────────────────────────────────────────┤
-│[TYPE LP24] [▪S1][ S2 ][ S3 ]  ▶ 72  Am9│  │[LEVEL 80] [▪S1][ S2 ][ S3 ]  ▶ 72  Am9 │
-└────────────────────────────────────────┘  └────────────────────────────────────────┘
-```
-
-**FX.** The check boxes show which rows are on; the open row is framed in the light colour.
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ▣ FX — FELT PIANO ▓▓▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
-│ AMOUNT    TONE      TIME      CHARACTER│
-│▕ 40    ▏ ▕ 30    ▏ ▕ 0.6 Hz▏ ▕ 2     ▏ │
-├────────────────────────────────────────┤
-│ [x] COLOR    CRUSH          ▮▮▯▯▯▯     │
-│▐[x] MEDIA    TAPE           ▮▮▮▮▯▯    ▌│
-│ [ ] MOTION   CHORUS         ▮▮▮▯▯▯     │
-│     SPACE    VERB 30 · ECHO 10 · PAN C │
-├────────────────────────────────────────┤
-│[EFFECT TAPE] [▪S1][ S2 ][ S3 ]  ▶ 72   │
-└────────────────────────────────────────┘
-```
-
-**CHORD.** The progression is a row of buttons, the one playing (or the cursor, stopped) pressed in; the strip
-below shows the voicing's notes over two octaves.
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ♫ CHORD — FIRST SNOW ▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
-│ VOICING   INVERT    SPREAD    STRUM    │
-│▕ WIDE  ▏ ▕ AUTO  ▏ ▕ 2 oct ▏ ▕ ↑ 60ms▏ │
-├────────────────────────────────────────┤
-│               Am(add9)                 │
-│ [▐i add9▌][VI maj7][III maj7][VII sus2]│
-│  ▕ ▏▕ ▏▕█▏▕ ▏▕ ▏▕█▏▕ ▏▕ ▏▕█▏▕ ▏▕█▏▕ ▏  │
-├────────────────────────────────────────┤
-│[PROG FIRST SNOW] [▪S1][ S2 ][ S3 ]  ▶  │
-└────────────────────────────────────────┘
-```
-
-**DISCS** (SAVE held 1 s): your songs as CDs, burning one.
-
-```
-┌────────────────────────────────────────┐
-│▓▓ ◎ DISCS — 4 of 15 · 41 KB free ▓ ▫ ▫ │
-├────────────────────────────────────────┤
-│   (o)     (o)     (o)     (o)     ( )  │
-│  FIRST   EMBERS  NIGHT   STATIC  empty │
-│  SNOW            DRIVE                 │
-│   ( )     ( )     ( )     ( )     ( )  │
-│                                        │
-│  ▶ FIRST SNOW · 3 synths · 8 patterns  │
-│  [■■■■■■■■■■■▯▯▯▯▯▯▯▯▯] burning… 55 %  │
-├────────────────────────────────────────┤
-│[SAVE burn] [PLAY load] [K2 yours/demos]│
-└────────────────────────────────────────┘
-```
-
-**A message box**, the only kind of question.
-
-```
-│     ┌────────────────────────────┐     │
-│     │▓ Burn over a disc ▓▓▓▓▓▓ ▫ │     │
-│     │  !  EMBERS is on disc 2.   │     │
-│     │     Burn FIRST SNOW over?  │     │
-│     │ [ YES · OCT+ ] [ NO · OCT− ]│    │
-│     └────────────────────────────┘     │
-```
-
-### 5.7 The grid inside the windows, after reown.com
-
-The owner pointed to reown.com's layout and grid for the website, and said it can help the display too. What it
-does, measured in the browser on a 1280 px page:
-- an 8 px margin and 8 px gutters;
-- a 12-column bento of solid cards: full, 2/3 + 1/3, halves, thirds, quarters;
-- rounded corners in three families: 16 px for most cards, 40 px for small ones, 64–254 px for the hero's stadium;
-- full-width pill bars as section titles, pill chips as buttons and navigation;
-- a light grotesk for headings with a monospace for small labels and buttons.
-
-On the 240 px screen this becomes how the inside of every window is laid out:
-- **A 4 px grid:** a 4 px margin inside the window and 4 px gutters between tiles; the stage is a bento of tiles in
-  halves, thirds and quarters of its width.
-- **Rounded tiles:** a 6 px corner on tiles and fields, 3 px on chips, and pill ends on the taskbar's chips and on
-  section bars. The corners are precomputed masks, so a rounded tile costs what a square one does.
-- **Pill section bars:** a stage with parts (FX's four rows, CHORD's slots, the buddy list's synths) titles them with
-  a 12 px pill bar in face grey, its label centred.
-- **Chips:** the taskbar's S1 S2 S3 and the ALGORITHM button, the pattern keys on HOME, a held key's verbs.
-- **Small labels** carry the monospace's role: Tomato Grotesk Medium 11 px in capitals with a pixel of tracking
-  (the owner's face throughout, no monospace).
-
-The windows keep their title bars, the cassettes and the CDs: the late-90s desktop is the frame, and the grid is how
-it is filled. The first rendered screens (phase 0) show both together for the owner to judge.
-
-### 5.8 The text audit
-
-MONO2K's audit carries over to the 4-bit buffer. Every text records its ink box, and a fill hides what it covers.
-The check reports:
-- texts that touch or sit a dot apart;
-- text cut by a clip or by the screen's edge;
-- text running past its window (windows, tooltips and notices included).
-
-It runs over the whole host tour, and over a sweep of every page, engine, effect, knob value, held map, notice and
-message box. No overlapping text, ever. The screenshots are still looked at, for text crowding a line.
+Every text records its ink box; a fill hides what it covers, and a box over the stage hides everything under it. The
+check fails on texts that touch or sit a dot apart, text cut by a clip or the screen, text past its window, and **any
+capital letter**, over the whole host tour (21 screens) and, as pages are built, a sweep of every page, value and held
+layer. No overlapping text, ever.
 
 ## 6. The website
 
-**Layout and grid after reown.com; colour and texture after the moodboard.**
+**After KH Teka's specimen page, with an old desktop's windows, in three colours** (the owner's direction,
+2026-10-23; it replaced a first page after reown.com with gradients and textures).
 
-- **The grid:** an 8 px margin and 8 px gutters, 12 columns, a bento of cards (full, 2/3 + 1/3, halves, thirds,
-  quarters), corners of 16 px, 40 px and a stadium for the hero, full-width pill bars as section titles, pill chips
-  for the navigation and buttons. Phone width: one column, the same 8 px rhythm, no sideways scroll.
-- **Colour and texture,** instead of reown's flat solids:
-  - the moodboard's pastel iridescence (peach → pink → lilac → mint) as slow gradients across the cards;
-  - the snow scenes' fog as dithered greys, in a small Bayer tile repeated, the screen's own dither at page size;
-  - **degradation:** fine film grain (an SVG noise filter), faint scanlines, and a slight colour fringe and jitter on
-    hover, like a worn tape;
-  - one warm light (the amber) for the one thing to press.
-- **Type:** Tomato Grotesk throughout, as on the device: light and regular weights large for headings, Medium in
-  tracked capitals for the small labels where reown uses its monospace. The web font follows the licence's web
-  terms; the emulator shows the firmware's own bitmaps either way.
-- **Navigation:** a row of chips at the top, our own (the wordmark, then PLAY, MANUAL, INSTALL, CHANGES).
-
-**The pages:**
+- **Three colours, each a job:** paper `#FFFFFF` the ground, ink `#000000` every rule and letter, focus `#FF5A1F` (the
+  screen's own FOCUS) for the one thing to act on and what is lit on the panel. No texture, no gradient, no soft
+  shadow.
+- **The table:** a 52 px left rail, then rows of four columns, every edge a 1 px ink rule; a header row (the name, what
+  it is, the links, and one inverted cell for the action), the name set huge, a control row as the specimen page's
+  (a square on a rule for a slider), then the sections as rows: a small label cell and a medium text cell.
+- **Type:** Geist only, all lowercase, three sizes: s 13 px, m 24 px, l (the name) 88–236 px with the viewport.
+- **Windows** as an old desktop's: an ink frame, a striped title bar with a close box, a hard 3 px ink shadow.
+- **The emulator:** the FM-1's panel drawn as line art in one ink (MONO2K's simplicity), rounded: a 44 px body, 16 px
+  screen bezel, 12 px buttons with their page named under them, 10 px keys; what is lit turns focus orange. Mouse,
+  touch and the computer's keys play it.
+- **Phone width:** one column, the same rules, no sideways scroll.
 
 | Page | What is on it |
 | --- | --- |
-| home | the hero (a stadium card with the screen playing in it, in the browser, from the wasm); the three synths as three cards; the effects as a bento (COLOR, MEDIA, MOTION, SPACE); the chord machine; the look (the screens, cassettes and CDs); install |
-| play | the emulator: the FM-1's panel in a card, the screen, the keys and knobs from mouse, touch and the computer's keyboard; songs kept in the browser, export and import |
-| manual | one article at a time, the screens from the host's tour, every page, layer and combo from the core's own tables |
-| install | the installer (Felucca's files, as MONO2K's site uses them): what it may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware |
+| home | the name, the control row with the power cell, the emulator in its window, the sections (three synths, eight patterns, the wear), the screens as a 4-column table, the footer |
+| manual | one article at a time in the same table; screens from the host's tour; every page, layer and combo from the core's own tables |
+| install | the installer (Felucca's files, as MONO2K's site uses them): what an install may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware |
 | changes | the change log, an entry a day, written for the player |
 
-Built in phase 5. The phase 0 emulator page already uses the grid, the chips and the textures, so the site starts as
-one card of itself.
+Phase 0 has the home page; the rest come in phase 5.
 
 ## 7. Build order
 
@@ -1050,8 +791,9 @@ first, as on MONO2K).
 - The names (2.7): identity range, SysEx magic, store region.
 - A sine on the FM-1 and the `--diag` load meter; **measure the ratio of host instructions to FM-1 load once** with a
   known kernel, so section 1's budget is checked against the device, not only the yardstick.
-- The screen shell: the 4-bit framebuffer and its 16-colour themes, the strips, Tomato Grotesk generated at its four
-  sizes, the window chrome (title bar, sunken fields, taskbar, dialog, tooltip, toast), the text audit and the tour.
+- The screen shell: the 4-bit framebuffer and its two themes of eight state colours, the strips, Geist generated at
+  its three sizes, the grid, the fields with their sliders, the boxes for notices and held layers, the text audit and
+  the tour.
 
 **Phase 1: the smallest playable version (one synth).**
 - SAMPLE engine (block ADPCM, loops, its voices) and `tools/gen_samples.py` with 4 of the owner's samples, the
@@ -1061,7 +803,7 @@ first, as on MONO2K).
   zoom 16 / 32 / 64, the blinking keys, scale snap in a fixed key, undo and redo (16 steps).
 - PLAY, REC: live recording quantized, overdub, one undo per take.
 - FX: TAPE on the MEDIA row; one shared VERB (ROOM), its send on the SPACE row.
-- SAVE: one song in flash (one disc).
+- SAVE: one song in flash.
 - Tests: every gesture of 3.7 in the host self-test; the CPU on the FM-1; the owner writes a 4-bar melody without
   reading anything.
 
@@ -1073,9 +815,9 @@ first, as on MONO2K).
 
 **Phase 3: three synths and the patterns.**
 - Three synths with their own length, speed, shift, transpose; 8 patterns a song with switching, chains, copies
-  and mutes (3.6.1); HOME (the buddy list, mixer, tempo); LAYER (2.1); the voice pool; the
+  and mutes (3.6.1); HOME (the synths, mixer, tempo); LAYER (2.1); the voice pool; the
   second core (2.2); the DRONE and PLUCK engines; GRIT.
-- The DISCS window (your songs, the demos), the cassette library (factory and USER sounds), the store and the link.
+- The SONGS page (yours, the demos), the sound library (factory and USER sounds), the store and the link.
 - Exit: three synths at 12 voices with layers, within the budget on the FM-1's meter, and a pattern switch
   played live without a click.
 
@@ -1106,8 +848,8 @@ first, as on MONO2K).
   reference.
 - `MIT-Felucca-Engines.txt` (softclip, the SVF, noise, drift). Felucca's GPL-3.0 files keep their headers;
   `phys_dsp.c` and `phys_symp.c` bring their MIT notices for DaisySP and Rings.
-- Fonts: Tomato Grotesk is used under the owner's licence from The Designers Foundry; its files stay out of the
-  repo, and only the bitmaps generated from them ship. The icons and the window chrome are our own drawings.
+- `OFL-1.1-Geist.txt`: Geist (The Geist Project Authors), in `assets/fonts/` and `web/fonts/`, its bitmaps in the
+  firmware.
 - The owner's samples and single-cycle waves, under the licence the owner chooses (decision 3).
 
 **Not taken:** Hügelton's assets (icons, panel photo, drum pack: all rights reserved), the names Felucca and
