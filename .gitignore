@@ -1,0 +1,10 @@
+# local tools and output
+.venv/
+build/
+.claude/
+.DS_Store
+__pycache__/
+
+# references read or measured locally, never committed: other products' audio and firmware,
+# moodboard images, commercial fonts, other projects' sources
+reference/
