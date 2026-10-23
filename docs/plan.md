@@ -7,31 +7,37 @@ throwaway integer prototypes of each kernel.
 
 ## 0. In one page
 
-- **Four tracks**, each with an engine (SAMPLE, PAD, DRONE, PLUCK), its own pattern in a **piano roll**, and a chain:
-  COLOR → MEDIA → MOTION → SPACE. Two **shared send buses** (ECHO, VERB) take every reverb and delay.
-- **A chord machine** (key, mode, 16 melancholic presets, voicing, inversion, spread, strum) drives a track, and the
-  other tracks' notes follow its chords.
-- **Playful first:** nearly every task in one or two presses (the few exceptions are flagged in 3.7); keys write where the
-  cursor is, a held key is the note you edit, OCT− takes away, OCT+ copies, everything undoes.
-- **The look:** four tones (paper, fog, ink, one warm light) with ordered dithering, a pixel HUD font and a soft
-  grotesk, save blocks with little animated icons.
-- **The sound:** the owner's 64 recordings as 4-bit block ADPCM at 11–22 kHz, a per-track GRIT (22 kHz, ADPCM), and
-  reverbs voiced by ear after console rooms, halls and space echoes.
-- **It fits:** four tracks with typical effects and 16 voices come to ~3000 instructions a sample over two cores
-  against a yardstick of 2 × 1650; the device calibration in Hortator puts a core at ~3470 (1.4).
+- **Three synths**, each with an engine (SAMPLE, PAD, DRONE, PLUCK), a second **layer from the owner's samples**,
+  its own sequence in a **piano roll**, and a chain: COLOR → MEDIA → MOTION → SPACE. Two **shared send buses**
+  (ECHO, VERB) take every reverb and delay. **12 voices** are shared by the three.
+- **8 patterns a song**, each holding the three sequences and a chord progression; sounds and effects stay the
+  same across patterns, so switching is seamless. Switch with HOME held and a key, queued to the bar: two presses.
+- **A chord machine** (key, mode, 16 melancholic presets, voicing, inversion, spread, strum) drives a synth, and the
+  other synths' notes follow its chords.
+- **Playful first:** nearly every task in one or two presses (the few exceptions are flagged in 3.7). Keys write
+  where the cursor is, a held key is the note you edit, OCT− takes away, OCT+ copies, and everything undoes.
+- **The look:** a late-90s desktop over snow and fog. Every page is a window with a title bar, sunken fields and a
+  taskbar. HOME is a messenger-style buddy list of the three synths. Sounds are cassettes and songs are CDs. Sixteen
+  colours, ordered dithering, one warm light, and Tomato Grotesk for every word.
+- **The sound:** the owner's 64 recordings as 4-bit block ADPCM at 11–22 kHz, a per-synth GRIT (22 kHz, ADPCM),
+  and reverbs voiced by ear after console rooms, halls and space echoes.
+- **It fits.** The yardstick is 1650 instructions a core (1.1); Hortator's device calibration puts a core at ~3470.
+  - Every effect on every synth at once: 82 % of the yardstick on each of the two cores.
+  - Typical effects with a sample layer on every voice: 95 % (1.4).
 
-**Decisions for the owner** (each is also in its section):
+**Decided by the owner:** Tomato Grotesk everywhere (their licence); 12 shared voices; three synths with patterns
+for performance; the desktop, messenger, cassette and CD look.
 
-1. **The display font** (5.3): Tomato Grotesk ships only if your licence from The Designers Foundry covers embedding
-   in an app; otherwise an OFL face.
-2. **Where saves and extra samples live** (2.6): I suggest keeping MONO2K's store (`0xC0000..0xE0000`) untouched,
+**Still the owner's decisions** (each is also in its section):
+
+1. **Where saves and extra samples live** (2.6): I suggest keeping MONO2K's store (`0xC0000..0xE0000`) untouched,
    so both firmwares keep their saves.
-3. **The identity range** (2.7): `FM-1_965` (tests) and `966`+ (releases) look free.
-4. **The samples' licence** (2.5): your recordings ship in the package. The code is GPL-3.0; the sounds could be
+2. **The identity range** (2.7): `FM-1_965` (tests) and `966`+ (releases) look free.
+3. **The samples' licence** (2.5): your recordings ship in the package. The code is GPL-3.0; the sounds could be
    GPL-3.0 too, or CC BY 4.0 if you want others to reuse them.
-5. **Additions to the brief, to keep or drop:** a SOUND page (EDIT: the engine and its source), a HOME page
-   (overview and mixer), an LFO page (later), DRIFT as FILTER's fourth knob.
-6. **Integer only, as the brief says, though the chip has an FPU.** AMB-1, FoMni, FiMba and FuMi compile their DSP
+4. **Additions to the brief, to keep or drop:** a SOUND page with its LAYER row (EDIT), a HOME page (buddy list,
+   mixer, performance layer), an LFO page (later), DRIFT as FILTER's fourth knob.
+5. **Integer only, as the brief says, though the chip has an FPU.** AMB-1, FoMni, FiMba and FuMi compile their DSP
    in single-precision float with the SDK's `-mcpu=r3 -mfprev1`; MONO2K, CS-1, OberVave and Clipper forbid float.
    This plan stays integer: it keeps MONO2K's tooling, the browser and host renders identical to the device's, and
    the platform's build checks. Phase 0 can time the FPU in ten minutes, for the record.
@@ -53,7 +59,7 @@ throwaway integer prototypes of each kernel.
 - **The JieLi compiler's code** for the kernels was checked against the Mac's: its inner loops are 0.9–1.5× as long,
   median ~1.2. Delay lines with many wrap tests and 64-bit state run ~1.4×, plain filters ~1.0× [M, static]. Kernels
   with delay lines get extra margin.
-- **Rates.** Per-track effects run at 44.1 kHz. The buses run at 22.05 kHz: lofi by nature, half the memory, and
+- **Rates.** Per-synth effects run at 44.1 kHz. The buses run at 22.05 kHz: lofi by nature, half the memory, and
   the halving and doubling (a half-band each way) is ~31 a sample in stereo, included in every bus figure.
 - **Sources.** pichenettes/eurorack (MIT) and electro-smith/DaisySP (MIT, `Source/`) do all their arithmetic in
   float, even where their delay buffers are 12- or 16-bit, so they are **algorithm references**, ported to Q15 / Q31
@@ -61,23 +67,23 @@ throwaway integer prototypes of each kernel.
   references. MONO2K's code is the owner's own (GPL-3.0). Paths: ER = `eurorack/`, DS = `DaisySP/Source/`,
   FEL = `Felucca/firmware/src/`, FE = `Felucca-Engines/src/`, M2K = `mono2k/firmware/src/`.
 
-### 1.2 Per track: COLOR, MEDIA, MOTION, SPACE
+### 1.2 Per synth: COLOR, MEDIA, MOTION, SPACE
 
-One effect per row and per track, picked with ALGORITHM, OFF first. Macro slots: K1 AMOUNT, K2 TONE, K3 TIME,
+One effect per row and per synth, picked with ALGORITHM, OFF first. Macro slots: K1 AMOUNT, K2 TONE, K3 TIME,
 K4 CHARACTER (3.4).
 
-| Row | Effect | Algorithm | Source | RAM / track | Instr / sample |
+| Row | Effect | Algorithm | Source | RAM / synth | Instr / sample |
 | --- | --- | --- | --- | --- | --- |
 | COLOR | SATURATE | tanh from a 257-entry table, interpolated; a bias for even harmonics; tilt EQ before and after (two one-poles). AMOUNT drive, TONE tilt, CHARACTER even ↔ odd | FE `dsp.c` `softclip()` + `TANH_Q15`; the bias after FEL `fx.c` `track_dist()` | 16 B | 18 [M] + 14 = **32** [E] |
 | COLOR | DISTORT | drive 1–9× into a clip that morphs into a triangle fold, a 2-pole tone low-pass, make-up gain. AMOUNT drive, TONE low-pass, CHARACTER clip → fold | FEL `fx.c` `ins_drive()` / `ins_shape()`; M2K `fold16()` | 24 B | 18 + 14 + 22 = **54** [E] |
 | COLOR | CRUSH | bit depth by rounding (no DC), sample-and-hold on a fractional Q16 clock, an SVF low-pass in front. AMOUNT bits 16 → 3, TONE anti-alias, TIME rate 44.1 → 1 kHz, CHARACTER clock jitter | ER `braids/braids.cc` bit masks and decimation; FEL `INS_HOLD`; FE `tsvf_lp` | 32 B | 9.5 [M] + 22 = **32** [E] |
 | COLOR | CODEC | **own design**, MP3-style smear: a 4-band SVF crossover at 22.05 kHz; per frame each band's quantizer step from the frame's peak; weak high bands gated (holes, "birdies"); the step applied through a look-ahead so noise smears before transients (pre-echo). AMOUNT loss, TONE band limit (to 4 kHz), TIME frame 64–512 samples, CHARACTER dropouts and warble (random band and frame gating). If it doesn't sound codec enough: a 64-point integer MDCT instead | own; no codec effect exists in any of the repos | 0.8 KB | 4-band **101** [M]; MDCT M = 32 **139** [M] |
-| COLOR | NOISE | hiss (xorshift, one-pole colour), crackle (random clicks from a probability table, sign alternating, ×5/8 decay), hum (50 / 60 Hz, harmonics 1–5 from the sine table, slowly wandering). AMOUNT hiss, TONE colour, TIME crackle density, CHARACTER hum. Sounds while the track or its tail does | M2K `m2k_fx.c` `bus_block()` hiss and crackle; FE `eng_noise.c`; hum own | 20 B | **60** [M] |
+| COLOR | NOISE | hiss (xorshift, one-pole colour), crackle (random clicks from a probability table, sign alternating, ×5/8 decay), hum (50 / 60 Hz, harmonics 1–5 from the sine table, slowly wandering). AMOUNT hiss, TONE colour, TIME crackle density, CHARACTER hum. Sounds while the synth or its tail does | M2K `m2k_fx.c` `bus_block()` hiss and crackle; FE `eng_noise.c`; hum own | 20 B | **60** [M] |
 | MEDIA | TAPE | a modulated delay (wow 0.3–1 Hz with a slowly random rate, flutter 5–7 Hz; Q16 linear read), a head-bump biquad (60–120 Hz, +2–4 dB), soft-clip saturation, head-loss one-pole. AMOUNT saturation, TONE bump and HF, TIME wow, CHARACTER flutter | M2K `bus_block()` tape; ER `beads/dsp/fx/wow_and_flutter.h` (the random-rate wow); FE `softclip()` | 4.2 KB | **74** [M] (×1.4 on the target: a delay line) |
 | MEDIA | CASSETTE | TAPE's line with a faster, random warble; HF loss as a 2-pole low-pass at 6–10 kHz that closes as the level rises; dropouts: random 10–150 ms dips of 3–20 dB that close the low-pass further. AMOUNT warble depth, TONE HF loss, TIME warble rate, CHARACTER dropouts | own, on TAPE's parts | 4.2 KB | **~88** [E] |
 | MEDIA | VHS | band limit 80 Hz–10 kHz, a slow deep wobble with fast jitter, a head-switch tick at 25 / 29.97 Hz, "tracking" events (20–200 ms: a mute or noise burst, a pitch dip, a short repeat from the line). AMOUNT wobble depth, TONE band limit, TIME wobble rate, CHARACTER tracking glitches | own, on TAPE's parts | 8.3 KB (repeats up to 93 ms) | **~95** [E] |
 | MOTION | CHORUS | 2 swept taps (quadrature LFOs) at 7–20 ms, stereo out; CHARACTER 1 tap mono → 2 taps → a 3-tap ensemble with a fast and a slow LFO. AMOUNT depth and mix, TONE wet low-pass, TIME rate, CHARACTER voices and width | ER `rings/dsp/fx/chorus.h`, `ensemble.h` (topology); FEL `fx.c` chorus; M2K `mod_tick()` | 2.1 KB | 2 taps **53** [M]; ensemble ~75 [E] |
-| MOTION | VIBRATO | pitch modulation of the track's voices at control rate (no delay line): a sine at 3–8 Hz. AMOUNT depth, TIME rate, CHARACTER fade-in | own | — | **~2 a voice** [E] |
+| MOTION | VIBRATO | pitch modulation of the synth's voices at control rate (no delay line): a sine at 3–8 Hz. AMOUNT depth, TIME rate, CHARACTER fade-in | own | — | **~2 a voice** [E] |
 | MOTION | DRIFT | each voice its own smoothed random pitch wander, and a random detune per note. AMOUNT wander depth, TIME wander rate, CHARACTER per-note detune | ER `braids/vco_jitter_source.h` (MIT, integer); FE drift | 8 B / voice | **~2 a voice** [E] |
 | SPACE | the sends | VERB SEND, ECHO SEND, PAN, WIDTH (alternate voices spread left and right) | — | — | **5** [E] |
 
@@ -86,7 +92,7 @@ way. They still sit in the MOTION row, where the brief puts them.
 
 ### 1.3 Shared: the ECHO and VERB buses
 
-Every track sends to both; each bus holds one type at a time (GLO, 3.4), stereo, at 22.05 kHz.
+Every synth sends to both; each bus holds one type at a time (GLO, 3.4), stereo, at 22.05 kHz.
 
 | Bus | Type | Algorithm | Source | RAM | Instr / sample |
 | --- | --- | --- | --- | --- | --- |
@@ -104,32 +110,42 @@ The VERB types share one 66 KB buffer (switching type clears it); the ECHO has i
 
 ### 1.4 What fits
 
-Voices and engines come from section 2 (~110 a voice at 44.1 kHz [E from M parts]). "Typical" is SATURATE or CRUSH,
-TAPE and CHORUS on every track, PLATE and the ECHO; "heavy" is CODEC, VHS and the ensemble on every track, SHIMMER
-and the ECHO.
+Voices come from section 2: ~110 instructions a voice at 44.1 kHz [E from M parts], and ~65 more when the sound's
+LAYER is on (a second ADPCM sample read). The three columns:
+
+- **Lean:** SATURATE on each synth, ROOM.
+- **Typical:** SATURATE or CRUSH, TAPE and CHORUS on every synth; PLATE and the ECHO.
+- **Heavy:** CODEC, VHS and the ensemble on every synth; SHIMMER and the ECHO.
+
+All 12 voices are counted as sounding.
 
 | Part | Lean | Typical | Heavy |
 | --- | --- | --- | --- |
 | base: sequencer, mix, control-rate work, master limiter | 150 [E] | 150 | 150 |
-| 4 track chains (per track: COLOR + MEDIA + MOTION + sends + 25 overhead) | 4 × 63 = 252 | 4 × 189 = 756 | 4 × 301 = 1204 |
+| 3 synth chains (each: COLOR + MEDIA + MOTION + sends + 25 overhead) | 3 × 63 = 189 | 3 × 189 = 567 | 3 × 301 = 903 |
 | buses | ROOM 90 | ECHO 65 + PLATE 244 = 309 | ECHO 65 + SHIMMER 279 = 344 |
-| 16 voices × 110 | 1760 | 1760 | 1760 |
-| **total** | **2252** | **2975** | **3458** |
-| two cores, buses on core 2 | ~1130 each | ~1490 each | ~1730 each |
-| against the yardstick (1650) / the calibrated plan (2750) | 68 % / 41 % | 90 % / 54 % | **105 %** / 63 % |
+| 12 voices × 110 | 1320 | 1320 | 1320 |
+| **total** | **1749** | **2346** | **2717** |
+| per core, buses on core 2 | ~875 | ~1175 | ~1360 |
+| against the yardstick (1650) / the calibrated plan (2750) | 53 % / 32 % | 71 % / 43 % | 82 % / 49 % |
+| **with a LAYER on every voice** (+12 × 65 = 780) | 77 % / 46 % | 95 % / 57 % | **106 %** / 64 % |
 
 So, measured against the yardstick:
 
-- **Every reverb, the shimmer and the echo must be shared buses.** One stereo 1.5 s echo is 66 KB, so four would
-  take most of the 336 KB pool. The reverbs cost 72–279 and 5–66 KB each.
-- **COLOR, MEDIA and MOTION stay per track.** Each costs 32–101; the per-track lines total 2–8 KB.
-- **CODEC on all four tracks at once** is the one case past the yardstick (the heavy column). Four steps keep it safe:
-  - the voice pool sheds voices under load, oldest released first, and shows LOAD on screen (as Hortator does above
-    95 %);
-  - GRIT 22K halves a track's voice cost (2.3);
-  - if the device's ratio is as Hortator measured, it fits anyway (63 % of the plan);
-  - the MDCT version (139) is only used if the 4-band one (101) does not sound right.
-- **The two cores:** each 16-sample block the first core hands tracks [split, 4) to the second, balanced by cost.
+- **Every reverb, the shimmer and the echo must be shared buses.** One stereo 1.5 s echo is 66 KB, so one per synth
+  would take most of the 336 KB pool. The reverbs cost 72–279 instructions and 5–66 KB each.
+- **COLOR, MEDIA and MOTION stay per synth.** Each costs 32–101; the per-synth lines total 2–8 KB.
+- **Every effect on every synth at once fits** (82 %).
+- **So does a sample LAYER on every voice with typical effects** (95 %).
+- **Only heavy effects with a LAYER on all 12 voices passes the yardstick.** Four things keep it safe:
+  - the voice pool sheds voices under load, oldest released first, and the window nudges with LOAD (as Hortator
+    sheds above 95 %);
+  - GRIT 22K halves a synth's voice cost (2.3);
+  - if the device's ratio is as Hortator measured, it fits anyway (64 % of the plan);
+  - the MDCT version of CODEC (139) is only used if the 4-band one (101) does not sound right.
+- **Three synths instead of four** pay for this. A fourth chain and four more voices would cost ~630; that is
+  instead spent on every effect running everywhere, and on the layers.
+- **The two cores:** each 16-sample block the first core hands synths [split, 3) to the second, balanced by cost.
   The buses run on the second core one block late (0.36 ms), which takes them off the first core's critical path
   (MONO2K runs its bus after the join; Demake doesn't need to). The second core's job runs from XIP flash and its
   loop from RAM (CS-1's audio worker): the first core joins it before any flash write (2.6).
@@ -138,7 +154,7 @@ So, measured against the yardstick:
 
 ### 2.1 The engines
 
-Any track can play any engine; a track's voices all use its engine. Per voice: the engine, a ZDF SVF (TYPE LP12,
+Any synth can play any engine; a synth's voices all use its engine. Per voice: the engine, a ZDF SVF (TYPE LP12,
 LP24, BP, HP, OFF; 27 [M] with coefficients every 16 samples) and the ADSR (7.5 [M]).
 
 | Engine | What it is | Built from | Instr / voice |
@@ -148,25 +164,37 @@ LP24, BP, HP, OFF; 27 [M] with coefficients every 16 samples) and the ADSR (7.5 
 | DRONE | 4 partials per voice (the COLOR set: root, fifth, octave, ninth …), each pair beating (BEAT, 0–8 Hz), each partial's level wandering on its own smoothed random (EVOLVE), a little breath noise; a long note never repeats itself | own design; sines from the table | 4 × 10 [M] + 20 + 35 = **~95** |
 | PLUCK | Karplus-Strong: a noise or sample burst into a delay line with a damping loop filter (TONE, DECAY); BODY blends in two resonant modes for kalimba, glass and bell | FEL `phys_dsp.c` (MIT port of DaisySP / Plaits' string and modal, integer; its per-note 64/32 divisions become a reciprocal and a Newton step); ER `braids` `RenderPlucked` (MIT, integer) | **~100** [E] |
 
+**LAYER: more from the owner's samples.** Every sound can add one of the owner's samples under its engine, read by
+the same voice. Some examples: a breath of bansuri over a PAD, a felt-piano attack over a DRONE, a pad's tape wash
+under a PLUCK.
+- **Where:** SOUND's second row (tap EDIT again).
+- **Controls:** ALGORITHM picks the sample (OFF first). K1 BLEND (layer against engine), K2 TUNE (−24 … +24
+  semitones; octaves and fifths first), K3 LOOP (OFF · FULL · SHORT), K4 TONE (its own one-pole low-pass).
+- **Signal:** it goes through the voice's filter and envelope with the engine.
+- **Cost:** ~65 a voice while on [E from the ADPCM voice kernel, M].
+
+This is where the three-synth budget goes: the 64-sample library becomes a palette of textures under every engine.
+
 ### 2.2 Voices and the two cores
 
-- A pool of **16 voices** shared by the four tracks; each track has a POLY of 1–8 (the chord track 6, the others 4
-  by default). A new note takes a free voice, else the track's oldest released voice, else its oldest.
-- The budget (1.4) holds 16 voices with typical effects on two cores at the yardstick. If phase 0 measures the device
-  as Hortator did, the pool grows to 24.
+- A pool of **12 voices** shared by the three synths. Each synth has a POLY of 1–8: the chord synth 6, the others
+  3 by default.
+- A new note takes a free voice, else the synth's oldest released voice, else its oldest.
+- The budget (1.4) holds 12 voices with every effect, or with typical effects and a LAYER on each, on two cores at
+  the yardstick. If phase 0 measures the device as Hortator did, the pool can grow to 16–20.
 - Voice state is small (~200 B each); sample data is read from flash through XIP by either core.
 - The second core, as MONO2K uses it (CS-1's audio worker): the job is checked against a one-core render, sample
   for sample, in the host self-test. CoralFlower ships its second core off by default after RAM misreads on some
   units, and Clipper fixed the same by raising the core voltage: Demake keeps a one-core build (`DUAL=0`), and the
   voice pool shrinks to fit it.
 
-### 2.3 GRIT, per track (SOUND K4)
+### 2.3 GRIT, per synth (SOUND K4)
 
 | GRIT | What it does | Cost |
 | --- | --- | --- |
 | OFF | voices at 44.1 kHz | — |
-| 22K | the track's voices render at 22.05 kHz and are doubled once per track with a half-band: the console's rate, band-limited to ~10 kHz | about **half** a voice's cost, + ~15 a track |
-| 22K+ADPCM | as 22K, and the track's output requantized through a 4-bit block ADPCM encode and decode: the console's grain on everything, attacks crunchy, tones round | + ~18 a track (M2K `adpcm_step` 36 [M] at half rate) |
+| 22K | the synth's voices render at 22.05 kHz and are doubled once per synth with a half-band: the console's rate, band-limited to ~10 kHz | about **half** a voice's cost, + ~15 a synth |
+| 22K+ADPCM | as 22K, and the synth's output requantized through a 4-bit block ADPCM encode and decode: the console's grain on everything, attacks crunchy, tones round | + ~18 a synth (M2K `adpcm_step` 36 [M] at half rate) |
 | 11K+ADPCM | the same at 11.025 kHz | about a quarter of a voice's cost |
 
 ### 2.4 The sample format
@@ -221,7 +249,7 @@ first. Bank B goes in the data area (2.6), loaded from the website: ~116 KiB, so
 as cut; all 64 fit only cut tight, and then just. The owner picks which sounds make bank A, from WAVs of the cut and
 encoded samples (phase 1).
 
-**Licence of the sounds:** the owner's to choose (decision 4). The originals and the encoded bank sit in the repo
+**Licence of the sounds:** the owner's to choose (decision 3). The originals and the encoded bank sit in the repo
 under that licence, with `PROCESSING.md`.
 
 ### 2.6 Flash and RAM
@@ -231,17 +259,17 @@ under that licence, with `PROCESSING.md`.
 | Part | Size |
 | --- | --- |
 | code (platform + core); MONO2K's is ~204 KB with fifteen machines | ~200 KB [E] |
-| fonts: PIX, the display face at 15 and 28 px in 2 bits, the boot size | ~20 KB [E] |
-| icons (32 × 3 frames × 16 × 16 × 2 bits) and pictures | ~16 KB [E] |
+| fonts: Tomato Grotesk at 11 px (1 bit), 15 and 28 px (2 bits), 36 px for the boot | ~25 KB [E] |
+| icons (cassettes and CDs, 3 frames, 16 × 16 at 4 bits), the cassette deck and wallpaper art | ~20 KB [E] |
 | tables (sine, pitch, filter, tanh, mu-law, times, chords) | ~25 KB [E] |
 | PAD waves: 32 × 256 × 2 B, two band-limited versions | 32 KB |
-| factory songs and sounds | ~16 KB [E] |
-| **left for bank A** | **~270 KB, of which 240 KiB planned** |
+| factory songs (8 patterns each) and sounds | ~20 KB [E] |
+| **left for bank A** | **~260 KB, of which 240 KiB planned** |
 
 | Data area region | Use |
 | --- | --- |
 | `0x93000..0xB0000` (116 KiB) | bank B: the owner's extra samples, written by the website's editor over the link (header, CRC, loop points, as the store) |
-| `0xB0000..0xC0000` (64 KiB) | Demake's store: 15 songs (a song packs to ~1–3 KB), 32 USER sounds, settings; written as MONO2K writes (4 KiB sectors, the header with its CRC last) |
+| `0xB0000..0xC0000` (64 KiB) | Demake's store: the discs (songs; a typical one of 8 patterns packs to ~3–4 KB, so ~15 fit), 32 USER sounds, settings; written as MONO2K writes (4 KiB sectors, the header with its CRC last) |
 | `0xC0000..0xE0000` | left alone: MONO2K's store (and Felucca's projects), so switching firmware keeps both firmwares' saves |
 
 Every part of the data area is someone's: OberVave keeps programs at `0x97000`, Clipper projects at
@@ -252,21 +280,21 @@ CRC, so it never reads another firmware's data as its own.
 A sector erase stops the sound for ~50 ms, so saves happen only while the sequencer stands. The first core joins the
 second (which then reads no flash) before every write.
 
-**RAM:** `.data + .bss` within 96 KiB (voices, tracks, UI state, the platform); the pool within 336 KiB:
+**RAM:** `.data + .bss` within 96 KiB (voices, synths, UI state, the platform); the pool within 336 KiB:
 
 | Pool | Size |
 | --- | --- |
 | VERB bus (one buffer for every type, the shimmer's shifter inside) | 66 KB |
 | ECHO bus (stereo mu-law, 1.5 s at 22.05 kHz) | 66 KB |
-| MEDIA lines, 4 × 8.3 KB | 33 KB |
-| MOTION lines, 4 × 2.1 KB | 8 KB |
-| PLUCK strings (16 voices × 1.35 KB, notes from C2) | 22 KB |
-| CODEC look-ahead, 4 × 0.8 KB | 3 KB |
-| framebuffer (2 bits) and strip | 18 KB |
-| the song open (4 × 256 notes × 6 B, progressions, sounds) | 8 KB |
+| MEDIA lines, 3 × 8.3 KB | 25 KB |
+| MOTION lines, 3 × 2.1 KB | 6 KB |
+| PLUCK strings (12 voices × 1.35 KB, notes from C2) | 16 KB |
+| CODEC look-ahead, 3 × 0.8 KB | 2 KB |
+| framebuffer (4 bits, 16 colours) and strip | 33 KB |
+| the song open (8 patterns × 3 sequences × 128 notes × 4 B, 8 progressions, the sounds) | 13 KB |
 | undo (a 16-step journal and 2 snapshots) | 16 KB |
 | store and link buffers | 8 KB |
-| **total** | **~248 KB of 336** |
+| **total** | **~251 KB of 336** |
 
 ### 2.7 Names
 
@@ -297,15 +325,15 @@ PRESETS, MASTER and OCT−/OCT+ further left. The screen's knob row is drawn at 
 
 ### 3.2 The rules (one page, then every combo is checked against it)
 
-1. **The keys play the current track.** On ROLL and CHORD, while the sequencer is stopped, a key also **writes at
+1. **The keys play the current synth.** On ROLL and CHORD, while the sequencer is stopped, a key also **writes at
    the cursor**. While it plays, keys only play, and REC records them in time.
-2. **One job per encoder, everywhere:** SELECT = the track, PRESETS = the track's sound, ALGORITHM = the page's
-   left cell (named on screen), K1–K4 = the four cells on top. A page looks and works the same on every track.
+2. **One job per encoder, everywhere:** SELECT = the synth, PRESETS = the synth's sound, ALGORITHM = the page's
+   left cell (named on screen), K1–K4 = the four cells on top. A page looks and works the same on every synth.
 3. **Tap a page button to open its page, tap it again for the page's next row. Hold it for its layer**; the layer's
    map is on screen after 350 ms, and the keys and knobs it changes are named there.
-4. **Hold the thing, then act on it.** A held key is a note (or a chord slot), SEQ held is the pattern, ARP held is
-   the progression, GLO held is the history. **OCT− takes away, OCT+ adds a copy:** delete / duplicate a note,
-   clear / double a pattern, undo / redo. Alone, OCT− and OCT+ shift the keyboard's octave.
+4. **Hold the thing, then act on it.** A held key is a note (or a chord slot), SEQ held is the synth's sequence,
+   HOME held is the song's patterns, ARP held is the progression, GLO held is the history. **OCT− takes away, OCT+ adds a copy:** delete / duplicate a note,
+   clear / double a sequence, clear a pattern, undo / redo. Alone, OCT− and OCT+ shift the keyboard's octave.
 5. **Everything undoes** (GLO + OCT−, 16 steps; GLO + OCT+ redoes). Only writing over a *different* save in flash
    asks a question (YES = OCT+, NO = OCT−). Clearing a whole song needs a 1 s hold with a ring filling on screen.
 6. **No hidden state.** What a held button does is on screen while it is held; the keys' LEDs show the chord now;
@@ -327,9 +355,9 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 
 | Control | Action | Presses |
 | --- | --- | --- |
-| a key | plays the current track (snapped to the key and the chord, 4.6) | 1 |
-| SELECT | the track, 1–4 (the tabs in the header) | 1 |
-| PRESETS | the track's sound: loads at once, so turning and playing auditions (GLO + OCT− brings the last one back) | 1 |
+| a key | plays the current synth (snapped to the key and the chord, 4.6) | 1 |
+| SELECT | the synth, 1–3 (the task buttons in the taskbar) | 1 |
+| PRESETS | the synth's sound, a cassette: loads at once, so turning and playing auditions (GLO + OCT− brings the last one back) | 1 |
 | ALGORITHM | the page's left cell (see 3.4) | 1 |
 | K1–K4 | the page's four cells (see 3.4) | 1 |
 | OCT− / OCT+ | keyboard octave −2 … +2; the ROLL's view follows | 1 |
@@ -339,23 +367,24 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 | MASTER | output level (a pot) | — |
 | GLO held + OCT− / OCT+ | undo / redo | 2 |
 
-### 3.4 Pages: one button each, the same layout on every track
+### 3.4 Pages: one button each, the same layout on every synth
 
 | Button | Page | Tap again | ALGORITHM (left cell) | K1 | K2 | K3 | K4 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | SEQ | **ROLL** | — | ZOOM 16 / 32 / 64 | CURSOR | VIEW | LENGTH | FINE |
 | SEQ, a key held | ROLL, that note | — | VELOCITY | MOVE | PITCH | LENGTH | NUDGE |
-| EDIT | **SOUND** | — | ENGINE | SOURCE | SHAPE | MOVE | GRIT |
+| EDIT | **SOUND** | ENGINE → LAYER | ENGINE | SOURCE | SHAPE | MOVE | GRIT |
+| EDIT, LAYER row | the sample under the engine (2.1) | | SAMPLE (OFF first) | BLEND | TUNE | LOOP | TONE |
 | SEL | **FILTER** | — | TYPE | CUTOFF | RESONANCE | ENV AMOUNT | DRIFT |
 | ENV | **AMP** | — | LEVEL | ATTACK | DECAY | SUSTAIN | RELEASE |
 | FX | **FX** (the chain) | COLOR → MEDIA → MOTION → SPACE | the row's EFFECT (OFF first) | AMOUNT | TONE | TIME | CHARACTER |
-| FX, SPACE row | the track's sends | | — | VERB SEND | ECHO SEND | PAN | WIDTH |
+| FX, SPACE row | the synth's sends | | — | VERB SEND | ECHO SEND | PAN | WIDTH |
 | ARP | **CHORD** | VOICE → KEY | PROGRESSION | VOICING | INVERSION | SPREAD | STRUM |
 | ARP, KEY row | | | PROGRESSION | KEY | MODE | CHANGE | RHYTHM |
-| HOME | **HOME** (4 lanes, the mixer) | LEVEL → VERB → ECHO → PAN | TEMPO | track 1 | track 2 | track 3 | track 4 |
+| HOME | **HOME** (the buddy list, the mixer) | LEVEL → VERB → ECHO → PAN | TEMPO | synth 1 | synth 2 | synth 3 | the row's bus: VERB RETURN · VERB TIME · ECHO FEEDBACK · WIDTH |
 | GLO | **GLOBAL** | VERB → ECHO → SONG → SETUP | the bus TYPE | AMOUNT | TONE | TIME / SIZE | CHARACTER |
-| GLO, SONG row | | | — | SWING | METRONOME | REC START | CLOCK |
-| GLO, SETUP row | | | — | THEME | KEYS | MIDI CH | VELOCITY |
+| GLO, SONG row | | | — | SWING | SWITCH (BAR · PATTERN · NOW) | METRONOME | REC START |
+| GLO, SETUP row | | | VELOCITY (KEYS · FIXED) | THEME | KEYS | MIDI CH | CLOCK |
 | LFO | **LFO** (build phase 4) | — | TARGET | RATE | DEPTH | SHAPE | FADE |
 
 **"The same knob does the same job"**, made concrete:
@@ -365,10 +394,10 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
   **K2 TONE** (dark … bright), **K3 TIME** (rate, size, time), **K4 CHARACTER** (the effect's own spice: flutter,
   feedback, dropouts). An effect with fewer macros leaves a slot empty (drawn "—"). Learning one effect teaches all.
 - On ROLL, K1 is always time (cursor or move), K2 pitch (view or transpose), K3 length, K4 fine time.
-- On HOME, Kn is track n.
+- On HOME, K1–K3 are synths 1–3 and K4 the row's shared bus.
 - FILTER and AMP keep the brief's parameters in the brief's order. FILTER's TYPE sits on ALGORITHM so CUTOFF gets K1,
   the knob nearest the screen; DRIFT (a slow random wander of the cutoff, up to ±1 octave) is an addition for the
-  fourth knob. AMP's LEVEL sits on ALGORITHM. The filter's envelope is the AMP envelope (one envelope per track,
+  fourth knob. AMP's LEVEL sits on ALGORITHM. The filter's envelope is the AMP envelope (one envelope per synth,
   ENV AMOUNT bipolar): one shape to learn, and a pad's filter opens with its swell, a pluck's closes with its decay.
 
 **SOUND's slots per engine** (2.1 has the engines):
@@ -398,10 +427,10 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 | playing + REC | a key | recorded: start to the nearest step, length rounded to steps (at least 1), pitch snapped; overdub. One REC pass is one undo step |
 | SEQ held | K1 / K2 / K3 / K4 | SHIFT (rotate the pattern) / TRANSPOSE (all notes, scale steps) / STEPS (1–64) / SPEED (1/16, 1/8, 1/4, 1/2 per step) |
 | SEQ held | ALGORITHM | FOLLOW: FREE · KEY · CHORD · ROOT · PLAYS CHORDS (4.6) |
-| SEQ held | OCT− / OCT+ | clear the pattern / double it (length × 2, the notes copied) |
+| SEQ held | OCT− / OCT+ | clear this synth's sequence / double it (length × 2, the notes copied) |
 
-Every track has its own pattern, length and speed, so tracks loop against each other (a 7-step pluck over a 16-step
-pad over a 64-step chord track at 1/4): the Eno tape-loop trick, for free. A note longer than the pattern is cut at
+Every synth has its own sequence, length and speed, so the three loop against each other (a 7-step pluck over a
+16-step pad over a 64-step chord synth at 1/4): the Eno tape-loop trick, for free. A note longer than the pattern is cut at
 its end. SNAP is on by default, and the ROLL then shows only the scale's rows (GLO > SETUP > KEYS = FREE turns it off, 4.6).
 
 ### 3.6 Held layers
@@ -409,20 +438,35 @@ its end. SNAP is on by default, and the ROLL then shows only the scale's rows (G
 | Held | Map on screen | Keys | Knobs / encoders | OCT− | OCT+ | Other |
 | --- | --- | --- | --- | --- | --- | --- |
 | a key (ROLL, CHORD) | the note's (slot's) values | — | 3.5 / 4.4 | delete | duplicate | |
-| SEQ | PATTERN | — | SHIFT, TRANSPOSE, STEPS, SPEED; ALGORITHM FOLLOW | clear | double | |
-| ARP | PROGRESSION | play chords live | K1 SLOT (the cursor) | clear USER progression | print the chords into the chord track's roll (its FOLLOW becomes FREE) | |
-| HOME | MUTES | the 4 lowest white keys mute / unmute tracks 1–4 (lit = sounding) | — | held 1 s (a ring fills): new song | — | |
+| SEQ | SEQUENCE | — | SHIFT, TRANSPOSE, STEPS, SPEED; ALGORITHM FOLLOW | clear | double | |
+| ARP | PROGRESSION | play chords live | K1 SLOT (the cursor) | clear USER progression | print the chords into the chord synth's roll (its FOLLOW becomes FREE) | |
+| HOME | PERFORM (3.6.1) | white keys 1–8: patterns; black keys 1–3: mute synths 1–3 | K1–K3 each synth's CUTOFF, K4 VERB RETURN; ALGORITHM the pattern's BARS | held 1 s (a ring fills): clear the pattern | — | |
 | GLO | HISTORY | — | — | undo | redo | |
 | EDIT | SOUND | — | — | INIT the sound | — | SAVE: the sound into the library (USER 01 …) |
 | FX | CHAIN | — | K1–K4: the AMOUNT of COLOR, MEDIA, MOTION, SPACE (its VERB SEND) | — | — | |
-| SAVE (1 s) | opens the MEMORY CARD page | — | K1 the block, K2 card 1 (yours) / 2 (demos) | held 1 s: erase the block (asks) | — | SAVE saves here (asks if it holds another song); PLAY loads (asks if the song now has unsaved edits) |
+| SAVE (1 s) | opens the DISCS window | — | K1 the disc, K2 yours / the demos | held 1 s: erase the disc (asks) | — | SAVE burns the song here (asks if it holds another); PLAY loads it (asks if the open song has unsaved edits); an empty disc loads as a new song |
 | SEL, ENV, LFO | the page's help card after 1 s | — | — | — | — | |
+
+#### 3.6.1 Patterns and performance
+
+A song has **8 patterns**. A pattern holds the three synths' sequences and a chord progression. The sounds, the
+effects, the key and the tempo belong to the song, so a switch changes the notes and the harmony, never the timbre:
+seamless while playing.
+
+| With HOME held | Action |
+| --- | --- |
+| white key 1–8 | go to that pattern: queued while playing (its key blinks), switched at the next bar, or at the end of the playing pattern, or at once (GLO > SONG > SWITCH); at once while stopped |
+| two or more white keys during one hold of HOME | a chain: 1, then 3, then 2 plays 1 → 3 → 2 and loops; one key alone in a hold is a plain switch and ends any chain |
+| an empty pattern's key | the pattern starts as a copy of the one playing, so a variation begins from what is there (clear it with OCT− held 1 s for a blank one) |
+| black key 1–3 (F♯3, G♯3, A♯3) | mute / unmute synth 1–3 (lit = sounding) |
+| K1–K3 / K4 | each synth's CUTOFF / the VERB RETURN: three filters and the space under four fingers |
+| ALGORITHM | the pattern's BARS (1, 2, 4, 8, 16): its length for SWITCH = PATTERN and for chains |
 
 ### 3.7 Presses per task (flagged: more than two)
 
 | Task | Presses | How |
 | --- | --- | --- |
-| play a note, pick a track, change the sound | 1 | a key, SELECT, PRESETS |
+| play a note, pick a synth, change the sound | 1 | a key, SELECT, PRESETS |
 | write a note | 1 | a key (ROLL, stopped) |
 | write a 4-note melody | 4 | four keys on ROLL: each one advances the cursor (5 from power-on, with SEQ) |
 | set a note's length / move / transpose / nudge / velocity | 2 | hold its key, turn K3 / K1 / K2 / K4 / ALGORITHM |
@@ -433,7 +477,7 @@ its end. SNAP is on by default, and the ROLL then shows only the scale's rows (G
 | undo / redo | 2 | GLO held, OCT− / OCT+ |
 | record live | 2 | REC, PLAY (or REC alone while playing) |
 | filter cutoff / type | 2 | SEL, K1 / ALGORITHM |
-| attack … release, track level | 2 | ENV, K1–K4 / ALGORITHM (or HOME, Kn) |
+| attack … release, synth level | 2 | ENV, K1–K4 / ALGORITHM (or HOME, K1–K3) |
 | engine | 2 | EDIT, ALGORITHM |
 | an effect's amount | 2 | FX held, K1–K4 |
 | reverb send | 2 | FX held, K4 |
@@ -443,21 +487,27 @@ its end. SNAP is on by default, and the ROLL then shows only the scale's rows (G
 | ⚑ echo type and macros | 3 | GLO, GLO, ALGORITHM / K1–K4 |
 | ⚑ swing, metronome, clock | 4 | GLO three times, K1–K4 (set once a song) |
 | tempo | 2 | HOME, ALGORITHM |
-| ⚑ every track's verb or echo send at once (the mixer) | 3–4 | HOME, HOME (VERB row) or HOME ×3 (ECHO), K1–K4. (One track's: FX held, K4, or the SPACE row) |
-| mute a track | 2 | HOME held, one of the 4 lowest white keys |
+| ⚑ every synth's verb or echo send at once (the mixer) | 3–4 | HOME, HOME (VERB row) or HOME ×3 (ECHO), K1–K3. (One synth's: FX held, K4, or the SPACE row) |
+| mute a synth | 2 | HOME held, black key 1–3 |
+| switch pattern (queued to the bar) | 2 | HOME held, white key 1–8 |
+| start a variation (copy into an empty pattern) | 2 | HOME held, an empty pattern's key |
+| ⚑ chain patterns | 1 + one per pattern | HOME held, the keys in turn |
+| the three cutoffs and the space, live | 2 | HOME held, K1–K4 |
+| ⚑ a sample layer under a sound | 3 | EDIT, EDIT (LAYER row), ALGORITHM (set once a sound) |
 | pick a progression; voicing, inversion, spread, strum | 2 | ARP, ALGORITHM / K1–K4 |
 | ⚑ key and mode | 3 | ARP, ARP, K1 / K2 (set once a song) |
 | write your own chord | 2 | ARP, a key |
 | print the chords into a roll | 2 | ARP held, OCT+ |
-| which track the chords play | 2 | SEQ held, ALGORITHM (PLAYS CHORDS) |
+| which synth the chords play | 2 | SEQ held, ALGORITHM (PLAYS CHORDS) |
 | save the song | 1 | SAVE |
 | save a sound | 2 | EDIT held, SAVE |
-| ⚑ save into another block | 4 | SAVE held 1 s, K1, SAVE, YES if it holds a song |
+| ⚑ save onto another disc | 4 | SAVE held 1 s, K1, SAVE, YES if it holds a song |
 | ⚑ load a song | 3–4 | SAVE held 1 s, K1, PLAY, YES if the open song has unsaved edits |
-| new song | 2 | HOME held, OCT− held 1 s |
+| ⚑ new song | 3 | SAVE held 1 s, K1 to an empty disc, PLAY |
 
-The flagged ones are either set once a song (key, mode, swing, clock), protected on purpose (saving over and loading
-from flash), or reach a deeper FX row; for that last one the held FX layer gives every row's AMOUNT in 2 presses.
+The flagged ones are either set once a song or a sound (key, mode, swing, a layer), protected on purpose (saving
+over and loading from flash), a chain (one press a pattern), or a deeper FX row; for that last one the held FX layer
+gives every row's AMOUNT in 2 presses.
 
 **Against the two reference firmwares** (counted from their code, from power-on, by the firmware survey):
 
@@ -476,7 +526,7 @@ What made those two hard, and the rule here that avoids it:
 - One encoder with four meanings, keys that mean other things in other views, and seven meanings on OCT+. Here each
   encoder has one job, and OCT− / OCT+ are only "take away" and "copy" (rules 2 and 4).
 - Hidden state: a second track that starts switched off, pages that edit the other sound with only a colour change,
-  modes that change how recording works. Here every track is always on, and the few settings that change how keys
+  modes that change how recording works. Here every synth is always on, and the few settings that change how keys
   behave (KEYS, SNAP) sit on one SETUP row and show on screen (rule 6).
 - Step entry two views deep, and 48–54 pages. Here the roll is one tap away and there are ten pages, one per button.
 - Silent destructive holds (REC held 2 s clears a track), one level of undo. Here clearing is OCT− with a visible
@@ -486,8 +536,8 @@ What made those two hard, and the rule here that avoids it:
 ### 3.8 LEDs (on or off; brightness is a bonus on the web)
 
 - **Keys:** lit = a tone of the chord sounding now (they move with the progression, so the harmony is visible on the
-  keyboard). On ROLL, the keys of the notes under the cursor blink. With HOME held, the 4 lowest white keys are lit
-  for the tracks that sound.
+  keyboard). On ROLL, the keys of the notes under the cursor blink. With HOME held: white keys 1–8 show the patterns
+  (the playing one lit, a queued one blinking), black keys 1–3 the synths that sound.
 - **Page buttons:** the open page's button is lit; a held layer's button blinks.
 - **PLAY** lit while playing, blinking on each bar's first beat. **REC** lit while recording, blinking when armed.
 - **OCT− / OCT+**: lit when the octave is below / above 0.
@@ -500,7 +550,8 @@ The song has one **key** (12) and one **mode**: AEOLIAN (default), DORIAN, PHRYG
 plus two for melodies only (scale snap; the chord presets use the modes above): MINOR PENTATONIC, MAJOR PENTATONIC.
 A **progression** is up to 16 slots; each slot is a chord (root as a degree of the mode, with an optional semitone
 offset for borrowed roots; a quality; a bass) and a length (half-bars, 1–16). It loops on its own length, apart from
-the tracks' patterns. The default song is A AEOLIAN, FIRST SNOW, 72 BPM.
+the synths' sequences. **Each pattern has its own progression** (a preset or a USER one), so switching pattern can
+change the harmony; key and mode belong to the song. The default song is A AEOLIAN, FIRST SNOW, 72 BPM.
 
 ### 4.2 The presets
 
@@ -528,7 +579,7 @@ cliché; the Andalusian cadence, <https://en.wikipedia.org/wiki/Andalusian_caden
 | 12 | LOW CLOUDS | Aeolian, tonic pedal | i(add9) · ♭VImaj7/1 · ♭VII/1 · i(add9), 1 each | Am(add9) · Fmaj7/A · G/A · Am(add9) | WIDE, BASS PEDAL |
 | 13 | SNOWFIELD | Aeolian | ♭VImaj7 · i(add9), 2 each | Fmaj7 · Am(add9) | WIDE |
 | 14 | STATIC | Aeolian, no thirds | i(sus2) · ♭VII(sus2) · ♭VI(sus2) · ♭VII(sus2), 1 each | Asus2 · Gsus2 · Fsus2 · Gsus2 | OPEN |
-| 15 | MEMORY CARD | Ionian, borrowed iv | Imaj9 · iii7 · IVmaj7 · iv6, 1 each | Amaj9 · C♯m7 · Dmaj7 · Dm6 | OPEN |
+| 15 | MIXTAPE | Ionian, borrowed iv | Imaj9 · iii7 · IVmaj7 · iv6, 1 each | Amaj9 · C♯m7 · Dmaj7 · Dm6 | OPEN |
 | 16 | NIGHT DRIVE | Aeolian (Andalusian, softened) | i(add9) · ♭VII6 · ♭VImaj7 · V7sus4–V7, 1 · 1 · 1 · ½+½ | Am(add9) · G6 · Fmaj7 · E7sus4–E7 | WIDE |
 | U1–U4 | USER | any | your own (4.4) | | |
 
@@ -557,10 +608,10 @@ m7, m9, m11, m(add9), m6, m(maj7), maj7, maj9, 6/9, add9, sus2, sus4, 7sus4, 7, 
 - **STRUM** (K4): −250 … +250 ms between successive voices; positive strums up, negative down, 0 together.
 - **BASS** (a held slot's K4): ROOT, 3RD, 5TH or PEDAL (the key's tonic, whatever the chord).
 - **RHYTHM** (KEY row K4): HOLD (each chord sustains its length), PULSE 1/4, PULSE 1/8 (re-struck), ARP UP, DOWN,
-  UP-DOWN, RANDOM (at the playing track's SPEED).
+  UP-DOWN, RANDOM (at the playing synth's SPEED).
 - **CHANGE** (KEY row K3): every slot's length ×1/2, ×1, ×2, ×4.
 
-At most 6 voices a chord (5 tones + a bass). The chord track's voices come from the voice pool (2.2).
+At most 6 voices a chord (5 tones + a bass), from the 12 of the pool (2.2).
 
 ### 4.4 Step your own
 
@@ -575,13 +626,13 @@ next USER slot, named "USER 1 · FIRST SNOW"). Then the same gestures as the ROL
 | ARP held + K1 | the slot cursor |
 | playing + REC | keys play chords live (one key = one chord, as above) and are written into the slots at the bar they fall in |
 
-### 4.5 Driving a track
+### 4.5 Driving a synth
 
-Any track whose FOLLOW (SEQ held + ALGORITHM) is **PLAYS CHORDS** plays the progression: each slot voiced by
+Any synth whose FOLLOW (SEQ held + ALGORITHM) is **PLAYS CHORDS** plays the progression: each slot voiced by
 VOICING, INVERSION, SPREAD and BASS, struck with STRUM, in the RHYTHM. Its own ROLL then shows the chords as
 blocks, read-only; ARP held + OCT+ prints them into it as ordinary notes (FOLLOW becomes FREE) for hand editing.
-The default song has track 1 on PLAYS CHORDS (a pad), track 2 a melody on KEY, track 3 a bass on ROOT, track 4 a
-pluck on CHORD.
+The default song has synth 1 on PLAYS CHORDS (a pad), synth 2 a melody on KEY (a felt piano), synth 3 a pluck or a
+bass on ROOT.
 
 ### 4.6 Scale snap and chord following
 
@@ -600,7 +651,7 @@ Sets are 12-bit pitch-class masks.
 | FOLLOW KEY (default) | each note plays as Snap(p, S′) of the chord sounding at the note's start, so a melody written over Am follows the G♯ of an E7 |
 | FOLLOW CHORD | each note plays as Snap(p, C): every note lands on a chord tone, so a melody becomes an arpeggio of each chord |
 | FOLLOW ROOT | the pattern moves with the chord: each note shifts by the scale steps from the progression's first root to the root now, then Snap(p, S′). For basslines and ostinati |
-| FOLLOW PLAYS CHORDS | the track plays the progression (4.5) |
+| FOLLOW PLAYS CHORDS | the synth plays the progression (4.5) |
 | the ROLL | with SNAP on, one row per tone of S; rows of C at the cursor are marked; the root's rows are labelled in ink. A note outside S (a G♯ written over E7) sits on the row of the tone it replaces, marked ♯ |
 | the LEDs | the keys of C now are lit |
 
@@ -612,178 +663,229 @@ white keys are the mode's degrees from the tonic up, the 11 black keys the chord
 ### 4.7 Data
 
 A slot is 4 bytes: root degree (3 bits) and offset (2), quality (5), bass (2), length (4), flags. A progression is
-16 slots, 64 bytes; the 16 presets are a table in flash, the 4 USER progressions are saved with the song.
+16 slots, 64 bytes; the 16 presets are a table in flash, the 4 USER progressions are saved with the song, and each
+pattern stores which progression it plays.
 
 ## 5. The screen
 
-### 5.1 The look, from the moodboard
+### 5.1 The look
 
-Two families of images: a soft cream-and-pastel plugin UI (paper cards, rounded knobs, presets as physical media,
-iridescent pastel gradients), and snowy late-90s console scenes (fog, dithered textures, low-poly silhouettes, one
-warm light in the dark: a campfire, headlights, a tower's beacon, a vending machine; a crisp white pixel HUD font
-with a dark outline).
+Three sources, one desktop:
 
-**Taken:** fog and snow as the texture, ordered dithering as the grain, **one warm light** as the only accent, a pixel
-HUD font for small text, a soft grotesk for names and values, presets as save blocks on a memory card with little
-animated icons.
-**Left:** the plugin's layout, its floppy-disk labels, logos and Japanese subtitles (its signature, too close to
-copy), and the game's characters and vehicles. No brand, console or product names or marks anywhere in the product.
+- **The moodboard's snow and fog** (the late-90s console scenes) give the wallpaper and the textures: dithered fog
+  gradients, falling snow, low-poly silhouettes, and one warm light in the dark (a campfire, headlights, a tower's
+  beacon, a vending machine).
+- **The moodboard's pastel plugin and its media** give the cream paper and the iridescent pastel sheens, and the idea
+  of presets as objects you hold. Here **sounds are cassettes and songs are CDs**.
+- **The late-90s desktop the owner asked for:**
+  - every page is a window with a title bar, bevelled buttons, sunken fields, sliders, check boxes and a scroll bar;
+  - there are segmented progress bars, message boxes, tooltips, and a taskbar with a clock;
+  - **HOME is a messenger's buddy list** (status dots, a line under each name), notices slide up from the corner,
+    and a refused action nudges the window.
 
-### 5.2 Pixels: four tones, dithered
+All of it is drawn as our own, generic versions:
+- no operating system's or messenger's name, logo, flag, butterfly, icons or sounds;
+- no brand on a cassette or a CD;
+- none of the plugin's layout, labels or Japanese subtitles, and none of the game's characters or vehicles.
 
-The FM-1's LCD is colour (RGB565). Demake draws in **2 bits a pixel, four tones**: paper, fog, ink and light. The
-framebuffer is 240 × 240 × 2 bits = 14,400 B (in the pool). Each 8-line strip that changed goes out through a 4-entry
-RGB565 table (3,840 B of strip buffer), as MONO2K's 1-bit strips do; the SPI cost per strip is the same.
+### 5.2 Pixels: 16 colours, dithered
 
-**Dither:** a 4 × 4 Bayer matrix between neighbouring tones (paper ↔ fog, fog ↔ ink) gives 16 steps per pair: fog
-gradients, filled curves, muted lanes, the pictures. **Never behind small text:** text sits on flat paper or flat fog.
-**The light tone** marks one thing at a time (the cursor or the playhead, the chord now, REC), at most two places on
-a screen, as a single lamp in the fog.
+- **Framebuffer:** 4-bit indexed, 240 × 240 × 4 bits = 28,800 B in the pool.
+- **Output:** each 8-line strip that changed goes out through a 16-entry RGB565 table (a 3,840 B strip buffer), as
+  MONO2K's strips do, so the SPI cost per strip is the same.
+- **Precedent:** CoralFlower already draws an 8-bit indexed framebuffer with ordered dithering on this LCD; 4 bits is
+  half that.
 
-| THEME (GLO > SETUP) | paper | fog | ink | light |
-| --- | --- | --- | --- | --- |
-| SNOW (default) | `#D8D6D0` | `#9A9893` | `#2A2B2F` | `#F0A33C` amber |
-| NIGHT | `#1B1C20` | `#45464D` | `#E2DED6` | `#F29A36` ember |
-| VENDING | `#0E1428` | `#28397E` | `#D2DAFF` | `#73A0FF` blue |
-| PEACH | `#F1E5D6` | `#DDB197` | `#3A2E29` | `#C9623F` terracotta |
+| # | Role | SNOW (default) |
+| --- | --- | --- |
+| 0 | paper: window backgrounds | `#F2F0EA` |
+| 1 | highlight: a bevel's lit edge | `#FFFFFF` |
+| 2 | face: buttons, chrome | `#C9C6C0` |
+| 3 | shadow: a bevel's dark edge | `#8C8984` |
+| 4 | dark: outer edges, grid lines | `#303236` |
+| 5 | ink: text | `#16171A` |
+| 6 | fog light | `#DEDCD7` |
+| 7 | fog | `#B3B1AC` |
+| 8 | fog deep | `#74747A` |
+| 9 | title bar, deep | `#1F2C66` |
+| 10 | title bar, light | `#4F7FB8` |
+| 11 | **light**: the one warm accent | `#F0A33C` |
+| 12 | alert: REC, a tail light | `#C8413B` |
+| 13 | tooltip | `#FFF4C4` |
+| 14 | sheen pink: CDs, the selection | `#E8B4CF` |
+| 15 | sheen mint: CDs, playing | `#AEE3CF` |
 
-The values are first picks from the images, to be checked on the FM-1's panel (its gamma and viewing angle) and in
-the browser.
+**Themes** (GLO > SETUP > THEME) keep the roles and move the colours:
+- SNOW (above);
+- NIGHT: dark chrome, an ember title bar, snow-white text;
+- VENDING: deep blue chrome, the vending machine's glow for the title bar;
+- PEACH: the plugin's cream and peach, a terracotta title bar.
 
-### 5.3 Type
+They are first picks from the images, checked on the FM-1's panel (gamma, viewing angle) and in the browser.
 
-| Role | Face | Size | Rendering |
+**Dithering:** a 4 × 4 Bayer matrix between neighbouring entries.
+- **Where:** the title bar's gradient (9 → 10), the fog (6 → 7 → 8), a CD's sheen (14 ↔ 15 ↔ paper), filled curves.
+- **Never behind text:** text sits on flat paper, face or title colour.
+- **The light (11)** marks one thing at a time: the cursor or the playhead, the chord now, a queued pattern. It
+  appears in at most two places on a screen.
+
+### 5.3 Type: Tomato Grotesk, everywhere
+
+The owner holds the licence, so it is the only face. The OTFs stay out of the repo (`reference/`, git-ignored);
+`tools/gen_font.py` reads them from a local path, and only the generated bitmaps are committed.
+
+| Role | Weight | Size | Rendering |
 | --- | --- | --- | --- |
-| labels: knob names, row names, note names, hints | **PIX**, our own pixel font (5 × 7 caps, digits, ♭ ♯ ▶ ■ ● ↑ ↓; advance 6 px), drawn as ASCII art in `tools/gen_font.py` | 7 px | 1 bit; an outlined variant (1 px of ink or paper around) for text over pictures, the HUD look |
-| values in the knob cells, the header's page and sound | the display face, SemiBold | 15 px | 2-bit, with fog as the anti-aliasing tone |
-| the big name or chord on a stage, the boot | the display face, Bold | 28 px (36 on the boot) | 2-bit |
+| labels, lists, the taskbar, tooltips, note names | Medium | 11 px | 1 bit, hinted by the generator (drawn at 8×, stems snapped to whole pixels): the crisp system-font look |
+| values in the fields, window titles | SemiBold | 15 px | 2-bit anti-aliasing on the palette's ramps (ink → shadow → face; white → title light → title deep) |
+| the big name or chord on a stage, a message box's headline | Bold | 28 px | 2-bit |
+| the boot | Black | 36 px | 2-bit |
 
-One size per role, every capital between the same two rows (the owner asked for this consistency on MONO2K).
-Text is fitted with `text_fit` (tighter tracking, then a shorter string), never guessed.
+- **One size per role**, with every capital between the same two rows.
+- **Fitting:** text is fitted with `text_fit` (tighter tracking, then a shorter string), never guessed.
+- **On the website**, the emulator shows the firmware's own bitmaps. Using the OTF as a web font for the site's
+  pages follows the licence's web terms.
 
-**The display face: Tomato Grotesk, if its licence allows.** The files read "Copyright © 2020 Andrea Biggio & The
-Designers Foundry. All rights reserved" (their name table). Shipping glyphs rendered from it inside a distributed
-firmware, and drawing it on a public website, needs a licence from The Designers Foundry that covers apps or
-embedding; the font files themselves never go into the repo (they are git-ignored with the rest of `reference/`).
-If the owner's licence does not cover it, the fallback is an OFL face with the same wide, soft shapes; candidates to
-compare in renders: Bricolage Grotesque and Familjen Grotesk (both on Google Fonts under the OFL; check the licence
-file when one is chosen). The generator renders whichever face is installed locally, so the choice changes no code.
-
-### 5.4 The grid
+### 5.4 The grid: a window and a taskbar
 
 | Band | Rows (px) | What is there | Rule |
 | --- | --- | --- | --- |
-| HEADER | 0–15 | the four track tabs (the current one inverted), the page · the sound's name, ▶ ■ ●, the tempo, the chord now (light) | a fog gradient behind, text on a flat strip |
-| KNOBS | 16–55 | four cells of 60 px, in K1–K4's order, at the knobs' height | label (PIX) on top, value (display 15) below, a 1-px bar of the value at the cell's foot |
-| STAGE | 56–215 | the page's picture: the roll, the lanes, a curve, the chain, the chord | held windows (maps, the memory card, questions) sit over it with a 2-px shadow |
-| FOOTER | 216–239 | the ALGORITHM cell (left, 88 px: label and value), then what OCT− / OCT+ do now | hints change with what is held ("− DEL  + DUP") |
+| TITLE BAR | 0–15 | the synth's cassette icon (SELECT's synth), the page — the sound's name, three small window boxes (decorative), on the gradient | white 15 px text on the title colour |
+| FIELDS | 16–55 | four sunken fields of 60 px under K1–K4, in their order, at the knobs' height | label (11 px) above, value (15 px) inside, a slider groove and thumb at the foot |
+| STAGE | 56–211 | the window's content | message boxes, held maps, the cassette deck and DISCS open over it as windows of their own, with a 2-px drop shadow |
+| TASKBAR | 212–239 | left: the ALGORITHM button (its label and value), on the ALGORITHM encoder's side; then the S1 S2 S3 task buttons (the current one pressed in, a status dot each); right: the tray (▶ ■ ●, the tempo as the clock, the chord now in the light colour) | everything here is 11 px |
 
-The empty shell, its bands and the text audit come first (build phase 0), before any page.
+- **Tooltips:** pale yellow balloons above the taskbar say what a held key or button does now ("OCT− delete ·
+  OCT+ duplicate").
+- **Notices:** a small window slides up from the tray's corner for 1.5 s, messenger style ("S2 → pattern 3",
+  "Burned to disc 4", "Undo: note deleted").
+- **Nudge:** when something is refused (no voice free, a pattern full, a save while playing), the window shakes 4 px
+  for half a second, with a notice.
+- **Message boxes:** the only questions (burning over another disc, erasing one) are a small window with a headline,
+  a line, and two bevelled buttons labelled with their keys: `[ YES · OCT+ ]  [ NO · OCT− ]`.
+
+The empty shell, the chrome and the text audit come first (phase 0), before any page.
 
 ### 5.5 Icons and motion
 
-- **Save-block icons:** 16 × 16, three frames, four tones, our own pixel art (ASCII art in `tools/gen_icons.py`):
-  snowflake, pine, beacon tower, campfire, vending can, power line, cassette, floppy, moon, cloud, bell, key, string,
-  flute, wave, truck. One per sound category and one per song; they cycle at 4 frames a second where they are shown.
-- **Snow:** on HOME while playing, up to 12 one-pixel flakes drift down the fog of the header and the lanes' margins.
-- **Page change:** a four-frame dither dissolve.
-- **Boot:** the wordmark resolves out of the fog while snow falls, ~1.5 s, skipped by any key.
-- **Saving:** "SAVING… DON'T SWITCH OFF" with a block bar filling.
+- **Cassettes (sounds):**
+  - 16 × 16 icons in 16 colours, three frames: the reels turn while the sound plays.
+  - The label's colour gives the category (PAD, KEYS, PLUCK, DRONE, BASS, TEXTURE).
+  - Turning PRESETS opens the **cassette deck**: the tape slides in, its label lettered in Tomato, the reels spinning
+    while you play.
+- **CDs (songs):** a jewel case with the disc in iridescent dither. The DISCS window lists them as icons; SAVE
+  "burns" with a segmented progress bar ("BURNING… DON'T SWITCH OFF").
+- **The buddy list (HOME):** a status dot per synth (● playing, ○ muted, ◐ queued), its cassette as the picture, and
+  a line under its name saying what it plays.
+- **Wallpaper:** our own snowy night in fog dither, behind the windows on HOME and on the boot.
+- **Snow:** on HOME while playing, a dozen one-pixel flakes drift over the wallpaper.
+- **Opening a page:** a window outline grows from the side of its button over four frames.
+- **Boot:** a desktop starting up (the wordmark, a progress bar, snow), ~1.5 s, skipped by any key.
 
 ### 5.6 Sketches
 
-One character is about 6 × 8 px; `▓` a note, `█` a held note, `▌` the cursor (light), `░ ▒` dither, `•` a chord
-tone's row. The real ROLL has 20 rows of 8 px on its stage; the sketches show fewer.
+One character is about 6 × 8 px. The marks:
+- `▓` the title bar's gradient;
+- `▕ ▏` a sunken field, `─■─` a slider, `[ ]` a bevelled button;
+- `▓▓▓▓` a note, `████` a held note, `▌` the cursor (light);
+- `░ ▒` dither, `•` a chord tone's row.
 
-**ROLL, stopped, nothing held**
+The real stages have more rows than the sketches.
+
+**ROLL, stopped.** The scroll bar on the right is VIEW (pitch); its thumb is the window shown.
 
 ```
 ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  ROLL · FELT PIANO    ■  72 │
-│░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░ Am9  │
-├─────────┬─────────┬─────────┬──────────┤
-│CURSOR   │VIEW     │LENGTH   │FINE      │
-│ 1.3     │ A3–C5   │ 1/8     │ 0        │
-├────┬────┴─────────┴─────────┴──────────┤
-│    │1·······2·······3·······4·······   │
-│ C5•│                                   │
-│ B4•│                                   │
-│▐A4▌│▓▓▓▓▓▓▓▓            ▓▓▓▓           │
-│ G4•│                                   │
-│ F4 │                                   │
-│ E4•│        ▓▓▓▓                       │
-│ D4 │            ▌                      │
-│ C4•│            ▌       ▓▓▓▓▓▓▓▓       │
-│ B3•│            ▌                      │
-│▐A3▌│▓▓▓▓▓▓▓▓▓▓▓▓▌▓▓▓▓▓▓▓               │
-├────┴───────────────────────────────────┤
-│ZOOM 16   ▕██▒▒▒▒▒▒▏         A AEOLIAN  │
+│▓▓ ▣ ROLL — FELT PIANO ▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
+│ CURSOR    VIEW      LENGTH    FINE     │
+│▕ 1.3   ▏ ▕ A3–C5 ▏ ▕ 1/8   ▏ ▕ 0     ▏ │
+│ ──■────   ───■───   ■──────   ───■───  │
+├────┬─────────────────────────────┬─────┤
+│    │1·······2·······3·······4····│  ▲  │
+│ C5•│                             │  █  │
+│ B4•│                             │  █  │
+│▐A4▌│▓▓▓▓▓▓▓▓            ▓▓▓▓     │  ░  │
+│ G4•│                             │  ░  │
+│ E4•│        ▓▓▓▓                 │  ░  │
+│ D4 │            ▌                │  ░  │
+│ C4•│            ▌       ▓▓▓▓▓▓▓▓ │  ░  │
+│▐A3▌│▓▓▓▓▓▓▓▓▓▓▓▓▌▓▓▓▓▓▓▓         │  ▼  │
+├────┴─────────────────────────────┴─────┤
+│[ZOOM 16 ] [▪S1][ S2 ][ S3 ]  ■ 72  Am9 │
 └────────────────────────────────────────┘
 ```
 
-The footer's strip is the whole pattern (64 steps, 1 px each) with the visible window in ink.
-
-**ROLL, a key held (A4 at step 1.1)**
+**ROLL, a key held** (A4 at step 1.1): the fields edit that note, and a tooltip names the two verbs.
 
 ```
 ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  ROLL · FELT PIANO    ■  72 │
-│░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░▒▒░░ Am9  │
-├─────────┬─────────┬─────────┬──────────┤
-│MOVE     │PITCH    │LENGTH   │NUDGE     │
-│ 1.1     │ A4      │ 2/4     │ +1/8     │
-├────┬────┴─────────┴─────────┴──────────┤
-│    │1·······2·······3·······4·······   │
-│ B4•│                                   │
+│▓▓ ▣ ROLL — FELT PIANO ▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
+│ MOVE      PITCH     LENGTH    NUDGE    │
+│▕ 1.1   ▏ ▕ A4    ▏ ▕ 2/4   ▏ ▕ +1/8  ▏ │
+│ ■──────   ───■───   ──■────   ────■──  │
+├────┬───────────────────────────────────┤
 │▐A4▌│████████            ▓▓▓▓           │
 │ G4•│                                   │
-│ F4 │                                   │
 │ E4•│        ▓▓▓▓                       │
+│    │   ┌─────────────────────────────┐ │
+│    │   │ OCT− delete · OCT+ duplicate│ │
+│    │   └─────────────────────────────┘ │
 ├────┴───────────────────────────────────┤
-│VELOCITY 96            − DEL   + DUP    │
+│[VELO 96 ] [▪S1][ S2 ][ S3 ]  ■ 72  Am9 │
 └────────────────────────────────────────┘
 ```
 
-**HOME**
+**HOME, the buddy list.** Pattern 1 plays and pattern 5 is queued; synth 3 is muted.
 
 ```
 ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  HOME                 ▶  72 │
-│░░▒▒░░  ·    ░░▒▒░░▒▒   ·  ░░▒▒░░▒ Am9  │
-├─────────┬─────────┬─────────┬──────────┤
-│LEVEL 1  │LEVEL 2  │LEVEL 3  │LEVEL 4   │
-│ 80      │ 64      │ 72      │ 50       │
-├─────────┴─────────┴─────────┴──────────┤
-│1 ✻ SNOW PAD     CHORDS ▬▬▬▬▬▬▬│▬▬▬▬▬▬  │
-│2 ♪ FELT PIANO   KEY    ·▬·▬▬··│▬·▬··▬  │
-│3 ▲ TOWER DRONE  ROOT   ▬▬▬▬▬▬▬│▬▬▬▬▬▬  │
-│4 ✶ GLASS PLUCK  CHORD  ░░▒░░▒░│░▒░░▒░  │
-│                                        │
+│▓▓ ◆ HOME — 3 synths online ▓▓▓▓▓ ▫ ▫ ▫ │
+│ LEVEL 1   LEVEL 2   LEVEL 3   VERB     │
+│▕ 80    ▏ ▕ 64    ▏ ▕ 72    ▏ ▕ 40    ▏ │
+├────────────────────────────────────────┤
+│ ● ▣ SNOW PAD         ▬▬▬▬▬▬│▬▬▬▬▬▬▬▬   │
+│      plays the chords                  │
+│ ● ▣ FELT PIANO       ·▬·▬▬·│▬·▬··▬·▬   │
+│      a melody, on the key              │
+│ ○ ▣ GLASS PLUCK      ░░▒░░▒│░▒░░▒░░▒   │
+│      muted                             │
+│ PATTERNS  ▐1▌  2   3   4  ◐5   ·   ·   │
 │ Am(add9) │ Fmaj7 │▐Cmaj7▌│ Gsus2       │
 ├────────────────────────────────────────┤
-│TEMPO 72     FIRST SNOW · A AEOLIAN     │
+│[TEMPO 72] [▪S1][ S2 ][ S3 ]  ▶ 72 Cmaj7│
 └────────────────────────────────────────┘
 ```
 
-Each lane: the sound's icon and name, its FOLLOW, its pattern in miniature with the playhead (light). Below: the
-progression with the chord now lit. Tapping HOME again turns the knob row into VERB, ECHO and PAN for the four tracks.
+**A notice** sliding up from the tray, after HOME held + white key 3.
 
-**SOUND (SAMPLE)**
+```
+│                     ┌─────────────────┐│
+│                     │▓ notice ▓▓▓▓▓ ▫ ││
+│                     │ ▣ S2 → pattern 3││
+│                     │   at the bar    ││
+│                     └─────────────────┘│
+├────────────────────────────────────────┤
+│[TEMPO 72] [▪S1][ S2 ][ S3 ]  ▶ 72 Cmaj7│
+└────────────────────────────────────────┘
+```
+
+**SOUND, the cassette deck** (turning PRESETS, or the SOUND page of a SAMPLE sound).
 
 ```
 ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  SOUND · FELT PIANO   ▶  72 │
-├─────────┬─────────┬─────────┬──────────┤
-│SAMPLE   │START    │LOOP     │GRIT      │
-│ 03 FELT │ 12 ms   │ SHORT/4 │ 22K+ADPCM│
-├─────────┴─────────┴─────────┴──────────┤
-│  ▁▃▆█▇▆▅▅▄▄▄▃▃▃▃▃▂▂▂▂▂▂▂▂▁▁▁▁▁▁▁       │
-│  ▲              ▕▒▒▒loop▒▒▒▏           │
-│                                        │
-│  ┌──┐ KEYS · C4 · 22.05 kHz · 1.2 s    │
-│  └──┘                                  │
+│▓▓ ▣ SOUND — FELT PIANO ▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
+│ SAMPLE    START     LOOP      GRIT     │
+│▕ FELT  ▏ ▕ 12 ms ▏ ▕ SHORT ▏ ▕ 22K+AD▏ │
 ├────────────────────────────────────────┤
-│ENGINE SAMPLE   PAD · DRONE · PLUCK     │
+│   ┌──────────────────────────────┐     │
+│   │ ┌──────────────────────────┐ │     │
+│   │ │ FELT PIANO          KEYS │ │     │
+│   │ └──────────────────────────┘ │     │
+│   │    (o)   ▭▭▭▭▭▭▭▭▭▭   (o)    │     │
+│   └──────────────────────────────┘     │
+│  ▁▃▆█▇▆▅▅▄▄▄▃▃▃▃▂▂▂▂▂▁▁  ▕▒ loop ▒▏    │
+├────────────────────────────────────────┤
+│[ENGINE SAMPLE] [▪S1][ S2 ][ S3 ]  ▶ 72 │
 └────────────────────────────────────────┘
 ```
 
@@ -791,87 +893,92 @@ progression with the chord now lit. Tapping HOME again turns the knob row into V
 
 ```
 ┌────────────────────────────────────────┐  ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  FILTER · SNOW PAD    ▶  72 │  │▐1▌ 2  3  4  AMP · SNOW PAD       ▶  72 │
-├─────────┬─────────┬─────────┬──────────┤  ├─────────┬─────────┬─────────┬──────────┤
-│CUTOFF   │RESO     │ENV AMT  │DRIFT     │  │ATTACK   │DECAY    │SUSTAIN  │RELEASE   │
-│ 1.2 kHz │ 30      │ +40     │ 20       │  │ 1.4 s   │ 2.0 s   │ 80      │ 4.5 s    │
-├─────────┴─────────┴─────────┴──────────┤  ├─────────┴─────────┴─────────┴──────────┤
+│▓▓ ▣ FILTER — SNOW PAD ▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │  │▓▓ ▣ AMP — SNOW PAD ▓▓▓▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
+│ CUTOFF    RESO      ENV AMT   DRIFT    │  │ ATTACK    DECAY     SUSTAIN   RELEASE  │
+│▕ 1.2 kHz▏▕ 30    ▏ ▕ +40   ▏ ▕ 20    ▏ │  │▕ 1.4 s ▏ ▕ 2.0 s ▏ ▕ 80    ▏ ▕ 4.5 s ▏ │
+├────────────────────────────────────────┤  ├────────────────────────────────────────┤
 │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▄▅▆▄▃▂▁                │  │           ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄              │
 │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▂▁              │  │       ▄▀▀              ▀▄              │
 │▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▓▂▁           │  │    ▄▀                    ▀▄▄           │
 │                ▲ cutoff, drifting      │  │  ▄▀          ● now           ▀▀▄▄▄     │
 ├────────────────────────────────────────┤  ├────────────────────────────────────────┤
-│TYPE LP24   LP12 · BP · HP · OFF        │  │LEVEL 80                                │
+│[TYPE LP24] [▪S1][ S2 ][ S3 ]  ▶ 72  Am9│  │[LEVEL 80] [▪S1][ S2 ][ S3 ]  ▶ 72  Am9 │
 └────────────────────────────────────────┘  └────────────────────────────────────────┘
 ```
 
-**FX**
+**FX.** The check boxes show which rows are on; the open row is framed in the light colour.
 
 ```
 ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  FX · FELT PIANO      ▶  72 │
-├─────────┬─────────┬─────────┬──────────┤
-│AMOUNT   │TONE     │TIME     │CHARACTER │
-│ 40      │ dark 30 │ wow 0.6 │ flutter 2│
-├─────────┴─────────┴─────────┴──────────┤
-│ COLOR    ● CRUSH         ▮▮▯▯▯▯        │
-│▐MEDIA    ● TAPE          ▮▮▮▮▯▯       ▌│
-│ MOTION   ○ CHORUS (off)  ▮▮▮▯▯▯        │
-│ SPACE      VERB 30 · ECHO 10 · PAN C   │
+│▓▓ ▣ FX — FELT PIANO ▓▓▓▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
+│ AMOUNT    TONE      TIME      CHARACTER│
+│▕ 40    ▏ ▕ 30    ▏ ▕ 0.6 Hz▏ ▕ 2     ▏ │
 ├────────────────────────────────────────┤
-│EFFECT TAPE    CASSETTE · VHS · OFF     │
+│ [x] COLOR    CRUSH          ▮▮▯▯▯▯     │
+│▐[x] MEDIA    TAPE           ▮▮▮▮▯▯    ▌│
+│ [ ] MOTION   CHORUS         ▮▮▮▯▯▯     │
+│     SPACE    VERB 30 · ECHO 10 · PAN C │
+├────────────────────────────────────────┤
+│[EFFECT TAPE] [▪S1][ S2 ][ S3 ]  ▶ 72   │
 └────────────────────────────────────────┘
 ```
 
-**CHORD**
+**CHORD.** The progression is a row of buttons, the one playing (or the cursor, stopped) pressed in; the strip
+below shows the voicing's notes over two octaves.
 
 ```
 ┌────────────────────────────────────────┐
-│▐1▌ 2  3  4  CHORD · FIRST SNOW   ▶  72 │
-├─────────┬─────────┬─────────┬──────────┤
-│VOICING  │INVERT   │SPREAD   │STRUM     │
-│ WIDE    │ AUTO    │ 2 oct   │ ↑ 60 ms  │
-├─────────┴─────────┴─────────┴──────────┤
-│              Am(add9)                  │
-│ ┌─────────┬─────────┬─────────┬──────┐ │
-│ │▐i add9 ▌│VI maj7  │III maj7 │VII s2│ │
-│ └─────────┴─────────┴─────────┴──────┘ │
+│▓▓ ♫ CHORD — FIRST SNOW ▓▓▓▓▓▓▓▓▓ ▫ ▫ ▫ │
+│ VOICING   INVERT    SPREAD    STRUM    │
+│▕ WIDE  ▏ ▕ AUTO  ▏ ▕ 2 oct ▏ ▕ ↑ 60ms▏ │
+├────────────────────────────────────────┤
+│               Am(add9)                 │
+│ [▐i add9▌][VI maj7][III maj7][VII sus2]│
 │  ▕ ▏▕ ▏▕█▏▕ ▏▕ ▏▕█▏▕ ▏▕ ▏▕█▏▕ ▏▕█▏▕ ▏  │
 ├────────────────────────────────────────┤
-│PROG FIRST SNOW       A AEOLIAN · T1    │
+│[PROG FIRST SNOW] [▪S1][ S2 ][ S3 ]  ▶  │
 └────────────────────────────────────────┘
 ```
 
-The keyboard strip shows the voicing's notes over two octaves; the slot playing (or the cursor, stopped) is lit.
-
-**MEMORY CARD** (SAVE held 1 s)
+**DISCS** (SAVE held 1 s): your songs as CDs, burning one.
 
 ```
 ┌────────────────────────────────────────┐
-│  MEMORY CARD 1               11 FREE   │
+│▓▓ ◎ DISCS — 4 of 15 · 41 KB free ▓ ▫ ▫ │
 ├────────────────────────────────────────┤
-│   ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐         │
-│   │✻ │  │▲ │  │♪ │  │✶ │  │  │         │
-│   └──┘  └──┘  └──┘  └──┘  └──┘         │
-│   ┌──┐  ┌──┐  ┌──┐  ┌──┐  ┌──┐         │
-│   │  │  │  │  │  │  │  │  │  │         │
-│   └──┘  └──┘  └──┘  └──┘  └──┘         │
-│   (3 rows of 5: 15 blocks)             │
+│   (o)     (o)     (o)     (o)     ( )  │
+│  FIRST   EMBERS  NIGHT   STATIC  empty │
+│  SNOW            DRIVE                 │
+│   ( )     ( )     ( )     ( )     ( )  │
 │                                        │
-│ ▶ FIRST SNOW · 4 tracks · 72 BPM       │
+│  ▶ FIRST SNOW · 3 synths · 8 patterns  │
+│  [■■■■■■■■■■■▯▯▯▯▯▯▯▯▯] burning… 55 %  │
 ├────────────────────────────────────────┤
-│SAVE here   PLAY load   K2 card 1 / 2   │
+│[SAVE burn] [PLAY load] [K2 yours/demos]│
 └────────────────────────────────────────┘
 ```
 
-Card 2 holds the demo songs (read-only); a demo saved goes into a block of card 1.
+**A message box**, the only kind of question.
+
+```
+│     ┌────────────────────────────┐     │
+│     │▓ Burn over a disc ▓▓▓▓▓▓ ▫ │     │
+│     │  !  EMBERS is on disc 2.   │     │
+│     │     Burn FIRST SNOW over?  │     │
+│     │ [ YES · OCT+ ] [ NO · OCT− ]│    │
+│     └────────────────────────────┘     │
+```
 
 ### 5.7 The text audit
 
-MONO2K's audit carries over to the 2-bit buffer: every text records its ink box, a fill hides what it covers, and
-the check reports texts that touch or sit a dot apart, text cut by a clip or the screen, and text past its window,
-over the whole host tour and a sweep of every page, engine, effect, knob value and held map. No overlapping text,
-ever; screenshots are still looked at for text crowding a line.
+MONO2K's audit carries over to the 4-bit buffer. Every text records its ink box, and a fill hides what it covers.
+The check reports:
+- texts that touch or sit a dot apart;
+- text cut by a clip or by the screen's edge;
+- text running past its window (windows, tooltips and notices included).
+
+It runs over the whole host tour, and over a sweep of every page, engine, effect, knob value, held map, notice and
+message box. No overlapping text, ever. The screenshots are still looked at, for text crowding a line.
 
 ## 6. Build order
 
@@ -881,22 +988,23 @@ first, as on MONO2K).
 **Phase 0: groundwork.**
 - The repo as MONO2K's: `firmware/src` (the core, a unity build, integer only), `firmware/gen` (generated tables,
   fonts, icons, samples), `firmware/fm1` (the platform from MONO2K's, with its `LICENSES/`), `host/`, `web/`, `tools/`.
-- A small API (`dmk.h`: init, render, key, button, encoder, midi, frame in 2 bits, leds) and the three homes: host
+- A small API (`dmk.h`: init, render, key, button, encoder, midi, frame in 4 bits, leds) and the three homes: host
   harness, browser build (wasm in an AudioWorklet), FM-1 package.
 - The names (2.7): identity range, SysEx magic, store region.
 - A sine on the FM-1 and the `--diag` load meter; **measure the ratio of host instructions to FM-1 load once** with a
   known kernel, so section 1's budget is checked against the device, not only the yardstick.
-- The screen shell: the 2-bit framebuffer, the four themes, the strips, PIX and the display face generated, the bands,
-  the text audit and the tour.
+- The screen shell: the 4-bit framebuffer and its 16-colour themes, the strips, Tomato Grotesk generated at its four
+  sizes, the window chrome (title bar, sunken fields, taskbar, dialog, tooltip, toast), the text audit and the tour.
 
-**Phase 1: the smallest playable version (one track).**
-- SAMPLE engine (block ADPCM, loops, its voices) and `tools/gen_samples.py` with 4 of the owner's samples, the owner picking from WAVs (2.5).
+**Phase 1: the smallest playable version (one synth).**
+- SAMPLE engine (block ADPCM, loops, its voices) and `tools/gen_samples.py` with 4 of the owner's samples, the
+  owner picking from WAVs (2.5).
 - SOUND (SAMPLE only), FILTER, AMP.
 - ROLL: cursor, write, hold to edit (MOVE, PITCH, LENGTH, NUDGE, VELOCITY), delete, duplicate, chords at the cursor,
   zoom 16 / 32 / 64, the blinking keys, scale snap in a fixed key, undo and redo (16 steps).
 - PLAY, REC: live recording quantized, overdub, one undo per take.
 - FX: TAPE on the MEDIA row; one shared VERB (ROOM), its send on the SPACE row.
-- SAVE: one song in flash.
+- SAVE: one song in flash (one disc).
 - Tests: every gesture of 3.7 in the host self-test; the CPU on the FM-1; the owner writes a 4-bar melody without
   reading anything.
 
@@ -904,13 +1012,15 @@ first, as on MONO2K).
 - KEY and MODE, the 16 presets, slots, VOICING, INVERSION (AUTO), SPREAD, STRUM, RHYTHM, CHANGE, BASS; step your own;
   print to the roll.
 - FOLLOW (KEY, CHORD, ROOT, PLAYS CHORDS), the key LEDs.
-- A second track and the PAD engine, so a chord pad and a melody can follow each other.
+- A second synth and the PAD engine, so a chord pad and a melody can follow each other.
 
-**Phase 3: four tracks.**
-- Four tracks with their own length, speed, shift, transpose; HOME (lanes, mixer, mutes, tempo); the voice pool; the
+**Phase 3: three synths and the patterns.**
+- Three synths with their own length, speed, shift, transpose; 8 patterns a song with switching, chains, copies
+  and mutes (3.6.1); HOME (the buddy list, mixer, tempo); LAYER (2.1); the voice pool; the
   second core (2.2); the DRONE and PLUCK engines; GRIT.
-- The memory card (15 songs, the demos card), the sound library (factory and USER), the store and the link.
-- Exit: four tracks at full voices within the budget, on the FM-1's meter.
+- The DISCS window (your songs, the demos), the cassette library (factory and USER sounds), the store and the link.
+- Exit: three synths at 12 voices with layers, within the budget on the FM-1's meter, and a pattern switch
+  played live without a click.
 
 **Phase 4: the whole FX set.**
 - COLOR: SATURATE, DISTORT, CRUSH, CODEC, NOISE. MEDIA: CASSETTE, VHS. MOTION: CHORUS, VIBRATO, DRIFT.
@@ -939,9 +1049,9 @@ first, as on MONO2K).
   reference.
 - `MIT-Felucca-Engines.txt` (softclip, the SVF, noise, drift). Felucca's GPL-3.0 files keep their headers;
   `phys_dsp.c` and `phys_symp.c` bring their MIT notices for DaisySP and Rings.
-- Fonts: the display face's licence (the OFL file, or the terms of the owner's Tomato Grotesk licence). PIX and the
-  icons are our own.
-- The owner's samples and single-cycle waves, under the licence the owner chooses (decision 4).
+- Fonts: Tomato Grotesk is used under the owner's licence from The Designers Foundry; its files stay out of the
+  repo, and only the bitmaps generated from them ship. The icons and the window chrome are our own drawings.
+- The owner's samples and single-cycle waves, under the licence the owner chooses (decision 3).
 
 **Not taken:** Hügelton's assets (icons, panel photo, drum pack: all rights reserved), the names Felucca and
 Hügelton (trademarks), any sample, font or asset of the reference firmwares.
