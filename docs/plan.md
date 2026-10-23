@@ -19,6 +19,8 @@ throwaway integer prototypes of each kernel.
 - **The look:** a late-90s desktop over snow and fog. Every page is a window with a title bar, sunken fields and a
   taskbar. HOME is a messenger-style buddy list of the three synths. Sounds are cassettes and songs are CDs. Sixteen
   colours, ordered dithering, one warm light, and Tomato Grotesk for every word.
+- **The website** (section 6): reown.com's grid of rounded cards and pill chips, in the moodboard's iridescent
+  gradients, fog dither, grain and tape wear. The same grid lays out the inside of every window on the screen (5.7).
 - **The sound:** the owner's 64 recordings as 4-bit block ADPCM at 11–22 kHz, a per-synth GRIT (22 kHz, ADPCM),
   and reverbs voiced by ear after console rooms, halls and space echoes.
 - **It fits.** The yardstick is 1650 instructions a core (1.1); Hortator's device calibration puts a core at ~3470.
@@ -969,7 +971,31 @@ below shows the voicing's notes over two octaves.
 │     └────────────────────────────┘     │
 ```
 
-### 5.7 The text audit
+### 5.7 The grid inside the windows, after reown.com
+
+The owner pointed to reown.com's layout and grid for the website, and said it can help the display too. What it
+does, measured in the browser on a 1280 px page:
+- an 8 px margin and 8 px gutters;
+- a 12-column bento of solid cards: full, 2/3 + 1/3, halves, thirds, quarters;
+- rounded corners in three families: 16 px for most cards, 40 px for small ones, 64–254 px for the hero's stadium;
+- full-width pill bars as section titles, pill chips as buttons and navigation;
+- a light grotesk for headings with a monospace for small labels and buttons.
+
+On the 240 px screen this becomes how the inside of every window is laid out:
+- **A 4 px grid:** a 4 px margin inside the window and 4 px gutters between tiles; the stage is a bento of tiles in
+  halves, thirds and quarters of its width.
+- **Rounded tiles:** a 6 px corner on tiles and fields, 3 px on chips, and pill ends on the taskbar's chips and on
+  section bars. The corners are precomputed masks, so a rounded tile costs what a square one does.
+- **Pill section bars:** a stage with parts (FX's four rows, CHORD's slots, the buddy list's synths) titles them with
+  a 12 px pill bar in face grey, its label centred.
+- **Chips:** the taskbar's S1 S2 S3 and the ALGORITHM button, the pattern keys on HOME, a held key's verbs.
+- **Small labels** carry the monospace's role: Tomato Grotesk Medium 11 px in capitals with a pixel of tracking
+  (the owner's face throughout, no monospace).
+
+The windows keep their title bars, the cassettes and the CDs: the late-90s desktop is the frame, and the grid is how
+it is filled. The first rendered screens (phase 0) show both together for the owner to judge.
+
+### 5.8 The text audit
 
 MONO2K's audit carries over to the 4-bit buffer. Every text records its ink box, and a fill hides what it covers.
 The check reports:
@@ -980,7 +1006,38 @@ The check reports:
 It runs over the whole host tour, and over a sweep of every page, engine, effect, knob value, held map, notice and
 message box. No overlapping text, ever. The screenshots are still looked at, for text crowding a line.
 
-## 6. Build order
+## 6. The website
+
+**Layout and grid after reown.com; colour and texture after the moodboard.**
+
+- **The grid:** an 8 px margin and 8 px gutters, 12 columns, a bento of cards (full, 2/3 + 1/3, halves, thirds,
+  quarters), corners of 16 px, 40 px and a stadium for the hero, full-width pill bars as section titles, pill chips
+  for the navigation and buttons. Phone width: one column, the same 8 px rhythm, no sideways scroll.
+- **Colour and texture,** instead of reown's flat solids:
+  - the moodboard's pastel iridescence (peach → pink → lilac → mint) as slow gradients across the cards;
+  - the snow scenes' fog as dithered greys, in a small Bayer tile repeated, the screen's own dither at page size;
+  - **degradation:** fine film grain (an SVG noise filter), faint scanlines, and a slight colour fringe and jitter on
+    hover, like a worn tape;
+  - one warm light (the amber) for the one thing to press.
+- **Type:** Tomato Grotesk throughout, as on the device: light and regular weights large for headings, Medium in
+  tracked capitals for the small labels where reown uses its monospace. The web font follows the licence's web
+  terms; the emulator shows the firmware's own bitmaps either way.
+- **Navigation:** a row of chips at the top, our own (the wordmark, then PLAY, MANUAL, INSTALL, CHANGES).
+
+**The pages:**
+
+| Page | What is on it |
+| --- | --- |
+| home | the hero (a stadium card with the screen playing in it, in the browser, from the wasm); the three synths as three cards; the effects as a bento (COLOR, MEDIA, MOTION, SPACE); the chord machine; the look (the screens, cassettes and CDs); install |
+| play | the emulator: the FM-1's panel in a card, the screen, the keys and knobs from mouse, touch and the computer's keyboard; songs kept in the browser, export and import |
+| manual | one article at a time, the screens from the host's tour, every page, layer and combo from the core's own tables |
+| install | the installer (Felucca's files, as MONO2K's site uses them): what it may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware |
+| changes | the change log, an entry a day, written for the player |
+
+Built in phase 5. The phase 0 emulator page already uses the grid, the chips and the textures, so the site starts as
+one card of itself.
+
+## 7. Build order
 
 Each phase ends with something the owner plays on the FM-1, and nothing is kept before it is heard (WAVs and numbers
 first, as on MONO2K).
@@ -1030,7 +1087,7 @@ first, as on MONO2K).
   CPU measured against section 1's estimate (the table is updated with the measurement).
 
 **Phase 5: release.**
-- The web: emulator, manual (screens from the host tour), installer (Felucca's files), change log.
+- The website (section 6): home, play, manual, install, changes.
 - Factory songs and sounds (the owner picks), the Patch Editor (songs, sounds, user samples into the data area).
 - A package tried on the owner's FM-1 before anything is published.
 
