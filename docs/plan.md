@@ -763,10 +763,12 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 - **Kiloy, rendered as the screen renders it:** the wordmark (its ink from line to line), the D in the top-left
   module, the icon (`tools/gen_art.py`; only the renders are committed).
 - **Mixed proportions:** cards and images of the sizes their content asks (a square, a wide, a tall), linked as
-  nodes; the art in the thermal family; the screens on an inverted ground, one at twice its pixels, each framed by a
-  Kiloy stroke (a paper ring with a slit).
-- **Graphics after Kiloy's specimens:** a word in line and in light by turns, the machine's words cropped in rows,
-  a seal of ticks round the D.
+  nodes; the art in the thermal family; the machine on its light (the art behind the panel); the screens on an
+  inverted ground, one at twice its pixels, each in padding lit by the thermal ramp, dithered, from the frame's outer
+  edge to the screen (a paper ring with a slit was tried and dropped).
+- **Graphics after Kiloy's specimens,** with the machine's words, not the name over and over: "ambient" in line and
+  in light by turns; rows of lofi, snow, tape, drone, echo, chord cropped like the specimen, one letter lit; a seal
+  of ticks round the D.
 - **Ko-fi** (`ko-fi.com/sequencist`) beside the action and in the footer.
 
 | Page | What is on it |
