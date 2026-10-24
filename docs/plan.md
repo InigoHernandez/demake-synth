@@ -770,8 +770,8 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 - **The sections:** the D and the index; the wordmark; the machine on its light, power, volume as a meter, the keys
   as keycaps (the Felucca emulator's map: Z–/ and S–' the lower keys, Q–O the upper, 1–= the buttons, [ ] OCT, the
   arrows SELECT and ALGORITHM, Shift-click holds a button); the machine's cards linked as nodes; the sound and
-  "ambient" in line and in light; **the sounds**, each image a sound's light (the glow the screen gives it while it
-  plays: Snow pad, Felt piano, Glass pluck, Tape drone, Echo, Night drive), its name in a night chip; **the screens** on the paper ground: one screen at 1.5x
+  "ambient" in line and in light; **the engines**, each image an engine's light with what it is in a night chip (Sample, Pad, Drone, Pluck, Layer,
+  Grit, from 2.1 and 2.3); **the workflow**, the six rules of 3.2 as a number, a name and a sentence; **the screens** on the paper ground: one screen at 1.5x
   (whole pixels on a retina screen) in its lit frame, five numbered marks on Home's anatomy with their legend (title,
   fields, meter, cards, light), and the twelve pages as a row of names, each with its button, the one shown lit; the footer: the machine's
   words whole ("ambient lofi machine", a word a row), ink on paper, then the owner's links and Ko-fi, as MONO2K's.

@@ -89,21 +89,31 @@
     <div class="plate bits" style="--src: url(img/plate.png)" role="img" aria-label="Ambient, in line and in light"></div>
   </section>
 
-  <!-- 04 the sounds: each one's light, as it glows on the screen while it plays -->
-  <section class="g strip"><span class="no">04</span><span class="lb">Sounds</span></section>
+  <!-- 04 the engines: what each one is, each in its light -->
+  <section class="g strip" id="engines"><span class="no">04</span><span class="lb">Engines</span></section>
   <section class="g art">
-    <p class="say">Every sound has its light: the glow the screen gives it while it plays.</p>
-    <figure class="a1 hov"><canvas class="heat" data-heat="img/art/flow.png"></canvas><figcaption><b>Snow pad</b><span>Pad. Slow, wide, a long tail</span></figcaption></figure>
-    <figure class="a2 hov"><canvas class="heat" data-heat="img/art/pool.png"></canvas><figcaption><b>Felt piano</b><span>Sample. Soft hammers, close</span></figcaption></figure>
+    <figure class="a1 hov"><canvas class="heat" data-heat="img/art/flow.png"></canvas><figcaption><b>Sample</b><span>Your recordings, 4-bit ADPCM read from flash as they play. START trims the attack; a short loop in the sustain turns any sample into a pad.</span></figcaption></figure>
+    <figure class="a2 hov"><canvas class="heat" data-heat="img/art/pool.png"></canvas><figcaption><b>Pad</b><span>Three wavetable oscillators on your own single cycles, detuned; MORPH drifts to the next wave and back.</span></figcaption></figure>
     <figure class="a3 seal"><div class="bits" style="--src: url(img/seal.png)" role="img" aria-label="The seal: a ring of ticks round the D"></div><figcaption><b>Phase 0</b><span>Shell, screen, core</span></figcaption></figure>
-    <figure class="a4 hov"><canvas class="heat" data-heat="img/art/rise.png"></canvas><figcaption><b>Glass pluck</b><span>Pluck. Short and bright</span></figcaption></figure>
-    <figure class="a5 hov"><canvas class="heat" data-heat="img/art/drift.png"></canvas><figcaption><b>Tape drone</b><span>Drone. It never stops</span></figcaption></figure>
-    <figure class="a6 hov"><canvas class="heat" data-heat="img/art/twin.png"></canvas><figcaption><b>Echo</b><span>Two repeats, apart</span></figcaption></figure>
-    <figure class="a7 hov"><canvas class="heat" data-heat="img/art/wave.png"></canvas><figcaption><b>Night drive</b><span>A song: eight patterns, live</span></figcaption></figure>
+    <figure class="a4 hov"><canvas class="heat" data-heat="img/art/rise.png"></canvas><figcaption><b>Drone</b><span>Four partials a voice: root, fifth, octave, ninth. Each pair beats, each level wanders: a long note never repeats.</span></figcaption></figure>
+    <figure class="a5 hov"><canvas class="heat" data-heat="img/art/drift.png"></canvas><figcaption><b>Pluck</b><span>A tuned string, damped. BODY adds two resonances: kalimba, glass, bell.</span></figcaption></figure>
+    <figure class="a6 hov"><canvas class="heat" data-heat="img/art/twin.png"></canvas><figcaption><b>Layer</b><span>Under any engine, one of your samples: blend, tune, loop, tone.</span></figcaption></figure>
+    <figure class="a7 hov"><canvas class="heat" data-heat="img/art/wave.png"></canvas><figcaption><b>Grit</b><span>The console's rate and grain, per synth: 22K, 22K with ADPCM, 11K with ADPCM.</span></figcaption></figure>
   </section>
 
-  <!-- 05 the screens: the display's anatomy, then its pages, one press each -->
-  <section class="g strip" id="screens"><span class="no">05</span><span class="lb">Screens</span></section>
+  <!-- 05 the workflow: the rules, on one page -->
+  <section class="g strip" id="workflow"><span class="no">05</span><span class="lb">Workflow</span></section>
+  <section class="g flow">
+    <div class="rule r1"><i class="mk">1</i><b>Keys write</b><p>The keys play the current synth. On Roll and Chord, stopped, a key writes at the cursor; playing, REC records it in time.</p></div>
+    <div class="rule r2"><i class="mk">2</i><b>One job a knob</b><p>SELECT the synth, PRESETS its sound, ALGORITHM the left cell, K1–K4 the four on top. The same on every page.</p></div>
+    <div class="rule r3"><i class="mk">3</i><b>Tap, again, hold</b><p>Tap a page button to open it, tap again for its next row, hold it for its layer: its map shows on screen.</p></div>
+    <div class="rule r4"><i class="mk">4</i><b>Hold, then act</b><p>A held key is a note, SEQ held the sequence, HOME held the patterns. OCT− takes away, OCT+ adds a copy.</p></div>
+    <div class="rule r5"><i class="mk">5</i><b>Everything undoes</b><p>GLO with OCT− undoes, sixteen steps back; GLO with OCT+ redoes. Only writing over another save asks first.</p></div>
+    <div class="rule r6"><i class="mk">6</i><b>Nothing hidden</b><p>What a held button does is on screen while you hold it; the keys' lights show the chord now.</p></div>
+  </section>
+
+  <!-- 06 the screens: the display's anatomy, then its pages, one press each -->
+  <section class="g strip" id="screens"><span class="no">06</span><span class="lb">Screens</span></section>
   <section class="g screens">
     <figure class="main home">
       <div class="frame f432 bits" style="--src: url(img/frame432.png)" aria-hidden="true"></div>
