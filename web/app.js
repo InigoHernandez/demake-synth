@@ -233,7 +233,7 @@
 
   // the rings (border-image) and the sprites (six frames, one under another)
   for (const r of [24, 12]) for (let k = 0; k < 6; k++) new Image().src = `img/bits/ring${r}_${k}.png`;
-  const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .hov")];
+  const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .hov, .page")];
   const visible = new Set();
   const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));
   [...sprites, ...ringed].forEach((el) => io.observe(el));
@@ -295,11 +295,13 @@
     for (const h of heats) if (visible.has(h.cv) && Math.random() < 0.5) { h.pat = rnd(6, h.pat); draw(h); }
   }, 140);
 
-  // the screens: a page pressed is shown at twice its pixels, lit in the strip
+  // the screens: a page pressed is shown, lit in the index; the five marks belong to Home's anatomy
   const pages = [...document.querySelectorAll(".page")], shown = document.getElementById("shown"), name = document.getElementById("shownname");
-  pages.forEach((p) => p.addEventListener("click", () => {
+  const main = document.querySelector(".main");
+  pages.forEach((p) => { new Image().src = p.dataset.src; p.addEventListener("click", () => {
     pages.forEach((q) => q.classList.toggle("on", q === p));
     shown.src = p.dataset.src; shown.alt = p.dataset.name;
     name.innerHTML = `<b>${p.dataset.name}</b> ${p.dataset.say}`;
-  }));
+    main.classList.toggle("home", p === pages[0]);
+  }); });
 })();

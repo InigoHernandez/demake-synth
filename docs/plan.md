@@ -770,9 +770,9 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 - **The sections:** the D and the index; the wordmark; the machine on its light, power, volume as a meter, the keys
   as keycaps (the Felucca emulator's map: Z–/ and S–' the lower keys, Q–O the upper, 1–= the buttons, [ ] OCT, the
   arrows SELECT and ALGORITHM, Shift-click holds a button); the machine's cards linked as nodes; the sound and
-  "ambient" in line and in light; the art in mixed proportions; **the screens** on the night ground: the display's
-  anatomy at twice its pixels in its lit frame, callouts drawn to the title, fields, meter, cards and light, and the
-  twelve pages under it, each with the button that opens it, pressed to be shown large; the footer: the machine's
+  "ambient" in line and in light; the art in mixed proportions; **the screens** on the night ground: one screen at 1.5x
+  (whole pixels on a retina screen) in its lit frame, five numbered marks on Home's anatomy with their legend (title,
+  fields, meter, cards, light), and the twelve pages as an index, each with its button, the one shown lit; the footer: the machine's
   words whole, ink on paper, then the owner's links and Ko-fi, as MONO2K's.
 
 | Page | What is on it |

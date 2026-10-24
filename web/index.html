@@ -104,30 +104,34 @@
   <!-- 05 the screens: the display's anatomy, then its pages, one press each -->
   <section class="g strip dark" id="screens"><span class="no">05</span><span class="lb">Screens</span></section>
   <section class="g screens dark">
-    <figure class="big2">
-      <div class="frame f528 bits" style="--src: url(img/frame528.png)" aria-hidden="true"></div>
+    <figure class="main home">
+      <div class="frame f432 bits" style="--src: url(img/frame432.png)" aria-hidden="true"></div>
       <div class="frame f288 bits" style="--src: url(img/frame288.png)" aria-hidden="true"></div>
-      <img id="shown" src="img/screens/01_home.png" width="480" height="480" alt="Home: the three synths">
+      <img id="shown" src="img/screens/01_home.png" width="360" height="360" alt="Home: the three synths">
+      <i class="mk m1">1</i><i class="mk m2">2</i><i class="mk m3">3</i><i class="mk m4">4</i><i class="mk m5">5</i>
     </figure>
-    <p class="call c-title"><b>Title</b> The page in ink, its row in grey, one size</p>
-    <p class="call c-fields"><b>Fields</b> Four columns under K1–K4: a label, a value</p>
-    <p class="call c-meter"><b>Meter</b> Ticks in ink up to the value, its own tick tall</p>
-    <p class="call c-cards"><b>Cards</b> 6 px from the edge and apart, corners of 14</p>
-    <p class="call c-light"><b>Light</b> A blue rim, a magenta body, a pale core</p>
-    <p class="call c-note" id="shownname"><b>Home</b> The synths, the one sounding lit</p>
-    <div class="pages" id="pages" aria-label="The pages">
-      <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-say="The synths, the one sounding lit"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/01_home.png" width="240" height="240" alt=""><span class="cap"><kbd>HOME</kbd> Home</span></button>
-      <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-say="A sequence, the cursor lit"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/02_roll.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>SEQ</kbd> Roll</span></button>
-      <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-say="The chord now, the progression"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/07_chord.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>ARP</kbd> Chord</span></button>
-      <button class="page" data-src="img/screens/16_home_held.png" data-name="Patterns" data-say="Home held: the playing one lit, the next a ring"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/16_home_held.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>HOME</kbd> held, Patterns</span></button>
-      <button class="page" data-src="img/screens/03_sound.png" data-name="Sound" data-say="The sample, its loop lit"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/03_sound.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>EDIT</kbd> Sound</span></button>
-      <button class="page" data-src="img/screens/04_filter.png" data-name="Filter" data-say="The response, its cutoff a point"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/04_filter.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>SEL</kbd> Filter</span></button>
-      <button class="page" data-src="img/screens/05_amp.png" data-name="Amp" data-say="The envelope, its points round"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/05_amp.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>ENV</kbd> Amp</span></button>
-      <button class="page" data-src="img/screens/06_fx.png" data-name="FX" data-say="Colour, media, motion, space"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/06_fx.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>FX</kbd> FX</span></button>
-      <button class="page" data-src="img/screens/08_global.png" data-name="Global" data-say="The sends, the song, the setup"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/08_global.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>GLO</kbd> Global</span></button>
-      <button class="page" data-src="img/screens/09_lfo.png" data-name="LFO" data-say="Its shape and its target"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/09_lfo.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>LFO</kbd> LFO</span></button>
-      <button class="page" data-src="img/screens/18_discs.png" data-name="Songs" data-say="The songs, a pill each"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/18_discs.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>SAVE</kbd> held, Songs</span></button>
-      <button class="page" data-src="img/screens/19_home_night.png" data-name="Night" data-say="The same pages, the night theme"><span class="frame bits" style="--src: url(img/frame288.png)"></span><img src="img/screens/19_home_night.png" width="240" height="240" alt="" loading="lazy"><span class="cap"><kbd>GLO</kbd> Setup, Night</span></button>
+    <p class="shown" id="shownname"><b>Home</b> The synths, the one sounding lit</p>
+    <ol class="legend">
+      <li><i class="mk">1</i><b>Title</b><span>The page in ink, its row in grey, one size</span></li>
+      <li><i class="mk">2</i><b>Fields</b><span>Four columns under K1–K4: a label, a value</span></li>
+      <li><i class="mk">3</i><b>Meter</b><span>Ticks in ink up to the value, its own tick tall</span></li>
+      <li><i class="mk">4</i><b>Cards</b><span>6 px from the edge and apart, corners of 14</span></li>
+      <li><i class="mk">5</i><b>Light</b><span>A blue rim, a magenta body, a pale core</span></li>
+    </ol>
+    <div class="index" id="pages" aria-label="The pages">
+      <p class="ih"><b>Pages</b> <span>Press one to see it</span></p>
+      <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-say="The synths, the one sounding lit"><kbd>HOME</kbd><b>Home</b><span></span></button>
+      <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-say="A sequence, the cursor lit"><kbd>SEQ</kbd><b>Roll</b><span></span></button>
+      <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-say="The chord now, the progression"><kbd>ARP</kbd><b>Chord</b><span></span></button>
+      <button class="page" data-src="img/screens/16_home_held.png" data-name="Patterns" data-say="The playing one lit, the next a ring"><kbd>HOME</kbd><b>Patterns</b><span>held</span></button>
+      <button class="page" data-src="img/screens/03_sound.png" data-name="Sound" data-say="The sample, its loop lit"><kbd>EDIT</kbd><b>Sound</b><span></span></button>
+      <button class="page" data-src="img/screens/04_filter.png" data-name="Filter" data-say="The response, its cutoff a point"><kbd>SEL</kbd><b>Filter</b><span></span></button>
+      <button class="page" data-src="img/screens/05_amp.png" data-name="Amp" data-say="The envelope, its points round"><kbd>ENV</kbd><b>Amp</b><span></span></button>
+      <button class="page" data-src="img/screens/06_fx.png" data-name="FX" data-say="Colour, media, motion, space"><kbd>FX</kbd><b>FX</b><span></span></button>
+      <button class="page" data-src="img/screens/08_global.png" data-name="Global" data-say="The sends, the song, the setup"><kbd>GLO</kbd><b>Global</b><span></span></button>
+      <button class="page" data-src="img/screens/09_lfo.png" data-name="LFO" data-say="Its shape and its target"><kbd>LFO</kbd><b>LFO</b><span></span></button>
+      <button class="page" data-src="img/screens/18_discs.png" data-name="Songs" data-say="The songs, a pill each"><kbd>SAVE</kbd><b>Songs</b><span>held</span></button>
+      <button class="page" data-src="img/screens/19_home_night.png" data-name="Night" data-say="The same pages, the night theme"><kbd>GLO</kbd><b>Night</b><span>Setup</span></button>
     </div>
   </section>
 

@@ -136,7 +136,7 @@ figure.hov:hover::after { border-image: var(--ring12) 12 / 12px repeat; }
 .tiles i.next { border: 2px solid var(--t4); color: var(--t4); }
 .link { position: relative; grid-row: 3 / span 2; }
 .link::before { content: ""; position: absolute; left: 0; right: 0; top: 48px; height: 1px; background: var(--label); }
-.link::after, .call::after { content: ""; position: absolute; left: -4px; right: -4px; top: 44px; height: 9px;
+.link::after { content: ""; position: absolute; left: -4px; right: -4px; top: 44px; height: 9px;
   background: radial-gradient(circle, var(--ink) 3.5px, transparent 4px) left / 9px 9px no-repeat,
               radial-gradient(circle, var(--ink) 3.5px, transparent 4px) right / 9px 9px no-repeat; }
 .l1 { grid-column: 9; } .l2 { grid-column: 17; }
@@ -164,27 +164,40 @@ figure.hov:hover::after { border-image: var(--ring12) 12 / 12px repeat; }
 .art .seal figcaption { left: 0; top: 204px; color: var(--label); }
 .art .seal figcaption b { color: var(--ink); }
 
-/* ---- 05 the screens: the display's anatomy at twice its pixels, and its pages, one press each */
-.screens { grid-template-rows: repeat(22, var(--m)); }
-.big2 { grid-column: 1 / span 11; grid-row: 2 / span 11; position: relative; }
-.big2 .frame { position: absolute; left: 0; top: 0; width: 528px; height: 528px; }
-.big2 .f288 { display: none; }
-.big2 img { position: absolute; left: 24px; top: 24px; width: 480px; height: 480px; image-rendering: pixelated; border-radius: 12px; }
-.call { grid-column: 12 / span 13; position: relative; padding: 12px 0 0 48px; color: var(--label); }
-.call b { color: var(--ink); margin-right: 6px; }
-.call::before { content: ""; position: absolute; left: -24px; width: 64px; top: 24px; height: 1px; background: var(--label); }
-.call::after { left: -28px; width: 72px; right: auto; top: 20px; }
-.c-title { grid-row: 3; } .c-fields { grid-row: 5; } .c-meter { grid-row: 6; } .c-cards { grid-row: 7; } .c-light { grid-row: 9; }
-.call.c-note { grid-row: 12; }
-.call.c-note::before, .call.c-note::after { display: none; }
-.pages { grid-column: 1 / -1; grid-row: 14 / span 7; display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
-  scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.page { flex: 0 0 288px; height: 336px; position: relative; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; scroll-snap-align: start; }
-.page .frame { position: absolute; left: 0; top: 0; width: 288px; height: 288px; opacity: 0; }
-.page.on .frame, .page:hover .frame, .page:focus-visible .frame { opacity: 1; }
-.page img { position: absolute; left: 24px; top: 24px; width: 240px; height: 240px; image-rendering: pixelated; border-radius: 8px; }
-.page .cap { position: absolute; left: 24px; top: 300px; color: var(--label); display: flex; gap: 8px; align-items: center; }
-.page.on .cap { color: var(--ink); }
+/* ---- 05 the screens: one at 1.5x (whole pixels on a retina screen) in its lit frame, five marks on it and their
+ * legend, and the twelve pages as an index, the one shown lit */
+.screens { grid-template-rows: repeat(16, var(--m)); }
+.main { grid-column: 1 / span 9; grid-row: 2 / span 9; position: relative; }
+.main .frame { position: absolute; left: 0; top: 0; width: 432px; height: 432px; }
+.main .f288 { display: none; }
+.main img { position: absolute; left: 36px; top: 36px; width: 360px; height: 360px; image-rendering: pixelated; border-radius: 12px; }
+.mk {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none;
+  border: 2px solid var(--t4); border-radius: 12px; background: #f5f5f2; color: var(--t4);
+  font: 500 var(--s)/20px "geist", sans-serif; font-style: normal;
+}
+.main .mk { position: absolute; display: none; }
+.main.home .mk { display: inline-flex; }
+.m1 { left: 288px; top: 51px; } .m2 { left: 186px; top: 123px; } .m3 { left: 114px; top: 158px; }
+.m4 { left: 150px; top: 177px; } .m5 { left: 123px; top: 249px; }
+.shown { grid-column: 1 / span 9; grid-row: 11; padding-top: 12px; color: var(--label); }
+.shown b { color: var(--ink); margin-right: 6px; }
+.legend { grid-column: 11 / span 6; grid-row: 2 / span 10; margin: 0; padding: 0; list-style: none; display: grid; grid-auto-rows: calc(2 * var(--m)); }
+.legend li { display: grid; grid-template-columns: 36px 1fr; align-content: start; padding-top: 12px; }
+.legend li b { grid-column: 2; }
+.legend li .mk { grid-row: 1 / span 2; }
+.legend li span { grid-column: 2; color: var(--label); }
+.index { grid-column: 18 / span 7; grid-row: 2 / span 13; display: grid; grid-auto-rows: var(--m); }
+.ih { padding-top: 12px; color: var(--label); }
+.ih b { color: var(--ink); margin-right: 6px; }
+.page {
+  width: calc(100% + 1px); height: calc(var(--m) + 1px); display: flex; align-items: center; gap: 12px; padding: 0 12px;
+  border: 0; border-radius: 24px; background: none; cursor: pointer; text-align: left; color: var(--ink);
+}
+.page span { color: var(--label); }
+.page.on, .page:hover, .page:focus-visible { background: var(--t7); color: #18181a; border-image: var(--ring24) 24 / 24px repeat; outline: none; }
+.page.on span, .page:hover span, .page:focus-visible span { color: #8e8e8a; }
+.page.on kbd, .page:hover kbd, .page:focus-visible kbd { color: #18181a; border-color: #8e8e8a; }
 
 /* ---- the footer: the words, whole, ink on paper; the links; the end */
 .bandrow { grid-template-rows: repeat(12, var(--m)); }
@@ -227,13 +240,9 @@ figure.hov:hover::after { border-image: var(--ring12) 12 / 12px repeat; }
   .a5 { grid-column: 1 / span 7; grid-row: 16 / span 3; }
   .a7 { grid-column: 9 / span 8; grid-row: 16 / span 3; }
   .art .a4, .art .a6 { display: none; }
-  .screens { grid-template-rows: repeat(22, var(--m)); }
-  .call { grid-column: 12 / span 5; padding-left: 24px; }
-  .call::before, .call::after { display: none; }
-  .c-title { grid-row: 2 / span 2; } .c-fields { grid-row: 4 / span 2; } .c-meter { grid-row: 6 / span 2; }
-  .c-cards { grid-row: 8 / span 2; } .c-light { grid-row: 10 / span 2; }
-  .call.c-note { grid-column: 1 / span 11; grid-row: 13; padding-left: 24px; }
-  .pages { grid-row: 15 / span 7; }
+  .screens { grid-template-rows: repeat(21, var(--m)); }
+  .index { grid-column: 1 / -1; grid-row: 13 / span 7; grid-template-columns: repeat(2, calc(8 * var(--m))); grid-auto-flow: column; grid-template-rows: repeat(7, var(--m)); }
+  .ih { grid-row: 1; grid-column: 1 / -1; }
   .bandrow { grid-template-rows: repeat(8, var(--m)); }
   .band { grid-row: 2 / span 7; }
   .links { grid-template-rows: repeat(2, var(--m)); }
@@ -281,16 +290,16 @@ figure.hov:hover::after { border-image: var(--ring12) 12 / 12px repeat; }
   .a3 { grid-column: 1 / span 4; grid-row: 13 / span 5; }
   .a5 { grid-column: 1 / -1; grid-row: 19 / span 3; }
   .art .a4, .art .a6, .art .a7 { display: none; }
-  .screens { grid-template-rows: repeat(29, var(--m)); }
-  .big2 { grid-column: 1 / -1; grid-row: 2 / span 6; }
-  .big2 .f528 { display: none; }
-  .big2 .f288 { display: block; left: 24px; width: 288px; height: 288px; }
-  .big2 img { left: 48px; top: 24px; width: 240px; height: 240px; border-radius: 8px; }
-  .call { grid-column: 1 / -1; padding-left: 0; }
-  .c-title { grid-row: 9 / span 2; } .c-fields { grid-row: 11 / span 2; } .c-meter { grid-row: 13 / span 2; }
-  .c-cards { grid-row: 15 / span 2; } .c-light { grid-row: 17 / span 2; }
-  .call.c-note { grid-column: 1 / -1; grid-row: 8; padding-left: 48px; }
-  .pages { grid-row: 21 / span 7; }
+  .screens { grid-template-rows: repeat(34, var(--m)); }
+  .main { grid-column: 1 / -1; grid-row: 2 / span 6; }
+  .main .f432 { display: none; }
+  .main .f288 { display: block; left: 24px; width: 288px; height: 288px; }
+  .main img { left: 48px; top: 24px; width: 240px; height: 240px; border-radius: 8px; }
+  .m1 { left: 212px; top: 30px; } .m2 { left: 144px; top: 78px; } .m3 { left: 96px; top: 101px; }
+  .m4 { left: 120px; top: 114px; } .m5 { left: 102px; top: 162px; }
+  .shown { grid-column: 1 / -1; grid-row: 8; padding-left: 48px; }
+  .legend { grid-column: 1 / -1; grid-row: 9 / span 10; }
+  .index { grid-column: 1 / -1; grid-row: 20 / span 13; }
   .bandrow { grid-template-rows: repeat(5, var(--m)); }
   .band { grid-row: 2 / span 3; align-self: center; }
   .links { grid-template-rows: repeat(6, var(--m)); }

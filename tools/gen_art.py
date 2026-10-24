@@ -309,10 +309,10 @@ def graphics():
     sprite(frames, IMG / "seal.png")
     # the screens' frames: the padding round a screen lit from the frame's outer edge (the rim) to the screen's (the
     # core); 288 and 528 px at 2 px a cell, the screen 24 px in, corners 24 and 8
-    for px in (288, 528):
-        n, b = px // 2, 12
+    for px, b, hr in ((288, 12, 4), (528, 12, 6), (432, 18, 6)):   # 432: a screen at 1.5x, 36 px in
+        n = px // 2
         outer = rr(n, n, 0, 0, n, n, 12)
-        ring = outer & ~rr(n, n, b, b, n - b, n - b, 4)
+        ring = outer & ~rr(n, n, b, b, n - b, n - b, hr)
         p = ramp_in(outer, b)
         frames = []
         for k in range(6):
@@ -336,7 +336,7 @@ def graphics():
             f[..., 3] = np.where(outer & ~inner, 255, 0)
             Image.fromarray(big(f), "RGBA").save(BITS / f"ring{rad}_{k}.png", optimize=True)
         print(f"web/img/bits/ring{rad}_0..5.png: {2 * n} px, slice {rad if rad >= 12 else 12}")
-    print("web/img/plate.png, band.png (%d cells tall), seal.png, frame288.png, frame528.png: six frames each" % H)
+    print("web/img/plate.png, band.png (%d cells tall), seal.png, frame288.png, frame528.png, frame432.png: six frames each" % H)
 
 
 def main():
