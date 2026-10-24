@@ -206,6 +206,27 @@ static void selftest(void)
         dmk_encoder(E_SELECT, -1);
         tap(B_FX);                                      /* back where the next check starts */
     }
+    /* the chords: a key on CHORD plays the mode's chord on it; PLAY changes them on the clock; KEY keeps a melody in */
+    {
+        int on = 0, slot0;
+        tap(B_ARP);
+        dmk_key(4, 1); wait_ms(400);                    /* A3: Am7 */
+        for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == ui.synth;
+        if (on < 3 || strncmp(ch_name, "Am", 2)) { fails++; printf("selftest: a key on CHORD is not its chord (%d voices, %s)\n", on, ch_name); }
+        dmk_key(4, 0); wait_ms(60);
+        on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: a released chord still holds %d notes\n", on); }
+        tap(B_PLAY);
+        for (int k = 0; k < 5; k++) dmk_render(b, 512);
+        on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 0;
+        slot0 = ch_shown;
+        if (on < 3) { fails++; printf("selftest: PLAY does not sound the chords on the pad (%d)\n", on); }
+        for (int k = 0; k < 300; k++) dmk_render(b, 512);   /* ~3.5 s: past the first slot's bar at 72 */
+        if (ch_shown == slot0) { fails++; printf("selftest: the progression does not move on\n"); }
+        for (int v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == 1 && !(pc_bent() >> (vc[v].note % 12) & 1u)) { fails++; printf("selftest: a note following the key is off it\n"); break; }
+        tap(B_PLAY);
+        tap(B_FX);
+    }
     /* a modifier that was used does nothing on release */
     dmk_button(B_GLO, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_GLO, 0); wait_ms(30);
     if (ui.page != PG_FX) { fails++; printf("selftest: a used GLO opened its page on release\n"); }
@@ -335,6 +356,32 @@ static void fx_demo(const char *dir)
     printf("fx demo: %s\n", dir);
 }
 
+/* the progressions: each one 16 bars at 72, the pad playing its chords, the piano's line following the key */
+static void chord_demo(const char *dir)
+{
+    int n = DMK_SR * 26, i, p;
+    int16_t *b = malloc((size_t)n * 4);
+    char path[512];
+    for (p = 0; p < 16; p++) {
+        dmk_init(1);
+        ui.val[0][PG_CHORD][0][4] = (uint8_t)(p * 8 + 4);
+        ui.val[0][PG_CHORD][1][1] = (uint8_t)(PROG[p].mode * 128 / 6 + 10);
+        ui.val[0][PG_CHORD][0][0] = (uint8_t)(PROG[p].voicing * 128 / 5 + 12);
+        sp_sync();
+        seq_play(1);
+        for (i = 0; i < n; i += 128) { if (i == DMK_SR * 22) seq_play(0); dmk_render(b + i * 2, 128); }
+        {
+            char nm[32]; int k;
+            for (k = 0; PROG[p].name[k] && k < 30; k++) nm[k] = PROG[p].name[k] == ' ' ? '_' : (char)(PROG[p].name[k] | 0x20);
+            nm[k] = 0;
+            snprintf(path, sizeof path, "%s/%02d_%s.wav", dir, p + 1, nm);
+        }
+        wav_write(path, b, n);
+    }
+    free(b);
+    printf("chord demo: %s\n", dir);
+}
+
 static void demo(const char *dir, int argc, char **argv)
 {
     int i;
@@ -436,6 +483,7 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--bench")) { bench(); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--demo")) { demo(argv[2], argc - 3, argv + 3); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--fxdemo")) { fx_demo(argv[2]); return 0; }
+    if (argc > 2 && !strcmp(argv[1], "--chorddemo")) { chord_demo(argv[2]); return 0; }
 #ifdef __APPLE__
     if (argc > 1 && !strcmp(argv[1], "--cpu")) { cpu(); return 0; }
 #endif

@@ -79,6 +79,15 @@ static const char *const FXK[3][5][4] = {
 static const char *const ZOOMS[] = {"16", "32", "64"};
 static const char *const OFF[] = {"Off"};
 static const char *const LFOS[] = {"Sine", "Triangle", "Ramp", "Square", "Random"};
+static const char *const VOICINGS[] = {"Close", "Open", "Wide", "Shell", "Quartal"};
+static const char *const INVERTS[] = {"Auto", "Root", "1st", "2nd", "3rd"};
+static const char *const KEYS[] = {"C", "C\xE2\x99\xAF", "D", "E\xE2\x99\xAD", "E", "F", "F\xE2\x99\xAF", "G", "A\xE2\x99\xAD", "A", "B\xE2\x99\xAD", "B"};
+static const char *const MODENAMES[] = {"Aeolian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Ionian"};
+static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\xC3\x97" "2"), ("\xC3\x97" "4")};
+static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Arp up", "Arp down"};
+static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords"};
+static const char *const PROGS[16] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
+    "Power lines", "Tower beacon", "Slow thaw", "Candle", "Embers", "Low clouds", "Snowfield", "Static", "Mixtape", "Night drive"};
 static const char *const TARGETS[] = {"Pitch", "Cutoff", "Level", "Pan"};
 static const char *const LOOPS[] = {"Off", "Full"};
 static const char *const VERBS[] = {"Room", "Hall", "Space", "Haze", "Bloom", "Lofi"};
@@ -87,6 +96,8 @@ static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, 5, COLOURS}, {PG_FX, 1, 4, 4, MEDIAS}, {PG_FX, 2, 4, 4, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
     {PG_GLOBAL, 0, 4, 6, VERBS}, {PG_GLOBAL, 1, 4, 2, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
+    {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 16, PROGS}, {PG_CHORD, 1, 4, 16, PROGS},
+    {PG_CHORD, 1, 0, 12, KEYS}, {PG_CHORD, 1, 1, 6, MODENAMES}, {PG_CHORD, 1, 2, 4, CHANGES}, {PG_CHORD, 1, 3, 5, RHYTHMS},
 };
 
 static struct {
@@ -105,6 +116,7 @@ static struct {
                                                            2 being recorded, 3 deleted while held */
     uint32_t key_t0[DMK_KEYS];                          /* recording: where the playing was when it went down */
     uint16_t hinted;                                    /* the pages whose next row was shown how */
+    uint8_t key_ch[DMK_KEYS][7], key_nch[DMK_KEYS];     /* the CHORD page: each key's chord, as it sounds */
 } ui;
 
 static uint8_t leds[DMK_KEYS + B_COUNT];
@@ -123,6 +135,7 @@ static int per_synth(int page) { return page == PG_SOUND || page == PG_FILTER ||
 static uint8_t *vp(int page, int row, int k)
 {
     if (page == PG_HOME && k == 4) return &ui.val[0][PG_HOME][0][4];   /* the tempo, on every row */
+    if (page == PG_CHORD && k == 4) return &ui.val[0][PG_CHORD][0][4];  /* the progression, on both rows */
     if (page == PG_HOME && k < 3) {
         static const uint8_t PG[4] = {PG_AMP, PG_FX, PG_FX, PG_FX}, RW[4] = {0, 3, 3, 3}, KK[4] = {4, 0, 1, 2};
         return &ui.val[k][PG[row]][RW[row]][KK[row]];
@@ -197,6 +210,15 @@ static void sp_sync(void)
     gp.gdens = 6 + VS(0, PG_GLOBAL, 1, 2) * 113 / 127;  /* 2..40 a second */
     gp.gtex = VS(0, PG_GLOBAL, 1, 3);
     seq_bpm = VS(0, PG_HOME, 0, 4) < 20 ? 20 : VS(0, PG_HOME, 0, 4);
+    ch.voicing = (uint8_t)(VS(0, PG_CHORD, 0, 0) * 5 / 128);
+    ch.invert = (uint8_t)(VS(0, PG_CHORD, 0, 1) * 5 / 128);
+    ch.spread = (uint8_t)(VS(0, PG_CHORD, 0, 2) * 4 / 128);
+    ch.strum = (int16_t)((VS(0, PG_CHORD, 0, 3) - 64) * 250 / 64);
+    ch.prog = (uint8_t)(VS(0, PG_CHORD, 0, 4) * 16 / 128);
+    seq_key = (uint8_t)(VS(0, PG_CHORD, 1, 0) * 12 / 128);
+    seq_mode = (uint8_t)(VS(0, PG_CHORD, 1, 1) * 6 / 128);
+    ch.change = (uint8_t)(VS(0, PG_CHORD, 1, 2) * 4 / 128);
+    ch.rhythm = (uint8_t)(VS(0, PG_CHORD, 1, 3) * 5 / 128);
     cur_synth = ui.synth;
 }
 
@@ -241,6 +263,10 @@ static void ui_init(void)
         ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
     }
     ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
+    ui.val[0][PG_CHORD][0][0] = 2 * 128 / 5 + 12; ui.val[0][PG_CHORD][0][1] = 12; ui.val[0][PG_CHORD][0][2] = 0;
+    ui.val[0][PG_CHORD][0][3] = 64; ui.val[0][PG_CHORD][0][4] = 4;            /* wide, auto, no spread or strum; First snow */
+    ui.val[0][PG_CHORD][1][0] = 9 * 128 / 12 + 5; ui.val[0][PG_CHORD][1][1] = 10;   /* A, Aeolian */
+    ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
     ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the verb: a hall */
     ui.val[0][PG_GLOBAL][0][4] = 31; ui.val[0][PG_GLOBAL][0][3] = 64;
     ui.val[0][PG_GLOBAL][1][4] = 0;                     /* the echo: tape */
@@ -276,6 +302,13 @@ static void val_text(char *o, int page, int row, int k)
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
+        return;
+    }
+    if (page == PG_CHORD && row == 0 && k == 2) { fmt_int(o, v * 4 / 128); return; }   /* spread: octaves */
+    if (page == PG_CHORD && row == 0 && k == 3) {       /* strum: ms between voices */
+        int t = (v - 64) * 250 / 64;
+        if (t > 0) *o++ = '+';
+        fmt_int(o, t);
         return;
     }
     if (page == PG_SOUND && row == 0 && k == 4) {       /* the fine tune, in cents */
@@ -478,15 +511,16 @@ static void foot(void)
         int h = roll_held(), j = h >= 0 ? seq_find(ui.synth, ui.key_step[h], ui.key_note[h]) : -1;
         int x = text(PAD + 1, Y_FOOT + 2, j >= 0 ? "Velocity" : "Zoom", &FS, C_LABEL);
         fmt_int(v, j >= 0 ? sq[ui.synth].n[j].vel : roll_z());
-        text_fit(x + 6, Y_FOOT + 2, 200 - x, v, &FS, lit(4) ? HOLO : C_INK);
+        text_fit(x + 6, Y_FOOT + 2, 100 - x, v, &FS, lit(4) ? HOLO : C_INK);
+        text_r(DMK_W - PAD - 1, Y_FOOT + 2, FOLLOWS[ch.follow[ui.synth]], &FS, C_LABEL);   /* how it follows (SEQ + ALGORITHM) */
         return;
     }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
-        int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL), typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2);
+        int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL), typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2) || ui.page == PG_FILTER;
         val_text(v, ui.page, r, 4);
         text_fit(x + 6, Y_FOOT + 2, 124 - x, v, &FS, lit(4) ? HOLO : C_INK);
-        if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, ui.page == PG_FX ? "Hold FX to change" : "Hold GLO to change", &FS, C_LABEL);
+        if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, ui.page == PG_FX ? "Hold FX to change" : ui.page == PG_FILTER ? "Hold SEL to change" : "Hold GLO to change", &FS, C_LABEL);
     }
 }
 
@@ -895,18 +929,25 @@ static void stage_rows(int page, const char *const *names, int n, int open)
     }
 }
 
-static void stage_chord(void)
+static void stage_chord(void)                           /* the progression: its chords as pills, the one now lit, named */
 {
-    static const char *const CH[4] = {"i add9", "VI maj7", "III maj7", "VII sus2"};   /* A minor */
-    int i, y = SY + SH - 30;
+    const prog_t *pr = &PROG[ch.prog];
+    char sub[32], nm[16];
+    int i, y = SY + SH - 30, n = pr->n, now = ch_shown >= 0 ? ch_shown : 0;
     card(SX, SY, SW, SH, C_LINE, 1);
-    card_title(SX, SY, SW, "A minor", "Key", 0);
-    text_c(DMK_W / 2, SY + 40, "Am(add9)", &FN, C_INK);   /* the chord now, in ink as every value */
-    for (i = 0; i < 4; i++) {                           /* the progression: now, a lit pill (as the site's), ink on it */
-        int x = cell_x(SX + 4, SW - 8, 4, i), w = cell_w(SX + 4, SW - 8, 4, i), tw = text_w(CH[i], &FS);
-        if (i == 0) round_fill(x, y, w, 24, 12, HOLO);
-        if (tw <= w - 8) text_c(x + w / 2, y + 6, CH[i], &FS, i == 0 ? C_INK : C_LABEL);
-        else text_fit(x + 4, y + 6, w - 8, CH[i], &FS, i == 0 ? C_INK : C_LABEL);
+    str_cat(str_cat(str_cat(sub, KEYS[seq_key]), " "), MODENAMES[seq_mode]);
+    card_title(SX, SY, SW, pr->name, sub, 0);
+    if (ch_shown == -1) { const cslot_t *c = &pr->s[0]; nm[0] = 0; chord_name(nm, seq_key + c->root, c->q); }
+    else str_cat(nm, ch_name);
+    text_c(DMK_W / 2, SY + 40, nm, &FN, C_INK);
+    for (i = 0; i < n; i++) {
+        const cslot_t *c = &pr->s[i];
+        int x = cell_x(SX + 4, SW - 8, n, i), w = cell_w(SX + 4, SW - 8, n, i), on = ch_shown != -2 && i == now;
+        char t[16];
+        t[0] = 0;
+        chord_name_q(t, seq_key + c->root, c->q, QS);
+        if (on) round_fill(x, y, w, 24, 12, HOLO);
+        text_fit(x + 4 + (text_w(t, &FS) < w - 8 ? (w - 8 - text_w(t, &FS)) / 2 : 0), y + 6, w - 8, t, &FS, on ? C_INK : C_LABEL);
     }
 }
 
@@ -1208,7 +1249,25 @@ static void ui_encoder(int e, int d)
 #endif
     ui.touch_k = (int8_t)k;
     ui.touch_ms = ui.now;
+    if (k == 4 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, ALGORITHM: how this synth follows the chords */
+        char t[32];
+        int f = ch.follow[ui.synth] + (d > 0 ? 1 : -1);
+        ch.follow[ui.synth] = (uint8_t)(f < 0 ? 0 : f >= FW_COUNT ? FW_COUNT - 1 : f);
+        if (ch.follow[ui.synth] != FW_PLAYS) { int i; for (i = 0; i < ch_np; i++) later_off(ui.synth, ch_play[i]); }
+        str_cat(t, FOLLOWS[ch.follow[ui.synth]]);
+        notice(t);
+        return;
+    }
     if (ui.page == PG_ROLL) { roll_turn(k, d); return; }
+    if (ui.page == PG_CHORD && k == 4) {                /* a progression: its own mode and voicing come with it */
+        int p = choice_index(choice_of(PG_CHORD, 0, 4), *vp(PG_CHORD, 0, 4)) + (d > 0 ? 1 : -1);
+        if (p < 0 || p > 15) return;
+        ui.val[0][PG_CHORD][0][4] = (uint8_t)(p * 8 + 4);
+        ui.val[0][PG_CHORD][1][1] = (uint8_t)(PROG[p].mode * 128 / 6 + 10);
+        ui.val[0][PG_CHORD][0][0] = (uint8_t)(PROG[p].voicing * 128 / 5 + 12);
+        sp_sync();
+        return;
+    }
     if (k == 4 && (ui.page == PG_FX || ui.page == PG_GLOBAL) && !(ui.btn_held >> (ui.page == PG_FX ? B_FX : B_GLO) & 1u)) {
         int n = r, dir = d > 0 ? 1 : -1;                /* ALGORITHM moves through the rows; held, it is the type */
         do { n += dir; } while (n >= 0 && n < PAGE[ui.page].rows && row_soon(ui.page, n));
@@ -1246,6 +1305,30 @@ static void ui_key(int k, int down)
     ui.boot_done = 1;
     n = 53 + k + ui.octave * 12;                        /* F3 = 53, chromatic */
     ui.keys_down[k] = (uint8_t)down;
+    if (ui.page == PG_CHORD || (!down && ui.key_nch[k])) {   /* the CHORD page: a key, a chord */
+        int j;
+        if (down) {
+            s = ui.synth;
+            ui.key_sy[k] = (uint8_t)s;
+            ui.key_nch[k] = (uint8_t)chord_key(n, ui.key_ch[k]);
+            strike(s, ui.key_ch[k], ui.key_nch[k]);
+            ui.key_roll[k] = seq_on && seq_rec ? 2 : 0;
+            ui.key_t0[k] = seq_now();
+            return;
+        }
+        s = ui.key_sy[k];
+        for (j = 0; j < ui.key_nch[k]; j++) {
+            later_off(s, ui.key_ch[k][j]);
+            if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll */
+                uint32_t t0 = ui.key_t0[k], t1 = seq_now();
+                int st = (int)(((t0 + 128u) >> 8) % sq[s].steps), len = (int)((t1 - t0 + 128u) >> 8);
+                seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_ch[k][j], 100);
+            }
+        }
+        ui.key_nch[k] = 0;
+        ui.key_roll[k] = 0;
+        return;
+    }
     if (down) {
         s = ui.synth;
         ui.key_sy[k] = (uint8_t)s;
@@ -1284,6 +1367,7 @@ static const uint8_t *ui_leds(void)
         leds[i] = ui.keys_down[i] ? 255 : 0;
         if (!ui.keys_down[i] && ui.page == PG_ROLL && !seq_on && seq_find(ui.synth, ui.roll_cur[ui.synth], n) >= 0)
             leds[i] = (ui.now / 250u) & 1u ? 255 : 0;
+        if (!ui.keys_down[i] && ui.page == PG_CHORD && ch_cmask >> (n % 12) & 1u) leds[i] = 255;   /* the chord now */
     }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
     leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;

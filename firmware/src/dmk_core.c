@@ -11,6 +11,7 @@ void (*dmk_par_end)(void);
 #include "dmk_gfx.c"
 #include "dmk_dsp.c"
 #include "dmk_seq.c"
+#include "dmk_chord.c"
 #include "dmk_ui.c"
 
 static uint32_t samples;
@@ -24,6 +25,7 @@ void dmk_init(uint32_t seed)
     samples = 0;
     theme = 0;
     seq_init();
+    chord_init();
     ui_init();
 }
 

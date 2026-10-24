@@ -21,9 +21,19 @@ static uint8_t seq_on, seq_rec;
 static int seq_bpm = 72;
 static uint32_t seq_acc, seq_ticks;                     /* Q8 samples into the step; steps since PLAY */
 
-/* the scale: A natural minor, its degrees in semitones above A */
-static const uint8_t SCALE[7] = {0, 2, 3, 5, 7, 8, 10};
-#define SCALE_ROOT 9                                    /* A */
+/* the scale: the song's key and mode (the CHORD page), its degrees in semitones above the key; A Aeolian at first */
+static const uint8_t MODES[6][7] = {{0, 2, 3, 5, 7, 8, 10}, {0, 2, 3, 5, 7, 9, 10}, {0, 1, 3, 5, 7, 8, 10},
+                                    {0, 2, 4, 6, 7, 9, 11}, {0, 2, 4, 5, 7, 9, 10}, {0, 2, 4, 5, 7, 9, 11}};
+static uint8_t seq_key = 9, seq_mode = 0;
+#define SCALE MODES[seq_mode]
+#define SCALE_ROOT seq_key
+/* the chord machine (dmk_chord.c, after this file): its clock and what each synth does with it */
+static void chord_step(void);
+static void chord_start(void);
+static void chord_quiet(void);
+static int follow_note(int s, int n);
+static int plays_chords(int s);
+static void later_tick(int frames);
 
 static int snap(int n)                                  /* the scale's note at or under n */
 {
@@ -72,19 +82,20 @@ static void seq_quiet(int s)                            /* every note the patter
 static void seq_step(void)                              /* every synth one step on */
 {
     int s, i, k;
+    chord_step();                                       /* the harmony first: the notes follow the chord now */
     for (s = 0; s < DMK_SYNTHS; s++) {
         seq_t *q = &sq[s];
         for (i = 0; i < SEQ_LIVE; i++) if (q->left[i] && !--q->left[i]) note_off_s(s, q->live[i]);
         for (i = 0; i < q->count; i++) {
             const snote_t *n = &q->n[i];
             int len = n->len, slot = 0;
-            if (n->step != q->pos) continue;
+            if (n->step != q->pos || plays_chords(s)) continue;   /* a synth that plays the chords leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
             for (k = 0; k < SEQ_LIVE; k++) if (!q->left[k]) { slot = k; break; }
             if (k == SEQ_LIVE) { note_off_s(s, q->live[0]); slot = 0; }   /* all sounding: the first gives way */
-            q->live[slot] = n->note;
+            q->live[slot] = (uint8_t)follow_note(s, n->note);
             q->left[slot] = (uint8_t)(len < 1 ? 1 : len);
-            note_on_s(s, n->note);
+            note_on_s(s, q->live[slot]);
         }
         q->pos = (uint8_t)((q->pos + 1) % q->steps);
     }
@@ -99,6 +110,8 @@ static void seq_play(int on)
     if (on == seq_on) return;
     seq_on = (uint8_t)on;
     for (s = 0; s < DMK_SYNTHS; s++) { seq_quiet(s); sq[s].pos = 0; }
+    chord_quiet();
+    chord_start();
     seq_acc = 0;
     seq_ticks = 0;
     if (on) seq_step();                                 /* the first step sounds at once */
@@ -107,6 +120,7 @@ static void seq_play(int on)
 static void seq_render(int frames)
 {
     uint32_t per;
+    later_tick(frames);                                 /* the strum's notes, playing or not */
     if (!seq_on) return;
     per = seq_per();
     seq_acc += (uint32_t)frames * 256u;

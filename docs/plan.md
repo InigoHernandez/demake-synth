@@ -870,6 +870,15 @@ vowel added). All 64 sounds are in the FM-1 (340 KB). Home is a landscape in the
 the sound's scene (peaks, lake, coast, night: catalogued by kind and brightness in `gen_samples.py`). Measured
 [M]: the heaviest song, 1477 and 802 host instructions a sample on the two cores.
 
+*Then: phase 2's chord machine* (`firmware/src/dmk_chord.c`). The song's key and mode (CHORD, the Key row), the 16
+presets of 4.2 with their modes and voicings (ALGORITHM on CHORD), the chords changing on the rolls' clock (PLAY), voiced
+CLOSE, OPEN, WIDE, SHELL or QUARTAL, AUTO inversion by the least motion, SPREAD, STRUM, CHANGE ×½..×4, RHYTHM hold,
+pulse 4 and 8, arp up and down. FOLLOW per synth on SEQ held + ALGORITHM (the Roll's foot shows it): the pad PLAYS
+CHORDS, the piano follows the KEY (S′ of 4.6), the third the ROOT. On CHORD the keys play chords: a key, the mode's
+seventh on it; with REC, written into the synth's roll. The key LEDs show the chord sounding. Not yet: USER
+progressions and stepping your own (4.4), the qualities and bass on a held slot, PLAYS CHORDS shown as blocks in
+the roll, print to the roll. FILTER's type also on SEL held + ALGORITHM, as FX and GLO.
+
 **Phase 2: chords.**
 - KEY and MODE, the 16 presets, slots, VOICING, INVERSION (AUTO), SPREAD, STRUM, RHYTHM, CHANGE, BASS; step your own;
   print to the roll.
