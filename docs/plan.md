@@ -778,7 +778,8 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
   (whole pixels on a retina screen) in its lit frame, five numbered marks on Home's anatomy with their legend (title,
   fields, meter, cards, light), and the twelve pages as a row of names, each with its button, the one shown lit; the footer: the machine's
   words whole ("ambient lofi machine", a word a row), ink on paper, then the owner's links and Ko-fi, as MONO2K's.
-  The action heats when reached: its core pale to pink, its bits faster; pressed, magenta. No underline.
+  The action shimmers when reached: its core stays pale, pink and magenta bits sparkle across it and its ring runs
+  faster; pressed, the sparkle thickens. No underline, no darker tone.
 
 | Page | What is on it |
 | --- | --- |

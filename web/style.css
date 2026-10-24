@@ -66,10 +66,13 @@ kbd {
   border: 0; border-radius: 24px; background: var(--t7); color: #18181a; text-decoration: none;
   border-image: var(--ring24) 24 / 24px repeat;
 }
-/* the light heats as you reach it: hovered, its core goes pink and its bits run faster (app.js); pressed, magenta */
-.lit:hover, .lit:focus-visible, .pill:hover, .pill:focus-visible, .page:hover { text-decoration: none; background: #ff8cda; outline: none; }
-.lit:active, .pill:active, .page:active { background: var(--t4); color: #f5f5f2; }
-.page:active span, .page:active kbd { color: #f5f5f2; }
+/* reached, the light shimmers: its ring's bits run faster and the core sparkles, pink and magenta bits at random
+ * (app.js), its tone the same; pressed, the sparkle thickens */
+.lit:hover, .lit:focus-visible, .pill:hover, .pill:focus-visible, .page:hover {
+  text-decoration: none; outline: none;
+  background: var(--spark, url("img/bits/spark_0.png")) 0 0 / 48px 48px repeat, var(--t7); image-rendering: pixelated;
+}
+.lit:active, .pill:active, .page:active { background: var(--spark2, url("img/bits/spark_1.png")) 0 0 / 24px 24px repeat, var(--t7); }
 .heat { position: absolute; left: 0; top: 0; image-rendering: pixelated; }
 
 /* ---- the header: the D in its module, the index, the actions */
@@ -206,7 +209,7 @@ kbd {
 }
 .page span { color: var(--label); }
 .page.on, .page:hover, .page:focus-visible { background: var(--t7); color: #18181a; border-image: var(--ring24) 24 / 24px repeat; outline: none; }
-.page:hover { background: #ff8cda; }
+.page:hover { background: var(--spark, url("img/bits/spark_0.png")) 0 0 / 48px 48px repeat, var(--t7); image-rendering: pixelated; }
 
 /* ---- the footer: the words, whole, ink on paper; the links; the end */
 .bandrow { grid-template-rows: repeat(14, var(--m)); }

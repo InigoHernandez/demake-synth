@@ -236,6 +236,7 @@
 
   // the rings (border-image) and the sprites (six frames, one under another)
   for (const r of [24, 12]) for (let k = 0; k < 6; k++) new Image().src = `img/bits/ring${r}_${k}.png`;
+  for (let k = 0; k < 6; k++) new Image().src = `img/bits/spark_${k}.png`;
   const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .page")];
   const visible = new Set();
   const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));
@@ -294,7 +295,11 @@
   const hot = new Set();
   ringed.forEach((el) => { el.addEventListener("pointerenter", () => hot.add(el)); el.addEventListener("pointerleave", () => hot.delete(el)); });
   if (!still) setInterval(() => {
-    for (const el of hot) { const k = rnd(6); el.style.setProperty("--ring24", `url(img/bits/ring24_${k}.png)`); el.style.setProperty("--ring12", `url(img/bits/ring12_${k}.png)`); }
+    for (const el of hot) {
+      const k = rnd(6), j = rnd(6);
+      el.style.setProperty("--ring24", `url(img/bits/ring24_${k}.png)`); el.style.setProperty("--ring12", `url(img/bits/ring12_${k}.png)`);
+      el.style.setProperty("--spark", `url(img/bits/spark_${j}.png)`); el.style.setProperty("--spark2", `url(img/bits/spark_${(j + 3) % 6}.png)`);
+    }
   }, 60);
 
   // the clock: every 140 ms, about half of what shows takes a new arrangement

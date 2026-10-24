@@ -336,6 +336,16 @@ def graphics():
             f[..., 3] = np.where(outer & ~inner, 255, 0)
             Image.fromarray(big(f), "RGBA").save(BITS / f"ring{rad}_{k}.png", optimize=True)
         print(f"web/img/bits/ring{rad}_0..5.png: {2 * n} px, slice {rad if rad >= 12 else 12}")
+    # the hover's sparkle: a 48 px tile of the core's bits, a few cells pink, fewer magenta, six frames at random, for
+    # what the pointer is on to shimmer without changing its light
+    r = np.random.default_rng(11)
+    for k in range(6):
+        f = np.zeros((24, 24, 4), np.uint8)
+        u = r.random((24, 24))
+        f[u < 0.10, :3] = PAL[6]
+        f[u < 0.03, :3] = PAL[4]
+        f[u < 0.10, 3] = 255
+        Image.fromarray(big(f), "RGBA").save(BITS / f"spark_{k}.png", optimize=True)
     # the emulator's lit keys and buttons, in the panel's own units (2 a cell): a white key, a black key, a button,
     # an octave button, each lit from its edge in, six arrangements, for the SVG to show when the core lights them
     for name, w, h, r in (("keyw", 44, 112, 10), ("keyb", 38, 70, 10), ("btn", 40, 34, 12), ("oct", 48, 26, 12)):
