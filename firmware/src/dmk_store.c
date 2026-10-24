@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 3u                                       /* 3: the arrangement; 2: eight patterns; 1: the rolls alone (all read) */
+#define ST_VER 4u   /* 4: each synth's patterns, the scenes, a song of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
 
 static uint8_t st_buf[ST_SECTOR] POOL;                  /* a sector as it is written or was read */
 static uint8_t lib[ST_USER][ST_SOUND] POOL;             /* the library, as the flash holds it: [used, 0, 45 values] */
@@ -133,21 +133,26 @@ static int song_pack(uint8_t *o)                        /* the song open into o:
         for (k = 0; k < PROG_SLOTS; k++) { *p++ = uprog[i].s[k].root; *p++ = uprog[i].s[k].q; *p++ = uprog[i].s[k].half; *p++ = uprog[i].s[k].pedal; }
     }
     for (s = 0; s < DMK_SYNTHS; s++) { *p++ = ui.roll_cur[s]; *p++ = ui.roll_view[s]; *p++ = ui.roll_pen[s]; *p++ = ui.roll_zoom[s]; }
-    pat_keep();                                         /* the open pattern with the others */
-    *p++ = pat_cur;
-    for (g = 0; g < PATTERNS; g++) {
-        *p++ = pat[g].used; *p++ = pat[g].prog;
-        if (!pat[g].used) continue;
-        for (s = 0; s < DMK_SYNTHS; s++) {
-            const pseq_t *q = &pat[g].s[s];
+    scn_keep();                                         /* the open scene with the others */
+    *p++ = scn_cur;
+    for (s = 0; s < DMK_SYNTHS; s++)                    /* each synth's patterns */
+        for (g = 0; g < SYN_PATS; g++) {
+            const pseq_t *q = &spat[s][g];
+            *p++ = q->used;
+            if (!q->used) continue;
             *p++ = q->steps; *p++ = q->count;
             if (p - o + q->count * 4 > (int)(ST_SECTOR - ST_HDR)) return -1;
             for (i = 0; i < q->count; i++) { *p++ = q->n[i].step; *p++ = q->n[i].len; *p++ = q->n[i].note; *p++ = q->n[i].vel; }
         }
+    if (p - o + SCENES * 6 + 3 + song_n * 2 > (int)(ST_SECTOR - ST_HDR)) return -1;
+    for (g = 0; g < SCENES; g++) {                      /* the scenes */
+        *p++ = scn[g].used;
+        if (!scn[g].used) continue;
+        for (s = 0; s < DMK_SYNTHS; s++) *p++ = scn[g].pat[s];
+        *p++ = scn[g].prog; *p++ = scn[g].mute;
     }
-    if (p - o + 3 + song_n * 3 > (int)(ST_SECTOR - ST_HDR)) return -1;
-    *p++ = song_n; *p++ = song_end; *p++ = song_mode;   /* the arrangement */
-    for (i = 0; i < song_n; i++) { *p++ = song[i].pat; *p++ = song[i].bars; *p++ = song[i].mute; }
+    *p++ = song_n; *p++ = song_end; *p++ = song_mode;   /* the song: its steps, scenes for bars */
+    for (i = 0; i < song_n; i++) { *p++ = song[i].scene; *p++ = song[i].bars; }
     return (int)(p - o);
 }
 
@@ -159,6 +164,7 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
     st = *p++; c = *p++;
     q->steps = (uint8_t)(st < 1 ? 1 : st > SEQ_STEPS ? SEQ_STEPS : st);
     q->count = 0;
+    q->used = 1;
     for (i = 0; i < c && e - p >= 4; i++, p += 4) if (q->count < SEQ_NOTES && p[0] < q->steps) q->n[q->count++] = (snote_t){p[0], p[1], p[2], p[3]};
     *pp = p;
     return 0;
@@ -190,30 +196,58 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
     }
     for (s = 0; s < DMK_SYNTHS; s++) { ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++; }
     pat_init();
-    if (st_ver < 2u) {                                  /* version 1: the rolls, the one pattern */
-        for (s = 0; s < DMK_SYNTHS; s++) if (seq_unpack(&pat[0].s[s], &p, e)) return -1;
-        pat[0].used = 1; pat[0].prog = ui.val[0][PG_CHORD][0][4];
+    song_init();
+    if (st_ver < 2u) {                                  /* version 1: the rolls: each synth's first pattern, scene 1 */
+        for (s = 0; s < DMK_SYNTHS; s++) if (seq_unpack(&spat[s][0], &p, e)) return -1;
+        scn[0].prog = ui.val[0][PG_CHORD][0][4];
+    } else if (st_ver < 4u) {                           /* versions 2, 3: a pattern of three rolls became a scene */
+        int cur;
+        if (e - p < 1) return -1;
+        cur = *p++;
+        for (g = 0; g < 8; g++) {
+            int used, prog;
+            if (e - p < 2) return -1;
+            used = *p++; prog = *p++;
+            if (!used) continue;
+            for (s = 0; s < DMK_SYNTHS; s++) { if (seq_unpack(&spat[s][g], &p, e)) return -1; scn[g].pat[s] = (uint8_t)g; }
+            scn[g].used = 1; scn[g].prog = (uint8_t)prog; scn[g].mute = 0;
+        }
+        scn_cur = (uint8_t)(cur < 8 && scn[cur].used ? cur : 0);
+        if (st_ver >= 3u && e - p >= 3) {               /* its song: a step's pattern is now the scene of that number */
+            int c = *p++;
+            song_end = (uint8_t)(*p++ % SE_COUNT); song_mode = (uint8_t)(*p++ ? 1 : 0);
+            for (i = 0; i < c && i < SONG_STEPS && e - p >= 3; i++, p += 3) song_put(i, p[0] & 7, p[1]);
+            song_n = (uint8_t)i;
+        }
     } else {
         int cur;
         if (e - p < 1) return -1;
         cur = *p++;
-        for (g = 0; g < PATTERNS; g++) {
-            if (e - p < 2) return -1;
-            pat[g].used = *p++; pat[g].prog = *p++;
-            if (pat[g].used) for (s = 0; s < DMK_SYNTHS; s++) if (seq_unpack(&pat[g].s[s], &p, e)) return -1;
+        for (s = 0; s < DMK_SYNTHS; s++)
+            for (g = 0; g < SYN_PATS; g++) {
+                if (e - p < 1) return -1;
+                spat[s][g].used = 0;
+                if (*p++ && seq_unpack(&spat[s][g], &p, e)) return -1;
+            }
+        for (g = 0; g < SCENES; g++) {
+            if (e - p < 1) return -1;
+            scn[g].used = *p++ ? 1 : 0;
+            if (!scn[g].used) continue;
+            if (e - p < 5) return -1;
+            for (s = 0; s < DMK_SYNTHS; s++) scn[g].pat[s] = (uint8_t)(*p++ & (SYN_PATS - 1));
+            scn[g].prog = *p++; scn[g].mute = (uint8_t)(*p++ & 7);
         }
-        pat_cur = (uint8_t)(cur < PATTERNS && pat[cur].used ? cur : 0);
-        pat[pat_cur].used = 1;
+        scn_cur = (uint8_t)(cur < SCENES && scn[cur].used ? cur : 0);
+        if (e - p >= 3) {
+            int c = *p++;
+            song_end = (uint8_t)(*p++ % SE_COUNT); song_mode = (uint8_t)(*p++ ? 1 : 0);
+            for (i = 0; i < c && i < SONG_STEPS && e - p >= 2; i++, p += 2) song_put(i, p[0], p[1]);
+            song_n = (uint8_t)i;
+        }
     }
-    song_init();
-    if (st_ver >= 3u && e - p >= 3) {                   /* the arrangement (older songs: none) */
-        int c = *p++;
-        song_end = (uint8_t)(*p++ % SE_COUNT); song_mode = (uint8_t)(*p++ ? 1 : 0);
-        for (i = 0; i < c && i < SONG_STEPS && e - p >= 3; i++, p += 3) song_put(i, p[0] & 7, p[1], p[2]);
-        song_n = (uint8_t)i;
-        if (!song_n) song_mode = 0;
-    }
-    pat_load(pat_cur);
+    scn[scn_cur].used = 1;
+    if (!song_n) song_mode = 0;
+    scn_load(scn_cur);
     for (s = 0; s < DMK_SYNTHS; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
     for (s = 0; s < DMK_SYNTHS; s++) {
         if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N) ui.val[s][PG_SOUND][0][0] = 0;

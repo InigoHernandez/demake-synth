@@ -38,76 +38,124 @@ static int plays_chords(int s);
 static void later_tick(int frames);
 static void chord_rest(void);
 
-/* the patterns (docs/plan.md, 3.6.1): a song has eight; a pattern is the three rolls and the progression, the
- * sounds, effects, key and tempo being the song's, so a switch changes the notes and the harmony, never the timbre.
- * The open one is sq[]; the others wait in pat[]. Playing, a switch waits for the bar (16 steps since PLAY), then
- * every roll and the progression start again from their beginnings. A synth muted plays nothing of its roll or of
- * the chords (the keys still sound) */
-#define PATTERNS 8
-typedef struct { snote_t n[SEQ_NOTES]; uint8_t count, steps; } pseq_t;
-static struct { pseq_t s[DMK_SYNTHS]; uint8_t prog, used; } pat[PATTERNS] POOL;
-static uint8_t pat_cur, pat_next = 0xFF, pat_mute;
+/* patterns and scenes, after the way a pocket studio arranges (docs/sound-design.md, 3): each synth has eight
+ * patterns of its own (its rolls); a SCENE says which pattern each synth plays, with the progression and the synths
+ * muted; sixteen scenes, on the white keys with HOME held. A switch waits for the bar (16 steps since PLAY), then
+ * every roll and the progression start again from their beginnings; an empty scene picked starts as a copy of the one
+ * playing, its patterns shared, so a variation is the scene's one pattern changed. The sounds, effects, key and tempo
+ * are the song's: a switch changes the notes and the harmony, never the timbre. The open patterns are sq[]; the others
+ * wait in spat[]. A synth muted plays nothing of its roll or of the chords (the keys still sound) */
+#define SYN_PATS 8                                      /* patterns a synth */
+#define SCENES 16
+typedef struct { snote_t n[SEQ_NOTES]; uint8_t count, steps, used; } pseq_t;
+static pseq_t spat[DMK_SYNTHS][SYN_PATS] POOL;
+typedef struct { uint8_t pat[DMK_SYNTHS], prog, mute, used; } scene_t;
+static scene_t scn[SCENES];
+static uint8_t scn_cur, scn_next = 0xFF, pat_mute;      /* the scene open, the one waiting for the bar, the mutes */
+static uint8_t spat_next[DMK_SYNTHS] = {0xFF, 0xFF, 0xFF};   /* a synth's pattern waiting for the bar */
 static uint8_t pat_prog_get(void);                      /* the CHORD page's progression (dmk_ui.c) */
 static void pat_prog_put(uint8_t v);
-
-static void pat_keep(void)                              /* the open pattern into its place */
-{
-    int s, i;
-    for (s = 0; s < DMK_SYNTHS; s++) {
-        pat[pat_cur].s[s].count = sq[s].count; pat[pat_cur].s[s].steps = sq[s].steps;
-        for (i = 0; i < sq[s].count; i++) pat[pat_cur].s[s].n[i] = sq[s].n[i];
-    }
-    pat[pat_cur].prog = pat_prog_get();
-    pat[pat_cur].used = 1;
-}
 static void seq_quiet(int s);
 static void chord_quiet(void);
 static void chord_start(void);
-static void pat_load(int p)                             /* pattern p into the open one (what was open not kept) */
+
+static int syn_pat(int s) { return scn[scn_cur].pat[s]; }   /* the pattern synth s plays */
+static void spat_keep(int s)                            /* synth s's roll into its pattern */
 {
-    int s, i;
-    for (s = 0; s < DMK_SYNTHS; s++) {
-        seq_quiet(s);
-        sq[s].count = pat[p].s[s].count; sq[s].steps = pat[p].s[s].steps ? pat[p].s[s].steps : 16;
-        for (i = 0; i < sq[s].count; i++) sq[s].n[i] = pat[p].s[s].n[i];
-        sq[s].pos = 0;
-    }
-    pat_cur = (uint8_t)p;
-    pat_prog_put(pat[p].prog);
+    pseq_t *q = &spat[s][syn_pat(s)];
+    int i;
+    q->count = sq[s].count; q->steps = sq[s].steps; q->used = 1;
+    for (i = 0; i < sq[s].count; i++) q->n[i] = sq[s].n[i];
+}
+static void spat_load(int s, int p)                     /* pattern p into synth s's roll (what was open not kept) */
+{
+    const pseq_t *q = &spat[s][p & (SYN_PATS - 1)];
+    int i;
+    seq_quiet(s);
+    sq[s].count = q->used ? q->count : 0;
+    sq[s].steps = q->used && q->steps ? q->steps : sq[s].steps ? sq[s].steps : 16;   /* a new one: the length it had */
+    for (i = 0; i < sq[s].count; i++) sq[s].n[i] = q->n[i];
+    sq[s].pos = 0;
+}
+static void scn_keep(void)                              /* the scene open, its rolls into their patterns */
+{
+    int s;
+    for (s = 0; s < DMK_SYNTHS; s++) spat_keep(s);
+    scn[scn_cur].prog = pat_prog_get();
+    scn[scn_cur].mute = pat_mute;
+    scn[scn_cur].used = 1;
+}
+static void scn_load(int c)                             /* scene c open (what was open not kept) */
+{
+    int s;
+    scn_cur = (uint8_t)c;
+    for (s = 0; s < DMK_SYNTHS; s++) { spat_load(s, scn[c].pat[s]); spat_next[s] = 0xFF; }
+    pat_mute = scn[c].mute;
+    pat_prog_put(scn[c].prog);
     chord_quiet();
     chord_start();
 }
-static void pat_open(int p) { pat_keep(); pat_load(p); }   /* pattern p open: the last kept first */
-static void pat_init(void)                              /* the first song: one pattern, the open one */
+static void scn_open(int c) { scn_keep(); scn_load(c); }   /* scene c open: the last kept first */
+static void syn_pat_set(int s, int p)                   /* synth s plays pattern p in this scene, now */
 {
-    int p;
-    for (p = 0; p < PATTERNS; p++) pat[p].used = 0;
-    pat_cur = 0; pat_next = 0xFF; pat_mute = 0;
+    spat_keep(s);
+    scn[scn_cur].pat[s] = (uint8_t)p;
+    spat_load(s, p);
+}
+static int spat_dup(int s)                              /* synth s's pattern copied into its next empty one, now its: -1 full */
+{
+    int q, from = syn_pat(s);
+    spat_keep(s);
+    for (q = 1; q < SYN_PATS && spat[s][(from + q) % SYN_PATS].used; q++) {}
+    if (q == SYN_PATS) return -1;
+    q = (from + q) % SYN_PATS;
+    spat[s][q] = spat[s][from];
+    scn[scn_cur].pat[s] = (uint8_t)q;
+    return q;
+}
+static int scn_bars(int c)                              /* a scene's length: its longest pattern, in bars (1-8) */
+{
+    int s, b = 1;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        const pseq_t *q = &spat[s][scn[c].pat[s]];
+        int st = c == scn_cur ? sq[s].steps : q->used ? q->steps : 16, n = (st + 15) / 16;
+        if (n > b) b = n;
+    }
+    return b > 8 ? 8 : b;
+}
+static void pat_init(void)                              /* the first song: scene 1, each synth its pattern 1 */
+{
+    int s, p;
+    for (s = 0; s < DMK_SYNTHS; s++) for (p = 0; p < SYN_PATS; p++) spat[s][p].used = 0;
+    for (p = 0; p < SCENES; p++) { scn[p].used = 0; scn[p].mute = 0; for (s = 0; s < DMK_SYNTHS; s++) scn[p].pat[s] = 0; }
+    scn[0].used = 1;
+    scn_cur = 0; scn_next = 0xFF; pat_mute = 0;
+    for (s = 0; s < DMK_SYNTHS; s++) spat_next[s] = 0xFF;
 }
 
-/* the song mode: the patterns arranged. A step is a pattern for 1-8 bars with its synths muted or not; a song is up
- * to 128 of them and an end. In song mode PLAY plays them in order, each switch on its bar; in pattern mode PLAY loops
- * the pattern open, as before. Recorded live (Arrange, REC, PLAY): each bar the pattern and the mutes playing are
- * counted, a change closes the step (a step longer than 8 bars goes on in another) */
+/* the song mode: the scenes arranged. A step is a scene for 1-8 bars; a song is up to 128 of them and an end. In
+ * song mode PLAY plays them in order, each switch on its bar; in scene mode PLAY loops the scene open. Recorded live
+ * (Arrange, REC, PLAY): each bar is counted to the scene playing, a change closes the step (a step longer than 8 bars
+ * goes on in another) */
 #define SONG_STEPS 128
 enum { SE_LOOP, SE_STOP, SE_FADE, SE_FADES, SE_COUNT };   /* the end: loop; stop; fade out; fade in and out */
-typedef struct { uint8_t pat, bars, mute; } sstep_t;
+typedef struct { uint8_t scene, bars; } sstep_t;
 static sstep_t song[SONG_STEPS];
 static uint8_t song_n, song_end, song_mode, song_at, song_left, song_rec;
-static uint8_t rec_pat, rec_mute, rec_bars, rec_from;
+static uint8_t rec_scn, rec_bars, rec_from;
 static int song_playing(void) { return seq_on && song_mode && song_n && !song_rec; }
 
 static int32_t song_bar_samples(int bars) { return (int32_t)((uint32_t)bars * 16u * (seq_per_q8() >> 8)); }
-static void song_put(int at, int p, int bars, int mute)
+static void song_put(int at, int c, int bars)
 {
     if (at >= SONG_STEPS) return;
-    song[at].pat = (uint8_t)p; song[at].bars = (uint8_t)(bars < 1 ? 1 : bars > 8 ? 8 : bars); song[at].mute = (uint8_t)(mute & 7);
+    song[at].scene = (uint8_t)(c & (SCENES - 1)); song[at].bars = (uint8_t)(bars < 1 ? 1 : bars > 8 ? 8 : bars);
 }
 static void rec_close(void)                             /* the step recorded so far written; long ones split by 8 */
 {
     while (rec_bars && rec_from < SONG_STEPS) {
         int b = rec_bars > 8 ? 8 : rec_bars;
-        song_put(rec_from++, rec_pat, b, rec_mute);
+        song_put(rec_from++, rec_scn, b);
         rec_bars = (uint8_t)(rec_bars - b);
     }
     song_n = rec_from;
@@ -115,9 +163,9 @@ static void rec_close(void)                             /* the step recorded so 
 /* each bar of the clock: the song's next step when the last has had its bars; 1 when the song has ended (stopped) */
 static int song_bar(void)
 {
-    if (song_rec) {                                     /* recording: the bar counted to the step that sounds */
-        if (seq_ticks && (pat_cur != rec_pat || pat_mute != rec_mute)) { rec_close(); rec_pat = pat_cur; rec_mute = pat_mute; }
-        else if (!seq_ticks) { rec_pat = pat_cur; rec_mute = pat_mute; }
+    if (song_rec) {                                     /* recording: the bar counted to the scene that sounds */
+        if (seq_ticks && scn_cur != rec_scn) { rec_close(); rec_scn = scn_cur; }
+        else if (!seq_ticks) rec_scn = scn_cur;
         rec_bars++;
         return 0;
     }
@@ -129,8 +177,7 @@ static int song_bar(void)
             else return 1;                              /* the end: stopped (a fade has already come down) */
         }
         t = &song[song_at++];
-        if (t->pat != pat_cur) pat_open(t->pat);
-        pat_mute = t->mute;
+        if (t->scene != scn_cur) scn_open(t->scene);
         song_left = t->bars;
         if ((song_end == SE_FADE || song_end == SE_FADES) && song_at == song_n) {   /* the last: the synths fade out */
             int32_t n = song_bar_samples(t->bars);
@@ -201,7 +248,9 @@ static void seq_step(void)                              /* every synth one step 
 {
     int s, i, k;
     if (!(seq_ticks % 16u)) {                           /* on the bar: a pattern switch, the song's step */
-        if (pat_next < PATTERNS) { pat_open(pat_next); pat_next = 0xFF; }
+        int x;
+        if (scn_next < SCENES) { scn_open(scn_next); scn_next = 0xFF; }
+        for (x = 0; x < DMK_SYNTHS; x++) if (spat_next[x] < SYN_PATS) { syn_pat_set(x, spat_next[x]); spat_next[x] = 0xFF; }
         if (song_bar()) { seq_stop_req = 1; return; }
     }
     chord_step();                                       /* the harmony first: the notes follow the chord now */

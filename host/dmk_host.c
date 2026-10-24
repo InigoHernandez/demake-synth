@@ -163,9 +163,13 @@ static void tour(const char *dir)
     theme = 0;
     tap(B_SEQ); dmk_encoder(E_SELECT, 1); dmk_encoder(E_SELECT, 1); shot(dir, "roll_synth3");   /* its own pattern */
     dmk_button(B_HOME, 1); wait_ms(30); dmk_button(B_SEQ, 1); dmk_button(B_SEQ, 0); dmk_button(B_HOME, 0); wait_ms(30);   /* Arrange */
+    ui.synth = 1; dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0); seq_add(1, 10, 2, 74, 100);   /* a variation for the piano */
+    wait_ms(1600); shot(dir, "arrange_scene");
+    dmk_encoder(E_ALGO, 1);                             /* the Song row */
     dmk_key(0, 1); dmk_key(0, 0); dmk_key(4, 1); dmk_key(4, 0); dmk_encoder(E_K1, -1); dmk_encoder(E_K3, 1); dmk_encoder(E_K3, 1);
-    dmk_encoder(E_K1, 1); dmk_key(0, 1); dmk_key(0, 0); dmk_key(4, 1); dmk_key(4, 0); dmk_key(3, 1); dmk_key(3, 0); dmk_encoder(E_K1, -1); dmk_encoder(E_K1, -1);
-    wait_ms(1600); shot(dir, "arrange");
+    dmk_encoder(E_K1, 1); dmk_key(0, 1); dmk_key(0, 0); dmk_key(4, 1); dmk_key(4, 0); dmk_encoder(E_K1, -1); dmk_encoder(E_K1, -1);
+    wait_ms(60); shot(dir, "arrange");
+    dmk_encoder(E_ALGO, 1);
     tap(B_ARP); tap(B_ARP); tap(B_ARP); dmk_encoder(E_K2, 1); dmk_encoder(E_K2, 1); wait_ms(60); shot(dir, "chord_keys");   /* the Keys row */
     dmk_encoder(E_K2, -1); dmk_encoder(E_K2, -1); tap(B_SEQ);
     dmk_button(B_SEQ, 1); wait_ms(500); shot(dir, "roll_seq_held");                               /* SEQ: OCT- clears */
@@ -328,57 +332,68 @@ static void selftest(void)
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    /* the patterns: HOME held and a white key; an empty one starts as a copy; playing, the switch waits for the bar;
-     * a black key mutes its synth; a song saves all eight */
+    /* scenes and patterns: HOME held and a white key, a scene (an empty one a copy of this one, its patterns
+     * shared); on Arrange's Scene row OCT+ copies the synth's pattern into a new one, the scene's now (a variation);
+     * K1-K3 a synth's pattern, at the bar when playing; a black key mutes; a song keeps all of it */
     {
-        int n0;
+        int n0, bar = 16 * 60000 / 72 / 4;
         dmk_init(12); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         n0 = sq[1].count;
         dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); wait_ms(30);
-        if (pat_cur != 1 || !pat[1].used || sq[1].count != n0) { fails++; printf("selftest: an empty pattern is not a copy of this one\n"); }
-        seq_add(1, 3, 1, 70, 100);                      /* pattern 2 has a note more */
-        dmk_key(0, 1); dmk_key(0, 0); wait_ms(30);
-        if (pat_cur != 0 || sq[1].count != n0) { fails++; printf("selftest: back to pattern 1, its rolls are not its own\n"); }
+        if (scn_cur != 1 || !scn[1].used || sq[1].count != n0 || syn_pat(1) != 0) { fails++; printf("selftest: an empty scene is not a copy of this one\n"); }
+        dmk_button(B_SEQ, 1); dmk_button(B_SEQ, 0); dmk_button(B_HOME, 0); wait_ms(30);
+        if (ui.page != PG_ARR || ui.row[PG_ARR] != 0) { fails++; printf("selftest: HOME + SEQ does not open Arrange on its Scene row\n"); }
+        ui.synth = 1; dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0);
+        if (syn_pat(1) != 1 || !spat[1][1].used) { fails++; printf("selftest: OCT+ on the Scene row does not make a variation\n"); }
+        seq_add(1, 3, 1, 70, 100);                      /* the variation has a note more */
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(0, 1); dmk_key(0, 0); wait_ms(30);
+        if (scn_cur != 0 || sq[1].count != n0 || syn_pat(1) != 0) { fails++; printf("selftest: back to scene 1, its patterns are not its own\n"); }
         dmk_button(B_HOME, 0); wait_ms(30);
-        if (ui.page == PG_HOME && ui.btn_used) {}
         seq_play(1); wait_ms(100);
         dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); dmk_button(B_HOME, 0);
-        if (pat_cur != 0 || pat_next != 1) { fails++; printf("selftest: playing, a switch does not wait for the bar\n"); }
-        wait_ms(16 * 60000 / 72 / 4 + 100);              /* a bar at 72 */
-        if (pat_cur != 1 || sq[1].count != n0 + 1) { fails++; printf("selftest: the switch does not happen on the bar\n"); }
+        if (scn_cur != 0 || scn_next != 1) { fails++; printf("selftest: playing, a scene does not wait for the bar\n"); }
+        wait_ms(bar + 150);
+        if (scn_cur != 1 || sq[1].count != n0 + 1) { fails++; printf("selftest: the scene does not come on the bar\n"); }
+        dmk_encoder(E_K2, -1);                          /* synth 2 back to its pattern 1, at the bar */
+        if (syn_pat(1) != 1 || spat_next[1] != 0) { fails++; printf("selftest: playing, a synth's pattern does not wait for the bar\n"); }
+        wait_ms(bar + 150);
+        if (syn_pat(1) != 0 || sq[1].count != n0) { fails++; printf("selftest: a synth's pattern does not change on the bar\n"); }
+        dmk_encoder(E_K2, 1); wait_ms(bar + 150);
         dmk_button(B_HOME, 1); wait_ms(30); dmk_key(1, 1); dmk_key(1, 0); dmk_button(B_HOME, 0); wait_ms(1500);
         { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 0; if (!(pat_mute & 1u) || on) { fails++; printf("selftest: a muted synth still plays (%d)\n", on); } }
         seq_play(0);
         host_store_on(1, 1);
         tap(B_SAVE); dmk_init(13); now_ms = 0; wait_ms(60);
-        if (!pat[0].used || !pat[1].used || pat[2].used || pat_cur != 1 || sq[1].count != n0 + 1) { fails++; printf("selftest: a song does not keep its patterns\n"); }
+        if (!scn[0].used || !scn[1].used || scn[2].used || scn_cur != 1 || syn_pat(1) != 1 || sq[1].count != n0 + 1 || !(pat_mute & 1u))
+            { fails++; printf("selftest: a song does not keep its scenes and patterns\n"); }
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    /* the song mode: Arrange typed from the pattern keys; PLAY there plays it, a step a bar count; the end stops or
-     * fades; HOME + PLAY switches the mode; a take recorded from the HOME switches; the copy; saved with the song */
+    /* the song mode: Arrange's Song row typed from the scene keys; PLAY there plays it, a step a bar count; the end
+     * stops or fades; HOME + PLAY switches the mode; a take recorded from the HOME switches; the scene copy; saved */
     {
         int bar = 16 * 60000 / 72 / 4;                  /* a bar at 72, in ms */
         dmk_init(15); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); dmk_key(0, 1); dmk_key(0, 0); dmk_button(B_HOME, 0); wait_ms(30);   /* pattern 2 made */
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); dmk_key(0, 1); dmk_key(0, 0); dmk_button(B_HOME, 0); wait_ms(30);   /* scene 2 made */
         dmk_button(B_HOME, 1); wait_ms(30); dmk_button(B_SEQ, 1); dmk_button(B_SEQ, 0); dmk_button(B_HOME, 0); wait_ms(30);
-        if (ui.page != PG_ARR) { fails++; printf("selftest: HOME + SEQ does not open Arrange\n"); }
+        dmk_encoder(E_ALGO, 1);                         /* the Song row */
+        if (ui.page != PG_ARR || ui.row[PG_ARR] != 1) { fails++; printf("selftest: ALGORITHM does not reach Arrange's Song row\n"); }
         ui.arr_bars = 1;
         dmk_key(0, 1); dmk_key(0, 0); dmk_key(2, 1); dmk_key(2, 0); dmk_key(0, 1); dmk_key(0, 0); wait_ms(30);   /* 1 2 1 */
-        if (song_n != 3 || song[1].pat != 1 || ui.arr_cur != 3) { fails++; printf("selftest: the pattern keys do not write the steps (%d)\n", song_n); }
+        if (song_n != 3 || song[1].scene != 1 || ui.arr_cur != 3) { fails++; printf("selftest: the scene keys do not write the steps (%d)\n", song_n); }
         ui.arr_cur = 1; dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0);   /* 1 2 2 1 */
-        if (song_n != 4 || song[2].pat != 1) { fails++; printf("selftest: OCT+ on Arrange does not copy the step\n"); }
+        if (song_n != 4 || song[2].scene != 1) { fails++; printf("selftest: OCT+ on the Song row does not copy the step\n"); }
         dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0);   /* 1 2 1 */
-        if (song_n != 3) { fails++; printf("selftest: OCT- on Arrange does not delete the step\n"); }
-        dmk_encoder(E_K1, -1); dmk_encoder(E_K1, -1); dmk_encoder(E_ALGO, 1);   /* the cursor home; the end: Stop */
-        if (song_end != SE_STOP) { fails++; printf("selftest: ALGORITHM is not the song's end\n"); }
+        if (song_n != 3) { fails++; printf("selftest: OCT- on the Song row does not delete the step\n"); }
+        dmk_encoder(E_K1, -1); dmk_encoder(E_K1, -1); dmk_encoder(E_K4, 1);   /* the cursor home; the end: Stop */
+        if (song_end != SE_STOP) { fails++; printf("selftest: K4 is not the song's end\n"); }
         tap(B_PLAY);
-        if (!song_playing() || pat_cur != 0) { fails++; printf("selftest: PLAY on Arrange does not play the song\n"); }
+        if (!song_playing() || scn_cur != 0) { fails++; printf("selftest: PLAY on Arrange does not play the song\n"); }
         wait_ms(bar + 60);
-        if (pat_cur != 1) { fails++; printf("selftest: the song's second step does not come on its bar (%d)\n", pat_cur); }
+        if (scn_cur != 1) { fails++; printf("selftest: the song's second step does not come on its bar (%d)\n", scn_cur); }
         wait_ms(2 * bar + 700);                         /* (the host's ms run 3% ahead of its sound) */
         if (seq_on) { fails++; printf("selftest: the song does not stop at its end\n"); }
-        dmk_encoder(E_ALGO, 1);                         /* Fade out */
+        dmk_encoder(E_K4, 1);                           /* Fade out */
         tap(B_PLAY); wait_ms(2 * bar + bar / 2);
         if (mix_g >= 32768 || mix_g <= 0) { fails++; printf("selftest: the last step does not fade (%d)\n", (int)mix_g); }
         wait_ms(bar);
@@ -391,27 +406,28 @@ static void selftest(void)
         tap(B_PLAY); wait_ms(60);
         if (!song_playing()) { fails++; printf("selftest: PLAY in song mode on Home does not play the song\n"); }
         dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); dmk_button(B_HOME, 0); wait_ms(30);
-        if (song_mode) { fails++; printf("selftest: a pattern picked while the song plays does not leave it\n"); }
+        if (song_mode) { fails++; printf("selftest: a scene picked while the song plays does not leave it\n"); }
         tap(B_PLAY);
-        /* the copy: HOME, OCT+, a pattern key; over notes twice */
-        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(0, 1); dmk_key(0, 0); wait_ms(30);   /* pattern 1 open */
-        seq_add(2, 7, 1, 81, 100);
+        /* the copy: HOME, OCT+, a scene key; over one in use twice */
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(0, 1); dmk_key(0, 0); wait_ms(30);   /* scene 1 open */
+        scn[0].pat[2] = 3;
         dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0); dmk_key(4, 1); dmk_key(4, 0);   /* to 3, empty */
-        if (!pat[2].used || pat[2].s[2].count != sq[2].count) { fails++; printf("selftest: HOME + OCT+ and a key does not copy the pattern\n"); }
+        if (!scn[2].used || scn[2].pat[2] != 3) { fails++; printf("selftest: HOME + OCT+ and a key does not copy the scene\n"); }
         dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0); dmk_key(2, 1); dmk_key(2, 0);   /* over 2: asks */
-        if (strcmp(ui.note, "Again: over it")) { fails++; printf("selftest: a copy over notes does not ask (%s)\n", ui.note); }
+        if (strcmp(ui.note, "Again: over it")) { fails++; printf("selftest: a copy over a scene does not ask (%s)\n", ui.note); }
         dmk_key(2, 1); dmk_key(2, 0);
-        if (pat[1].s[2].count != sq[2].count) { fails++; printf("selftest: the second press does not copy over\n"); }
+        if (scn[1].pat[2] != 3) { fails++; printf("selftest: the second press does not copy over\n"); }
         dmk_button(B_HOME, 0); wait_ms(30);
+        scn[0].pat[2] = scn[1].pat[2] = scn[2].pat[2] = 0; scn_load(0);
         /* a take: Arrange, REC, PLAY, the HOME switches; stopped, the song */
         dmk_button(B_HOME, 1); wait_ms(30); dmk_button(B_SEQ, 1); dmk_button(B_SEQ, 0); dmk_button(B_HOME, 0); wait_ms(30);
         ui.arr_cur = 0; seq_rec = 1; tap(B_PLAY); wait_ms(bar + 60);
         dmk_button(B_HOME, 1); wait_ms(30); dmk_key(4, 1); dmk_key(4, 0); dmk_button(B_HOME, 0);
         wait_ms(2 * bar); tap(B_PLAY); seq_rec = 0;
-        if (song_n != 2 || song[0].pat != 0 || song[1].pat != 2 || !song_mode) { fails++; printf("selftest: a take is not the song (%d steps)\n", song_n); }
+        if (song_n != 2 || song[0].scene != 0 || song[1].scene != 2 || !song_mode) { fails++; printf("selftest: a take is not the song (%d steps)\n", song_n); }
         host_store_on(1, 1);
         tap(B_SAVE); dmk_init(16); now_ms = 0; wait_ms(60);
-        if (song_n != 2 || song[1].pat != 2 || !song_mode) { fails++; printf("selftest: the song's arrangement is not saved\n"); }
+        if (song_n != 2 || song[1].scene != 2 || !song_mode) { fails++; printf("selftest: the song is not saved\n"); }
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
