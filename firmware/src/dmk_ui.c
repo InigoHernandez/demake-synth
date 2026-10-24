@@ -142,6 +142,8 @@ static struct {
     uint32_t both_at;
     uint32_t copy_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
+    int8_t sel_dir;                                     /* SELECT's last step and when (one synth a click) */
+    uint32_t sel_at;
 } ui;
 
 static uint8_t leds[DMK_KEYS + B_COUNT];
@@ -2047,7 +2049,15 @@ static void ui_encoder(int e, int d)
         int b;
         for (b = 0; b < B_COUNT; b++) if (ui.btn_held >> b & 1u) ui.btn_used |= (uint16_t)(1u << b);
     }
-    if (e == E_SELECT) { int s = ui.synth + (d > 0 ? 1 : -1); ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s); sp_sync(); return; }
+    if (e == E_SELECT) {                                /* a synth a click: a second step the same way within 120 ms is
+                                                           the same click (the owner's FM-1 sent two: 1, then 3) */
+        int dir = d > 0 ? 1 : -1, s = ui.synth + dir;
+        if (dir == ui.sel_dir && ui.now - ui.sel_at < 120u) return;
+        ui.sel_dir = (int8_t)dir; ui.sel_at = ui.now;
+        ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s);
+        sp_sync();
+        return;
+    }
     if (e == E_PRESET) {                                /* the synth's sound: the next recording, then the library's */
         uint8_t *sv = &ui.val[ui.synth][PG_SOUND][0][0], *pr = &ui.preset[ui.synth];
         int tot = DMK_SAMPLES_N + lib_count(), n;

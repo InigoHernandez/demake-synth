@@ -161,7 +161,7 @@ static void tour(const char *dir)
         tap(B_GLO);
     }
     theme = 0;
-    tap(B_SEQ); dmk_encoder(E_SELECT, 1); dmk_encoder(E_SELECT, 1); shot(dir, "roll_synth3");   /* its own pattern */
+    tap(B_SEQ); dmk_encoder(E_SELECT, 1); wait_ms(150); dmk_encoder(E_SELECT, 1); shot(dir, "roll_synth3");   /* its own pattern */
     dmk_button(B_HOME, 1); wait_ms(30); dmk_button(B_SEQ, 1); dmk_button(B_SEQ, 0); dmk_button(B_HOME, 0); wait_ms(30);   /* Arrange */
     ui.synth = 1; dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0); seq_add(1, 10, 2, 74, 100);   /* a variation for the piano */
     wait_ms(1600); shot(dir, "arrange_scene");
@@ -245,6 +245,17 @@ static void selftest(void)
         if (dmk_playing()) { fails++; printf("selftest: PLAY again does not stop\n"); }
         dmk_encoder(E_SELECT, -1);
         tap(B_FX);                                      /* back where the next check starts */
+    }
+    {   /* SELECT: a synth a click; a second step the same way at once is the same click (the owner's FM-1: 1, then 3) */
+        int s0 = ui.synth;
+        wait_ms(150);
+        dmk_encoder(E_SELECT, 1); wait_ms(9); dmk_encoder(E_SELECT, 1);
+        if (ui.synth != s0 + 1) { fails++; printf("selftest: one click of SELECT moved %d synths\n", ui.synth - s0); }
+        wait_ms(150); dmk_encoder(E_SELECT, 1);
+        if (ui.synth != s0 + 2) { fails++; printf("selftest: SELECT's next click did not reach the next synth\n"); }
+        wait_ms(150); dmk_encoder(E_SELECT, -1); wait_ms(150); dmk_encoder(E_SELECT, -1);
+        if (ui.synth != s0) { fails++; printf("selftest: SELECT back did not return\n"); }
+        wait_ms(150);
     }
     /* the chords: a key on CHORD plays the mode's chord on it; PLAY changes them on the clock; KEY keeps a melody in */
     {
