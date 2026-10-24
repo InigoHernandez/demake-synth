@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Demake's emulator page: the FM-1's panel as line art (its geometry as the community's emulators measured it, as
 // MONO2K's panel.js has it), the screen from the worklet, and the controls from mouse, touch and the computer's keys.
-// A monotone panel in the screen's colours, and what is lit in the screen's thermal light: rings from the shape's edge
-// in (a blue rim, a magenta body, a pale core), an SVG filter of erosions, the chessboard depth the screen uses.
+// A monotone panel in the screen's colours, and what is lit in the screen's thermal light, 8-bit: a sprite of the lit
+// shape over each key and button, lit from its edge in by the chessboard depth the screen uses.
 (() => {
   "use strict";
   const NS = "http://www.w3.org/2000/svg";
@@ -28,31 +28,34 @@
   const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); (p || svg).appendChild(e); return e; };
   const label = (x, y, s, size = 11, fill = INK) => { const t = el("text", { x, y, "text-anchor": "middle", fill, "font-size": size, "font-family": "geist, sans-serif", "font-weight": 500 }); t.textContent = s; return t; };
 
-  // ---- the panel: one ink line, rounded; what is lit glows from its edge in
-  {
-    const defs = el("defs", {}), f = el("filter", { id: "lit", x: "-5%", y: "-5%", width: "110%", height: "110%" }, defs);
-    const RINGS = [[0, "#2459ff"], [2, "#8e3aea"], [4.5, "#e52bc2"], [8, "#ff8cda"], [12, "#ffddf2"]];
-    RINGS.forEach(([r, c], i) => {
-      if (r) el("feMorphology", { in: "SourceAlpha", operator: "erode", radius: r, result: "a" + i }, f);
-      el("feFlood", { "flood-color": c, result: "c" + i }, f);
-      el("feComposite", { in: "c" + i, in2: r ? "a" + i : "SourceAlpha", operator: "in", result: "r" + i }, f);
-    });
-    const m = el("feMerge", {}, f);
-    RINGS.forEach((_, i) => el("feMergeNode", { in: "r" + i }, m));
-  }
-  const light = (e, on, fill) => { e.setAttribute("fill", fill); if (on) e.setAttribute("filter", "url(#lit)"); else e.removeAttribute("filter"); };
+  // ---- the panel: one ink line, rounded; what is lit glows from its edge in, 8-bit, as the screen draws it: a sprite
+  // over the key or the button (tools/gen_art.py), its bits stepping through the six arrangements
+  const lits = [];
+  const litImg = (x, y, w, h, shape) => {
+    const im = el("image", { x, y, width: w, height: h, href: `img/bits/${shape}_0.png`, preserveAspectRatio: "none", "pointer-events": "none" });
+    im.style.imageRendering = "pixelated"; im.style.display = "none"; im.dataset.shape = shape;
+    for (let k = 0; k < 6; k++) new Image().src = `img/bits/${shape}_${k}.png`;
+    lits.push(im);
+    return im;
+  };
+  const light = (e, on, fill) => { e.setAttribute("fill", fill); e.img.style.display = on ? "" : "none"; };
+  setInterval(() => {
+    for (const im of lits) if (im.style.display !== "none" && Math.random() < 0.5) im.setAttribute("href", `img/bits/${im.dataset.shape}_${(Math.random() * 6) | 0}.png`);
+  }, 140);
   el("rect", { x: 20, y: 20, width: 864, height: 526, rx: 44, fill: PAPER, stroke: INK, "stroke-width": 2 });
   el("rect", { x: LCD[0] - 9, y: LCD[1] - 9, width: LCD[2] + 18, height: LCD[2] + 18, rx: 16, fill: INK });
   const keyEls = KEYR.map(([x, y, w, h], k) => {
     const b = isBlack(k);
     const r = el("rect", { x: x - w / 2, y, width: w, height: h, rx: 10, fill: b ? INK : PAPER, stroke: INK, "stroke-width": 1.5 });
     r.dataset.k = k;
+    r.img = litImg(x - w / 2, y, w, h, b ? "keyb" : "keyw");
     return r;
   });
   el("line", { x1: 46, y1: 316, x2: 858, y2: 316, stroke: INK, "stroke-width": 1 });
   const btnEls = BTNR.map(([x, y, w, h], i) => {
     const r = el("rect", { x: x - w / 2, y: y - h / 2, width: w, height: h, rx: 12, fill: PAPER, stroke: INK, "stroke-width": 1.5 });
     r.dataset.b = i;
+    r.img = litImg(x - w / 2, y - h / 2, w, h, i < 12 ? "btn" : "oct");
     const t = label(x, y + 4, BTN[i]);
     t.setAttribute("pointer-events", "none");
     if (ROLE[i]) label(x, y + h / 2 + 13, ROLE[i], 10, LABEL);

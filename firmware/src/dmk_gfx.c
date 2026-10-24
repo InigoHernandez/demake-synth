@@ -21,7 +21,7 @@ static void clip_all(void) { cx0 = cy0 = 0; cx1 = DMK_W; cy1 = DMK_H; }
  * (HMARK); when the shape is drawn, holo_done() turns its marks into the ramp. Text and a hairline are the magenta
  * body; a thin bar a blue rim on it; only a big shape reaches the pale core */
 #define HOLO (-1)
-#define TH_MAX (DMK_W * 64)                              /* the largest lit shape's box, in pixels */
+#define TH_MAX (DMK_W * 128)                             /* the largest lit shape's box, in pixels: a graphic's body */
 static uint8_t th_d[TH_MAX] POOL;
 static int hx0 = DMK_W, hy0 = DMK_H, hx1 = -1, hy1 = -1; /* the marks' box */
 static int holo_hold;                                    /* >0: inside a shape made of several fills */
@@ -30,6 +30,7 @@ static uint8_t holo_pat;                                 /* which of the dither'
 /* [the shape's greatest depth]: how far in its deepest ring goes, sixteenths of a tone (64: the magenta body; 112:
  * the core). Between the rim and that, the rings share the ramp, dithered */
 static const uint8_t TH_PMAX[10] = {64, 64, 64, 76, 88, 100, 112, 112, 112, 112};
+#define TH_DEEP 20                                       /* depth counts to here: a big shape's light fades over 20 px */
 
 static inline int px_get(int x, int y)
 {
@@ -60,7 +61,7 @@ static void holo_done(void)
     if (w * h > TH_MAX) {                               /* too big a box: the body's tone, flat */
         for (y = hy0; y <= hy1; y++) for (x = hx0; x <= hx1; x++) if (px_get(x, y) == C_HMARK) px_put(x, y, C_HOLO4);
     } else {
-        for (y = 0, i = 0; y < h; y++) for (x = 0; x < w; x++, i++) th_d[i] = px_get(hx0 + x, hy0 + y) == C_HMARK ? 9 : 0;
+        for (y = 0, i = 0; y < h; y++) for (x = 0; x < w; x++, i++) th_d[i] = px_get(hx0 + x, hy0 + y) == C_HMARK ? TH_DEEP : 0;
         for (y = 0, i = 0; y < h; y++)
             for (x = 0; x < w; x++, i++) {
                 int m;
@@ -90,7 +91,7 @@ static void holo_done(void)
             }
         /* the shape's own ramp: its rim blue, its deepest ring as far in as its size allows; a hairline is body */
         if (holo_flat && dmax > 2) holo_flat = 0;      /* a heavy face (the wordmark) keeps its rings */
-        pmax = TH_PMAX[holo_flat ? 1 : dmax];
+        pmax = TH_PMAX[holo_flat ? 1 : dmax > 9 ? 9 : dmax];
         for (y = 0, i = 0; y < h; y++)
             for (x = 0; x < w; x++, i++) {
                 int p, t, X = hx0 + x, Y = hy0 + y;

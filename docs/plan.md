@@ -702,8 +702,9 @@ history):
 | HMARK | a lit pixel's mark until its shape is finished (never shown) | | |
 
 What is lit: the value turning (for a second), the cursor, a sounding synth, the pattern playing (a queued one is a
-magenta ring), the chord now. HOLO as a colour marks the pixels; when the shape is drawn, `holo_done` measures each
-pixel's chessboard depth (two chamfer passes over the shape's box) and lays the ramp from the rim to as far in as the
+magenta ring), the chord now, and the body of every graphic (the filter's response, the envelopes, the LFO, the
+sample's shape) under its ink line: the light is the instrument's mark. HOLO as a colour marks the pixels; when the shape is drawn, `holo_done` measures each
+pixel's chessboard depth (two chamfer passes over the shape's box, counted to 20) and lays the ramp from the rim to as far in as the
 shape's size allows (`TH_PMAX`): text and hairlines are the magenta body, a 4 px bar a blue rim on it, a big card the
 whole ramp to its pale core. Every 140 ms the dither takes one of six arrangements at random (T_BAYER6: moved,
 mirrored, turned), so the light holds and its bits move. The other three entries are the glyphs' anti-aliasing
@@ -765,7 +766,7 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 - **8-bit, everywhere it is lit:** the wordmark, the D, the plate, the band's lit letters, the seal, the screens'
   frames and the art (drawn in the browser at 2 px a cell through the ground, a deep blue and the thermal ramp), and
   the lit state of any box (the action, a hover, the playing tile: a dithered ring round a pale core, by
-  border-image). Every lit thing steps at random through the dither's six arrangements (T_BAYER6, as the screen
+  border-image), and the emulator's lit keys and buttons (a sprite of each shape, lit from its edge in). Every lit thing steps at random through the dither's six arrangements (T_BAYER6, as the screen
   does), so its bits move and its light stays; none when the reader asks for less motion.
 - **The sections:** the D and the index; the wordmark; the machine on its light, power, volume as a meter, the keys
   as keycaps (the Felucca emulator's map: Z–/ and S–' the lower keys, Q–O the upper, 1–= the buttons, [ ] OCT, the

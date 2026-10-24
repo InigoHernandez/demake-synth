@@ -283,28 +283,51 @@ static void stage_roll(void)
     round_fill(cur - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);
 }
 
+/* a graphic's body, lit: the band between ya[] and yb[] as one shape, the thermal light from its edges in; the ink
+ * line goes over it */
+static void lit_band(int x0, int w, const int16_t *ya, const int16_t *yb)
+{
+    int i;
+    for (i = 0; i < w; i++) if (yb[i] > ya[i]) vline(x0 + i, ya[i], yb[i] - ya[i], HOLO);
+    holo_done();
+}
+
+static void ink_line(int x0, int w, const int16_t *ys)
+{
+    int i, yp = ys[0];
+    for (i = 0; i < w; i++) {
+        int y = ys[i];
+        vline(x0 + i, y < yp ? y : yp, (y < yp ? yp - y : y - yp) + 2, C_INK);
+        yp = y;
+    }
+}
+
 static void stage_sound(void)
 {
+    int16_t ya[DMK_W], yb[DMK_W];
     int i, mid = SY + 74, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2;
     card(SX, SY, SW, SH, C_LINE, 1);
     if (ui.row[PG_SOUND]) card_title(SX, SY, SW, "No layer", "Layer", 0);
     else card_title(SX, SY, SW, SYNTH_SOUND[ui.synth], "Sample", 0);
-    for (i = 0; i < w; i++) {                           /* the sample's envelope as a line */
+    for (i = 0; i < w; i++) {                           /* the sample's envelope: its body lit, its edge in ink */
         int h = i < 8 ? i * 4 : 32 - i / 7;
         if (h < 1) h = 1;
-        px_put(x0 + i, mid - h, C_INK);
-        px_put(x0 + i, mid + h, C_INK);
+        ya[i] = (int16_t)(mid - h); yb[i] = (int16_t)(mid + h + 1);
     }
-    round_fill(x0 + w * 3 / 5, mid - 36, 4, 72, 2, HOLO);   /* the loop's ends, lit */
-    round_fill(x0 + w * 4 / 5, mid - 36, 4, 72, 2, HOLO);
+    lit_band(x0, w, ya, yb);
+    for (i = 0; i < w; i++) { px_put(x0 + i, ya[i], C_INK); px_put(x0 + i, yb[i] - 1, C_INK); }
+    round_fill(x0 + w * 3 / 5, mid - 38, 4, 76, 2, C_INK);   /* the loop's ends */
+    round_fill(x0 + w * 4 / 5, mid - 38, 4, 76, 2, C_INK);
 }
 
 static void stage_curve(int amp)
 {
+    int16_t ys[DMK_W], yb[DMK_W];
     int i, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, base = SY + SH - 14, top = SY + 14;
     card(SX, SY, SW, SH, C_LINE, 1);
-    if (!amp) {
-        int fc = x0 + ui.val[PG_FILTER][0][0] * w / 127, q = ui.val[PG_FILTER][0][1] / 4, ly = top + 40, yp = ly;
+    for (i = 0; i < w; i++) yb[i] = (int16_t)(base + 1);
+    if (!amp) {                                         /* the response: its body lit under the curve */
+        int fc = x0 + ui.val[PG_FILTER][0][0] * w / 127, q = ui.val[PG_FILTER][0][1] / 4, ly = top + 40;
         for (i = 0; i < w; i++) {
             int x = x0 + i, y;
             if (x < fc - 12) y = ly;
@@ -312,22 +335,22 @@ static void stage_curve(int amp)
             else y = ly - q + (x - fc) * 3;
             if (y > base) y = base;
             if (y < top) y = top;
-            vline(x, y < yp ? y : yp, (y < yp ? yp - y : y - yp) + 2, C_INK);
-            yp = y;
+            ys[i] = (int16_t)y;
         }
+        lit_band(x0, w, ys, yb);
+        ink_line(x0, w, ys);
         round_fill(fc - 4, base - 4, 9, 9, 4, lit(0) ? HOLO : C_INK);
-    } else {
+    } else {                                            /* the envelope: its body lit under the line */
         int a = ui.val[PG_AMP][0][0] / 3 + 4, d = ui.val[PG_AMP][0][1] / 3 + 4, s = ui.val[PG_AMP][0][2];
         int r = ui.val[PG_AMP][0][3] / 3 + 4, hold = w - a - d - r, sy = base - (s * (base - top)) / 127;
         int pts[5][2] = {{x0, base}, {x0 + a, top}, {x0 + a + d, sy}, {x0 + a + d + hold, sy}, {x0 + w - 1, base}};
         for (i = 0; i < 4; i++) {
-            int k, n = pts[i + 1][0] - pts[i][0], yp = pts[i][1];
-            for (k = 0; k <= n; k++) {
-                int y = pts[i][1] + (n ? (pts[i + 1][1] - pts[i][1]) * k / n : 0);
-                vline(pts[i][0] + k, y < yp ? y : yp, (y < yp ? yp - y : y - yp) + 2, C_INK);
-                yp = y;
-            }
+            int k, n = pts[i + 1][0] - pts[i][0];
+            for (k = 0; k <= n && pts[i][0] + k - x0 < w; k++)
+                ys[pts[i][0] + k - x0] = (int16_t)(pts[i][1] + (n ? (pts[i + 1][1] - pts[i][1]) * k / n : 0));
         }
+        lit_band(x0, w, ys, yb);
+        ink_line(x0, w, ys);
         for (i = 1; i < 4; i++) round_fill(pts[i][0] - 4, pts[i][1] - 4, 9, 9, 4, lit(i - 1) ? HOLO : C_INK);
     }
 }

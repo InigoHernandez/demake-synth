@@ -122,9 +122,9 @@ def tones(p, pat):
 
 
 def depth(mask):
-    """each pixel's depth in its shape: the chessboard distance to the nearest unlit pixel, capped at 9"""
+    """each pixel's depth in its shape: the chessboard distance to the nearest unlit pixel, capped at 20 (TH_DEEP)"""
     h, w = mask.shape
-    d = np.where(mask, 9, 0).astype(np.int32)
+    d = np.where(mask, 20, 0).astype(np.int32)
     for y in range(h):                                   # the two chamfer passes
         for x in range(w):
             if d[y, x]:
@@ -144,7 +144,7 @@ def lit_p(mask, d=None):
     """a lit shape's place on the ramp per pixel, as holo_done lays it"""
     d = depth(mask) if d is None else d
     dmax = int(d.max()) or 1
-    pmax = TH_PMAX[dmax]
+    pmax = TH_PMAX[min(dmax, 9)]
     return np.where(d > 0, pmax if dmax == 1 else (d - 1) * pmax // (dmax - 1), 0)
 
 
@@ -336,6 +336,17 @@ def graphics():
             f[..., 3] = np.where(outer & ~inner, 255, 0)
             Image.fromarray(big(f), "RGBA").save(BITS / f"ring{rad}_{k}.png", optimize=True)
         print(f"web/img/bits/ring{rad}_0..5.png: {2 * n} px, slice {rad if rad >= 12 else 12}")
+    # the emulator's lit keys and buttons, in the panel's own units (2 a cell): a white key, a black key, a button,
+    # an octave button, each lit from its edge in, six arrangements, for the SVG to show when the core lights them
+    for name, w, h, r in (("keyw", 44, 112, 10), ("keyb", 38, 70, 10), ("btn", 40, 34, 12), ("oct", 48, 26, 12)):
+        n, m = w // 2, h // 2
+        mask = rr(n, m, 0, 0, n, m, r // 2)
+        p = lit_p(mask)
+        for k in range(6):
+            f = np.zeros((m, n, 4), np.uint8)
+            f[mask, :3] = PAL[tones(p, k)][mask]
+            f[mask, 3] = 255
+            Image.fromarray(big(f), "RGBA").save(BITS / f"{name}_{k}.png", optimize=True)
     print("web/img/plate.png, band.png (%d cells tall), seal.png, frame288.png, frame528.png, frame432.png: six frames each" % H)
 
 
