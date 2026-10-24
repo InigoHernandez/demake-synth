@@ -150,6 +150,7 @@ static struct {
     uint32_t both_at;
     uint32_t copy_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
+    uint32_t loud_ms, loud_mark, loud_seen;             /* GLO's meter: the mix past full in the last half second */
     int8_t sel_dir;                                     /* SELECT's last step and when (one synth a click) */
     uint32_t sel_at;
 } ui;
@@ -816,6 +817,21 @@ static void foot(void)
         }
         return;
     }
+    if (ui.page == PG_GLOBAL && r >= 2) {               /* GLO's last rows: how the machine is doing (the owner heard
+                                                           it overload): the load of the sound and the second core, the
+                                                           times the sound ran short, the mix past full */
+        char t[28], *o = t;
+        if (ui.now - ui.loud_ms >= 500u) { ui.loud_seen = sys.loud - ui.loud_mark; ui.loud_mark = sys.loud; ui.loud_ms = ui.now; }
+        if (sys.on) { o = fmt_int(str_cat(o, "CPU "), sys.cpu); o = fmt_int(str_cat(o, "% \xC2\xB7 "), sys.core2); str_cat(o, "%"); }
+        else str_cat(o, "CPU \xE2\x80\x94");
+        text(PAD + 1, Y_FOOT + 2, t, &FS, sys.on && sys.cpu > 85 ? HOLO : C_LABEL);
+        o = t; t[0] = 0;
+        if (sys.shorts) o = fmt_int(str_cat(o, "Dropouts "), (int)(sys.shorts > 9999u ? 9999u : sys.shorts));
+        if (ui.loud_seen) str_cat(o, t[0] ? ", loud" : "Loud: past full");
+        if (!t[0]) str_cat(t, "Clean");
+        text_r(DMK_W - PAD - 1, Y_FOOT + 2, t, &FS, sys.shorts || ui.loud_seen ? HOLO : C_LABEL);
+        return;
+    }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
         int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL), typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2) || ui.page == PG_FILTER;
@@ -880,7 +896,17 @@ static int sky_at(int sc, int x, int y, int dk)
     return bay(x, y) < t ? b : a;
 }
 
-static void fg_put(int x, int y, int c) { if (x >= 0 && x < SC_W && y >= 0 && y < SC_H) sc_fg[y * SC_W + x] = (uint8_t)c; }
+/* building a scene is long (to ~0.9M instructions): the sound is let in every 2048 pixels, or with every effect on it
+ * ran short while SELECT changed the landscape (the owner heard it) */
+static unsigned fg_n;
+#ifdef __GNUC__
+__attribute__((noinline))                               /* (called everywhere a scene is built: inlined, 13 KB of flash) */
+#endif
+static void fg_put(int x, int y, int c)
+{
+    if (++fg_n >= 2048u) { fg_n = 0; ui_yield(); }
+    if (x >= 0 && x < SC_W && y >= 0 && y < SC_H) sc_fg[y * SC_W + x] = (uint8_t)c;
+}
 static void fg_rect(int x, int y, int w, int h, int c) { int i, j; for (j = 0; j < h; j++) for (i = 0; i < w; i++) fg_put(x + i, y + j, c); }
 static void fg_disc(int cx, int cy, int r, int c)       /* a disc, its edge stepped */
 {
@@ -914,6 +940,7 @@ static void fg_mirror(int sc, int sea, int dk)          /* water: what is above 
     int x, y;
     for (y = sea; y < SC_H; y++) {
         int d = y - sea, sy = sea - 1 - d * 2, sh = d % 5 == 0 ? 2 : 0;
+        if (!(y & 7)) ui_yield();
         if (sy < 0) sy = 0;
         for (x = 0; x < SC_W; x++) {
             int sx = x + sh < SC_W ? x + sh : x, c = sc_fg[sy * SC_W + sx] != 0xFF ? sc_fg[sy * SC_W + sx] : sky_at(sc, sx, sy, dk);
@@ -1736,7 +1763,14 @@ static uint8_t boot_sc;                                 /* the scene this start 
 static uint8_t lf_ext[2][DMK_W / 2 * LF_H] POOL;        /* above, below: packed as the screen */
 static uint8_t lf_key = 0xFF;
 static uint8_t *lf_cv;                                  /* the part being built: a pixel a byte (the light's scratch) */
-static void lp(int x, int y, int c) { if (x >= 0 && x < DMK_W && y >= 0 && y < LF_H) lf_cv[y * DMK_W + x] = (uint8_t)c; }
+#ifdef __GNUC__
+__attribute__((noinline))
+#endif
+static void lp(int x, int y, int c)
+{
+    if (++fg_n >= 2048u) { fg_n = 0; ui_yield(); }      /* (the sound let in, as in building a scene) */
+    if (x >= 0 && x < DMK_W && y >= 0 && y < LF_H) lf_cv[y * DMK_W + x] = (uint8_t)c;
+}
 static void lrect(int x, int y, int w, int h, int c) { int i, j; for (j = 0; j < h; j++) for (i = 0; i < w; i++) lp(x + i, y + j, c); }
 static void ldisc(int cx, int cy, int r, int c) { int i, j; for (j = -r; j <= r; j++) for (i = -r; i <= r; i++) if (i * i + j * j <= r * r + r / 2) lp(cx + i, cy + j, c); }
 static void lpine(int x, int base, int h, int c, int snow)   /* a pine as the scenes draw them; snow on its boughs */

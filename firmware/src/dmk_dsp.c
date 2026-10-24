@@ -129,6 +129,9 @@ static void mq_put(int st, int d1, int d2)
 /* the song's fades (dmk_seq.c sets them): the synths' share of the mix, Q15, and its step a block; the spaces' tails
  * are left to ring */
 static int32_t mix_g = 32768, mix_dg, mix_next;          /* mix_next: the fade after this one ends (0: none) */
+/* the machine's state for GLO: the platform's load (dmk_status) and the times the mix went past full (the limiter
+ * bending it: what sounds like overload) */
+static struct { uint8_t cpu, core2, screen, on; uint32_t shorts, loud; } sys;
 
 static const int8_t ADPCM_F[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
 
@@ -1046,12 +1049,10 @@ static void chain_run(int s)
             }
     }
 }
-/* the second core's share of the mix: the network on the last run's input, and the last synth's chain */
-static void chains_job(void)
-{
-    if (v_cur != VB_ROOM && v_cur != VB_OFF) verb_job();
-    chain_run(DMK_SYNTHS - 1);
-}
+/* the second core's share of the mix, in two parts: the last synth's chain while this core runs the other two; then
+ * the verb's network, on the last run's input, while this core mixes (as 0.3 ran it, which the owner heard clean: the
+ * network over the chains alone kept the first core waiting) */
+static void chain_job(void) { chain_run(DMK_SYNTHS - 1); }
 
 static void dsp_render(int16_t *lr, int frames)
 {
@@ -1083,9 +1084,11 @@ static void dsp_render(int16_t *lr, int frames)
         if (v_cur == VB_ROOM || v_cur == VB_OFF) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix, off nothing: the queue stays empty */
         vfill = wq_w - wq_r;
         ch_nb = nb;
-        par = dmk_par_begin && dmk_par_begin(chains_job);
+        par = dmk_par_begin && dmk_par_begin(chain_job);
         for (s = 0; s < DMK_SYNTHS - 1; s++) chain_run(s);
-        if (par) dmk_par_end(); else chains_job();
+        if (par) dmk_par_end(); else chain_job();
+        par = v_cur != VB_ROOM && v_cur != VB_OFF && dmk_par_begin && dmk_par_begin(verb_job);
+        if (v_cur != VB_ROOM && v_cur != VB_OFF && !par) verb_job();
         for (b = 0; b < nb; b++) {
             int32_t L[DMK_SUB], R[DMK_SUB], vin[DMK_SUB], ein[DMK_SUB];
             for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = vin[i] = ein[i] = 0;
@@ -1159,6 +1162,7 @@ static void dsp_render(int16_t *lr, int frames)
                         int32_t m = (ol + orr) / 2, d = (int32_t)(((int64_t)(ol - orr) * gp.width) >> 9);
                         ol = m + d; orr = m - d;
                     }
+                    if (ol > 32767 || ol < -32767 || orr > 32767 || orr < -32767) sys.loud++;   /* past full: bent */
                     lr[k] = (int16_t)curve(T_LIM, ol);
                     lr[k + 1] = (int16_t)curve(T_LIM, orr);
                 }
@@ -1167,6 +1171,7 @@ static void dsp_render(int16_t *lr, int frames)
             bench_block(DMK_SUB);
 #endif
         }
+        if (par) dmk_par_end();
     }
 }
 

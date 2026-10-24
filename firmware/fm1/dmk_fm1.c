@@ -142,6 +142,27 @@ static void diag_num(char *o, uint32_t v)
 extern int dmk_bench_level(void);
 #endif
 
+/* every half second, in every build: the load to the core, which shows it on GLO (the owner heard it overload) */
+static uint32_t load_t0;
+static void load_tick(void)
+{
+    uint32_t now = fm1_ticks(), span = now - load_t0;
+    if (span >= 500u * 1000u * FM1_TICKS_PER_US) {
+        uint32_t w = 0;
+#if DINGHY_DUAL_CORE
+        w = job_ticks;
+#endif
+        dmk_status((int)(load_ticks / (span / 100u)), (int)(w / (span / 100u)), (int)(frame_ticks / (span / 100u)), ring_short);
+        if (!DMK_FM1_DIAG) {
+            load_ticks = frame_ticks = 0;
+#if DINGHY_DUAL_CORE
+            job_ticks = 0;
+#endif
+        }
+        load_t0 = now;
+    }
+}
+
 static void diag_tick(void)
 {
 #if DMK_FM1_DIAG
@@ -340,6 +361,7 @@ static void app_loop(void)
 {
     dmk_yield = frame_yield;                    /* again after an update that stopped */
     if (DMK_FM1_DIAG) diag_tick();
+    load_tick();
     render_ahead();
     take_panel();
     render_ahead();

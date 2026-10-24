@@ -35,6 +35,9 @@ void dmk_key(int k, int down);
 void dmk_button(int b, int down);
 void dmk_encoder(int e, int delta);
 void dmk_midi(int status, int d1, int d2);          /* MIDI in: notes (by GLO's MIDI row), the clock, start, stop */
+void dmk_status(int cpu, int core2, int screen, uint32_t shorts);   /* the platform's load, % of real time: the sound
+                                                       (its wait for the second core in it), the second core, the screen;
+                                                       the times the sound ran short. Shown on GLO */
 int dmk_midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2);   /* MIDI out, a message at a time: 1 one taken */
 const uint8_t *dmk_frame(uint32_t ms);              /* draws the screen: 240 x 240, 4 bits a pixel (DMK_FB_BYTES) */
 const uint8_t *dmk_update_frame(uint32_t step, int32_t code);   /* the screen while a firmware goes in: steps 1..5,
