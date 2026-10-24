@@ -95,11 +95,10 @@ static void wait_ms(uint32_t ms)
 static void tap(int b) { dmk_button(b, 1); wait_ms(60); dmk_button(b, 0); wait_ms(60); }
 
 static int shots;
-static void shot(const char *dir, const char *name)
+static void shot_fr(const char *dir, const char *name, const uint8_t *fr)
 {
     char path[512];
     static uint8_t rgb[DMK_W * DMK_H * 3];
-    const uint8_t *fr = dmk_frame(now_ms);
     int bad = ta_check();
     if (bad) {
         fails++;
@@ -111,26 +110,28 @@ static void shot(const char *dir, const char *name)
     snprintf(path, sizeof path, "%s/%02d_%s.png", dir, shots++, name);
     png_rgb(path, rgb, DMK_W, DMK_H, 2);
 }
+static void shot(const char *dir, const char *name) { shot_fr(dir, name, dmk_frame(now_ms)); }
 
 static void tour(const char *dir)
 {
     dmk_init(1);
     now_ms = 0;
-    wait_ms(700); shot(dir, "boot");
+    ui.hinted = 0xFFFFu;                                /* the first-time hints stay off the pictures */
+    wait_ms(1400); shot(dir, "boot");                   /* the boot held, lit */
     wait_ms(1000); shot(dir, "home");
     static const struct { int b; const char *n; } P[] = {{B_SEQ, "roll"}, {B_EDIT, "sound"}, {B_SEL, "filter"},
         {B_ENV, "amp"}, {B_FX, "fx"}, {B_ARP, "chord"}, {B_GLO, "global"}, {B_LFO, "lfo"}};
     for (unsigned i = 0; i < sizeof P / sizeof P[0]; i++) { tap(P[i].b); shot(dir, P[i].n); }
-    tap(B_FX); tap(B_FX); shot(dir, "fx_media");
-    tap(B_GLO); tap(B_GLO); shot(dir, "global_song"); tap(B_GLO); shot(dir, "global_setup"); tap(B_GLO); tap(B_GLO);
-    tap(B_EDIT); tap(B_EDIT); shot(dir, "sound_layer");
+    tap(B_FX); tap(B_FX); shot(dir, "fx_space");         /* FX again: the next row built */
+    tap(B_GLO); tap(B_GLO); shot(dir, "global_echo"); tap(B_GLO); shot(dir, "global_setup"); tap(B_GLO); tap(B_GLO);
+    tap(B_EDIT); tap(B_EDIT); shot(dir, "sound_engine");   /* the layer is not built: EDIT again stays */
     tap(B_SEL); for (int i = 0; i < 30; i++) dmk_encoder(E_K1, -1); for (int i = 0; i < 40; i++) dmk_encoder(E_K2, 1);
     shot(dir, "filter_turned");
     tap(B_HOME); dmk_encoder(E_SELECT, 1); shot(dir, "home_synth2");
     dmk_button(B_HOME, 1); wait_ms(500); shot(dir, "home_held"); dmk_button(B_HOME, 0); wait_ms(60);
     tap(B_OCTU); wait_ms(300); shot(dir, "notice");
     dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); shot(dir, "discs");
-    tap(B_GLO); tap(B_GLO); tap(B_GLO); tap(B_GLO);     /* to SETUP */
+    tap(B_GLO); tap(B_GLO);                             /* to SETUP */
     for (int t = 1; t < DMK_THEMES; t++) {
         dmk_encoder(E_K1, 1);
         char n[24], lc[12]; int i;
@@ -140,6 +141,13 @@ static void tour(const char *dir)
         tap(B_SEQ); snprintf(n, sizeof n, "roll_%s", lc); shot(dir, n);
         tap(B_GLO);
     }
+    theme = 0;
+    tap(B_SEQ); dmk_encoder(E_SELECT, 1); dmk_encoder(E_SELECT, 1); shot(dir, "roll_synth3");   /* its own pattern */
+    ta_reset(); boot(400); shot_fr(dir, "boot_arrive", fb);
+    ta_reset(); boot(900); shot_fr(dir, "boot_heat", fb);
+    shot_fr(dir, "update", dmk_update_frame(3, 0));
+    shot_fr(dir, "update_write", dmk_update_frame(5, 0));
+    shot_fr(dir, "update_stopped", dmk_update_frame(9, -3));
     printf("tour: %d screens%s%s, text audit %s\n", shots, dir ? " in " : "", dir ? dir : "", ta_bad ? "FAILED" : "clean");
 }
 
@@ -167,8 +175,31 @@ static void selftest(void)
     for (int k = 0; k < DMK_KEYS; k++) dmk_key(k, 0);
     /* a tap on a page button opens it, a second moves its row */
     wait_ms(1600);
-    tap(B_FX); if (ui.page != PG_FX || ui.row[PG_FX]) { fails++; printf("selftest: FX does not open FX\n"); }
-    tap(B_FX); if (ui.row[PG_FX] != 1) { fails++; printf("selftest: FX again is not the next row\n"); }
+    tap(B_FX); if (ui.page != PG_FX || ui.row[PG_FX] != 1) { fails++; printf("selftest: FX does not open FX on Media\n"); }
+    tap(B_FX); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: FX again is not the next row built\n"); }
+    tap(B_FX); if (ui.row[PG_FX] != 1) { fails++; printf("selftest: FX does not come round to Media\n"); }
+    /* the rolls: every synth its own; a key writes at the cursor, OCT- takes a held note away, PLAY sounds them */
+    {
+        int n0 = sq[0].count, n1 = sq[1].count, n2 = sq[2].count;
+        if (sq[0].steps == sq[1].steps && sq[1].steps == sq[2].steps) { fails++; printf("selftest: the rolls share a length\n"); }
+        tap(B_SEQ); dmk_encoder(E_SELECT, 1);
+        ui.roll_cur[1] = 1;
+        dmk_key(4, 1); wait_ms(30);
+        if (sq[1].count != n1 + 1 || sq[0].count != n0 || sq[2].count != n2) { fails++; printf("selftest: a key does not write to its own roll\n"); }
+        dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_key(4, 0); wait_ms(30);
+        if (sq[1].count != n1) { fails++; printf("selftest: OCT- does not take the held note away\n"); }
+        if (ui.octave != 0) { fails++; printf("selftest: OCT- with a note held moved the octave\n"); }
+        dmk_key(4, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30);
+        if (ui.roll_cur[1] != 1 + ui.roll_pen[1]) { fails++; printf("selftest: a key released does not move the cursor on\n"); }
+        seq_del(1, seq_find(1, 1, snap(53 + 4)));
+        tap(B_PLAY);
+        for (int k = 0; k < 10; k++) dmk_render(b, 512);
+        { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on; if (!dmk_playing() || !on) { fails++; printf("selftest: PLAY sounds nothing\n"); } }
+        tap(B_PLAY);
+        if (dmk_playing()) { fails++; printf("selftest: PLAY again does not stop\n"); }
+        dmk_encoder(E_SELECT, -1);
+        tap(B_FX);                                      /* back where the next check starts */
+    }
     /* a modifier that was used does nothing on release */
     dmk_button(B_GLO, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_GLO, 0); wait_ms(30);
     if (ui.page != PG_FX) { fails++; printf("selftest: a used GLO opened its page on release\n"); }

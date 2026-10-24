@@ -27,6 +27,10 @@ static int hx0 = DMK_W, hy0 = DMK_H, hx1 = -1, hy1 = -1; /* the marks' box */
 static int holo_hold;                                    /* >0: inside a shape made of several fills */
 static int holo_flat;                                    /* text: all body, its strokes too thin for rings */
 static uint8_t holo_pat;                                 /* which of the dither's six arrangements: the bits move */
+/* the boot builds its light (as the site's splash): how much of a shape has arrived through the dither, sweeping in
+ * from the left (of 256; a pixel not yet there shows holo_bg), and how hot it may glow (sixteenths of a tone: 0 the
+ * blue rim alone, 112 the pale core). Outside the boot, all of it, as hot as its size allows */
+static int holo_veil = 256, holo_heat = 255, holo_bg;
 /* [the shape's greatest depth]: how far in its deepest ring goes, sixteenths of a tone (64: the magenta body; 112:
  * the core). Between the rim and that, the rings share the ramp, dithered */
 static const uint8_t TH_PMAX[10] = {64, 64, 64, 76, 88, 100, 112, 112, 112, 112};
@@ -97,6 +101,11 @@ static void holo_done(void)
                 int p, t, X = hx0 + x, Y = hy0 + y;
                 if (!th_d[i]) continue;
                 p = dmax > 1 && !holo_flat ? (th_d[i] - 1) * pmax / (dmax - 1) : pmax;
+                if (p > holo_heat) p = holo_heat;
+                if (holo_veil < 256 && T_BAYER6[0][(Y & 3) * 4 + (X & 3)] * 9 + X * 115 / DMK_W >= holo_veil) {
+                    px_put(X, Y, holo_bg);
+                    continue;
+                }
                 t = p >> 4;
                 if (t < 7 && T_BAYER6[holo_pat][(Y & 3) * 4 + (X & 3)] < (p & 15)) t++;
                 px_put(X, Y, C_HOLO0 + t);

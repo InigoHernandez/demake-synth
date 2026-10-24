@@ -847,7 +847,18 @@ loss, saturation), the ROOM verb and a TAPE echo as shared buses, a DC blocker p
 master. Measured [M]: SNR 31-57 dB against the cut originals; 1,375 host instructions a sample with 12 voices, TAPE
 on every synth, ROOM and ECHO, 83% of one core's yardstick (idle 426, 12 voices dry 1,159); the FM-1 package
 385 KB of 581 KB, pool 149 KB of 336 KB. `dmk_host --demo DIR` renders every sound dry and with its FX, `--cpu`
-the counts. Next: ROLL, PLAY and REC, SAVE.
+the counts.
+
+*Then (2026-10-24): the rolls* (`firmware/src/dmk_seq.c`): every synth its own pattern and length (the first song's
+pad 32 steps, piano 16, pluck 12, so they loop against each other), on one clock at the song's tempo. Stopped, a key
+writes at the cursor with the pen's length (or holds the note of its pitch there) and on release moves the cursor to
+its end; a held note's K1-K3 and ALGORITHM move it, pitch it (scale steps), lengthen it, set its velocity; OCT-
+deletes it, OCT+ copies it after itself; the keys of the notes at the cursor blink. K4 is the synth's STEPS (FINE
+waits for sub-step timing). PLAY plays all three; REC records into the current synth from the nearest step. Not
+yet: undo, the SEQ layer (shift, transpose, speed), SAVE. The FX page opens on its first effect built and passes
+over the rows not built (shown as soon); a page's first visit says how to reach its next row. The boot builds its
+light as the site's splash; the update's screen is Demake's (the platform's `APP_OTA_SHOW`); the loader that writes
+the firmware is the platform's, untouched (it draws nothing). Next: undo, SAVE, then phase 2.
 
 **Phase 2: chords.**
 - KEY and MODE, the 16 presets, slots, VOICING, INVERSION (AUTO), SPREAD, STRUM, RHYTHM, CHANGE, BASS; step your own;

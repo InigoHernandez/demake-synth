@@ -17,6 +17,12 @@
 #define BANK_AT 0x000B0000u
 #define BANK_LEN 0x00010000u
 #define CV_MAX (240u * 18u)                     /* the platform's text: a line of FONT_S at a time (crash, update, rescue) */
+/* the update's screen is Demake's (the core draws it, app_ota_show sends it); the rescue keeps the platform's */
+#include <stdint.h>
+static void app_ota_show(uint32_t step, int32_t code);
+static void app_ota_idle(void);
+#define APP_OTA_SHOW app_ota_show
+#define APP_OTA_IDLE app_ota_idle
 #include "platform.c"
 #include "dmk.h"                                /* the core: its own unit (core.o), its API alone */
 
@@ -233,6 +239,45 @@ static void screen_send(void)                   /* one strip, if the last has go
     sbuf ^= 1u;
     todo[s] = 0;
     pending--;
+}
+
+/* ---- the update's screen: the core's frame for the step, the whole screen sent now (the update waits for it); while
+ * it waits for the computer its bits step, at most every 200 ms, only the word's strips (~25 ms of SPI) */
+static uint32_t ota_step, ota_code, ota_shown_ms;
+
+static void ota_send(const uint8_t *f, uint32_t s0, uint32_t s1)
+{
+    const uint16_t *pal = dmk_palette565();
+    uint32_t s, y, i;
+    for (i = 0; i < 256u; i++) { lut[i][0] = be16(pal[i >> 4]); lut[i][1] = be16(pal[i & 15u]); }
+    for (i = 0; i < 16u; i++) pal_shown[i] = pal[i];
+    for (s = s0; s < s1; s++) {
+        uint16_t *px = strip[sbuf];
+        const uint8_t *src = f + s * ROWS * ROWB;
+        lcd_sync();
+        for (y = 0; y < ROWS * ROWB; y++) { px[y * 2u] = lut[src[y]][0]; px[y * 2u + 1u] = lut[src[y]][1]; }
+        memcpy(shown + s * ROWS * ROWB, src, ROWS * ROWB);
+        lcd_blit(0, s * ROWS, 240, ROWS, px);
+        sbuf ^= 1u;
+        todo[s] = 0;
+    }
+    lcd_sync();
+    pending = 0;
+}
+
+static void app_ota_show(uint32_t step, int32_t code)
+{
+    ota_step = step;
+    ota_code = (uint32_t)code;
+    ota_shown_ms = fm1_ms;
+    ota_send(dmk_update_frame(step, code), 0, NSTRIP);
+}
+
+static void app_ota_idle(void)
+{
+    if (!ota_step || ota_step >= 5u || fm1_ms - ota_shown_ms < 200u) return;
+    ota_shown_ms = fm1_ms;
+    ota_send(dmk_update_frame(ota_step, (int32_t)ota_code), 3, 17);   /* rows 24..135: the word */
 }
 
 /* ---- the lights: the core's 27 keys and 14 buttons, 0..255, on from a quarter up (the panel's LEDs are on / off) */

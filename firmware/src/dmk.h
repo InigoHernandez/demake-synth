@@ -36,6 +36,8 @@ void dmk_button(int b, int down);
 void dmk_encoder(int e, int delta);
 void dmk_midi(int status, int d1, int d2);
 const uint8_t *dmk_frame(uint32_t ms);              /* draws the screen: 240 x 240, 4 bits a pixel (DMK_FB_BYTES) */
+const uint8_t *dmk_update_frame(uint32_t step, int32_t code);   /* the screen while a firmware goes in: steps 1..5,
+                                                                   9 the end (code 1: a trial run; else it stopped) */
 const uint16_t *dmk_palette565(void);               /* the theme's 16 colours as RGB565, for the FM-1 */
 const uint32_t *dmk_palette_rgb(void);              /* the same as 0xRRGGBB, for the browser and the host */
 const uint8_t *dmk_leds(void);                      /* 27 key LEDs then 14 button LEDs, 0..255 */

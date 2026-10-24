@@ -162,6 +162,9 @@ static void ota_idle(void)
 {
     fm1_wdt_feed();
     if (recovery_active) recovery_poll();
+#ifdef APP_OTA_IDLE
+    else APP_OTA_IDLE();
+#endif
 }
 static int ota_in_area(uint32_t off, uint32_t n) { return FL_IN(off, n, OTA_AREA, OTA_AREA + OTA_AREA_LEN); }
 static int ota_erase(uint32_t off)
@@ -182,6 +185,10 @@ static void ota_show(uint32_t step, int32_t code)
 {
     static const char *const STEP[] = {"", "PACKAGE", "CHECK HEAD", "LOADER", "CONFIRM", "RESTART"};
     if (recovery_active) return;
+#ifdef APP_OTA_SHOW
+    APP_OTA_SHOW(step, code);                       /* the app's own screen (the rescue keeps the platform's) */
+    return;
+#endif
     lcd_fill(0, 0, 240, 240, C_BLACK);
     draw_text_box(0, 92, 240, &FONT_S, "UPDATE", C_WHITE, 1);
     if (step < 9u)

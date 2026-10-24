@@ -10,6 +10,7 @@ void (*dmk_par_end)(void);
 
 #include "dmk_gfx.c"
 #include "dmk_dsp.c"
+#include "dmk_seq.c"
 #include "dmk_ui.c"
 
 static uint32_t samples;
@@ -22,11 +23,13 @@ void dmk_init(uint32_t seed)
     dsp_reset();
     samples = 0;
     theme = 0;
+    seq_init();
     ui_init();
 }
 
 void dmk_render(int16_t *lr, int frames)
 {
+    seq_render(frames);
     dsp_render(lr, frames);
     samples += (uint32_t)frames;
 }
@@ -40,10 +43,11 @@ void dmk_midi(int status, int d1, int d2)
     else if ((status & 0xF0) == 0x80 || (status & 0xF0) == 0x90) note_off(d1);
 }
 const uint8_t *dmk_frame(uint32_t ms) { return ui_frame(ms); }
+const uint8_t *dmk_update_frame(uint32_t step, int32_t code) { return ui_update(step, code); }
 const uint16_t *dmk_palette565(void) { return T_PAL565[theme]; }
 const uint32_t *dmk_palette_rgb(void) { return T_PALRGB[theme]; }
 const uint8_t *dmk_leds(void) { return ui_leds(); }
-int dmk_playing(void) { return 0; }
+int dmk_playing(void) { return seq_on; }
 uint32_t dmk_samples(void) { return samples; }
 #ifdef DMK_BENCH
 int dmk_bench_level(void) { return bench_level; }   /* the FM-1's meter shows it (dmk_fm1.c) */

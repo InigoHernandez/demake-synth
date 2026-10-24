@@ -37,7 +37,7 @@ static const page_t PAGE[PG_COUNT] = {
     {"Home", 4, {"Level", "Verb", "Echo", "Pan"}, {"Tempo", "Tempo", "Tempo", "Tempo"},
      {{"Level 1", "Level 2", "Level 3", "Verb"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
-    {"Roll", 1, {"Roll"}, {"Zoom"}, {{"Cursor", "View", "Length", "Fine"}}},
+    {"Roll", 1, {"Roll"}, {"Zoom"}, {{"Cursor", "View", "Length", "Steps"}}},
     {"Sound", 2, {"Engine", "Layer"}, {"Engine", "Sample"},
      {{"Sample", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drift"}}},
@@ -79,7 +79,7 @@ static const choice_t CHOICE[] = {
 };
 
 static struct {
-    uint8_t page, row[PG_COUNT], synth, boot_done;
+    uint8_t page, row[PG_COUNT], synth, boot_done, boot_kept;
     int8_t octave;
     uint8_t val[DMK_SYNTHS][PG_COUNT][4][5];            /* [synth][page][row][K1..K4, ALGORITHM] 0..127 (the global
                                                            pages keep theirs in synth 0's) */
@@ -88,6 +88,12 @@ static struct {
     uint16_t btn_held, btn_used;                        /* bit per button */
     char note[32];                                      /* a notice, shown for 1.5 s from note_ms */
     uint8_t keys_down[DMK_KEYS], key_sy[DMK_KEYS], key_note[DMK_KEYS];
+    /* the roll, per synth: the cursor, the lowest scale row shown, the pen's length, the zoom (16 << z steps) */
+    uint8_t roll_cur[DMK_SYNTHS], roll_view[DMK_SYNTHS], roll_pen[DMK_SYNTHS], roll_zoom[DMK_SYNTHS];
+    uint8_t key_roll[DMK_KEYS], key_step[DMK_KEYS];     /* a key's note: 1 written or held on the roll (at key_step),
+                                                           2 being recorded, 3 deleted while held */
+    uint32_t key_t0[DMK_KEYS];                          /* recording: where the playing was when it went down */
+    uint16_t hinted;                                    /* the pages whose next row was shown how */
 } ui;
 
 static uint8_t leds[DMK_KEYS + B_COUNT];
@@ -105,6 +111,7 @@ static void notice(const char *s)
 static int per_synth(int page) { return page == PG_SOUND || page == PG_FILTER || page == PG_AMP || page == PG_FX || page == PG_LFO; }
 static uint8_t *vp(int page, int row, int k)
 {
+    if (page == PG_HOME && k == 4) return &ui.val[0][PG_HOME][0][4];   /* the tempo, on every row */
     if (page == PG_HOME && k < 3) {
         static const uint8_t PG[4] = {PG_AMP, PG_FX, PG_FX, PG_FX}, RW[4] = {0, 3, 3, 3}, KK[4] = {4, 0, 1, 2};
         return &ui.val[k][PG[row]][RW[row]][KK[row]];
@@ -158,6 +165,7 @@ static void sp_sync(void)
     gp.elp = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
     gp.etime = T_ETIME[VS(0, PG_GLOBAL, 1, 2)];
     gp.efb = VS(0, PG_GLOBAL, 1, 3) * 240;
+    seq_bpm = VS(0, PG_HOME, 0, 4) < 20 ? 20 : VS(0, PG_HOME, 0, 4);
     cur_synth = ui.synth;
 }
 
@@ -200,11 +208,16 @@ static void ui_init(void)
         ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
     }
     ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
-    ui.val[0][PG_ROLL][0][4] = 0;                       /* 16 */
-    ui.val[0][PG_ROLL][0][0] = 24;
     ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the room */
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
+    for (s = 0; s < DMK_SYNTHS; s++) {                  /* each roll on its own pattern: its notes in view */
+        ui.roll_cur[s] = 0;
+        ui.roll_pen[s] = 2;
+        ui.roll_zoom[s] = (uint8_t)(sq[s].steps > 16);
+    }
+    ui.roll_view[0] = (uint8_t)degree_of(53); ui.roll_view[1] = (uint8_t)degree_of(64); ui.roll_view[2] = (uint8_t)degree_of(69);
+    ui.row[PG_FX] = 1;                                  /* Media: the first effect built */
     ui.page = PG_HOME;
     ui.touch_k = -1;
     sp_sync();
@@ -240,8 +253,36 @@ static void val_text(char *o, int page, int row, int k)
     fmt_int(o, v);
 }
 
+/* ---- the roll (dmk_seq.c): the current synth's own pattern, a window of steps across, seven scale rows up */
+static int roll_z(void) { return 16 << ui.roll_zoom[ui.synth]; }
+static int roll_at(void) { return seq_on ? seq_playing_step(ui.synth) : ui.roll_cur[ui.synth]; }
+static int roll_held(void)                              /* a key holding a note on the roll, or -1 */
+{
+    int k;
+    for (k = 0; k < DMK_KEYS; k++) if (ui.keys_down[k] && ui.key_roll[k] == 1) return k;
+    return -1;
+}
+static void note_name(char *o, int n)
+{
+    static const char *const NM[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    fmt_int(str_cat(o, NM[n % 12]), n / 12 - 1);
+}
+
 static int lit(int k) { return ui.touch_k == k && ui.now - ui.touch_ms < 1000u; }
-/* a row with nothing behind it yet: COLOR and MOTION (phase 4), MEDIA while its effect is off, the LAYER, the song */
+/* a row not built yet (COLOUR and MOTION in phase 4, the LAYER, the song): shown, marked soon, passed over */
+static int row_soon(int page, int row)
+{
+    return (page == PG_FX && (row == 0 || row == 2)) || (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
+}
+static int row_next(int page, int row)                  /* the page's next row that is built */
+{
+    int i;
+    for (i = 1; i <= PAGE[page].rows; i++) { int r = (row + i) % PAGE[page].rows; if (!row_soon(page, r)) return r; }
+    return row;
+}
+static int rows_built(int page) { int r, n = 0; for (r = 0; r < PAGE[page].rows; r++) n += !row_soon(page, r); return n; }
+
+/* a row with nothing behind it: those not built, MEDIA while its effect is off */
 static int row_off(int page, int row)
 {
     if (page == PG_FX) return row == 0 || row == 2 || (row == 1 && *vp(PG_FX, 1, 4) < 64);
@@ -324,10 +365,55 @@ static void head(void)
     }
 }
 
+static void field_show(int i, const char *label, const char *v, int m)
+{
+    int x = i * COL + PAD, w = COL - 2 * PAD, on = lit(i);
+    text_fit(x, Y_FIELDS, w, label, &FS, C_LABEL);
+    text_mfit(x, Y_FIELDS + 16, w, v, on ? HOLO : C_INK);
+    meter(x, Y_FIELDS + 44, w, m < 0 ? 0 : m > 127 ? 127 : m, 0, on, 0);
+}
+
+static void roll_fields(void)                           /* the cursor's, or a held note's */
+{
+    static const char *const HELD[4] = {"Move", "Pitch", "Length", "Nudge"};
+    const seq_t *q = &sq[ui.synth];
+    int h = roll_held(), st = q->steps > 1 ? q->steps - 1 : 1, i;
+    char v[16];
+    if (h >= 0) {
+        int j = seq_find(ui.synth, ui.key_step[h], ui.key_note[h]);
+        const snote_t *n = &q->n[j < 0 ? 0 : j];
+        for (i = 0; i < 4; i++) {
+            v[0] = 0;
+            if (j < 0 || i == 3) {                      /* NUDGE comes with the fine timing */
+                int x = i * COL + PAD;
+                text_fit(x, Y_FIELDS, COL - 2 * PAD, HELD[i], &FS, C_LABEL);
+                text(x, Y_FIELDS + 16, "—", &FM, C_LINE);
+                meter(x, Y_FIELDS + 44, COL - 2 * PAD, 0, 0, 0, 1);
+                continue;
+            }
+            if (i == 0) fmt_int(v, n->step + 1);
+            if (i == 1) note_name(v, n->note);
+            if (i == 2) fmt_int(v, n->len);
+            field_show(i, HELD[i], v, i == 0 ? n->step * 127 / st : i == 1 ? (degree_of(n->note) - 14) * 127 / 35 : n->len * 8);
+        }
+        return;
+    }
+    fmt_int(v, ui.roll_cur[ui.synth] + 1);
+    field_show(0, "Cursor", v, ui.roll_cur[ui.synth] * 127 / st);
+    v[0] = 0;
+    note_name(v, note_of(ui.roll_view[ui.synth]));
+    field_show(1, "View", v, (ui.roll_view[ui.synth] - 14) * 127 / 29);
+    fmt_int(v, ui.roll_pen[ui.synth]);
+    field_show(2, "Length", v, ui.roll_pen[ui.synth] * 8);
+    fmt_int(v, q->steps);
+    field_show(3, "Steps", v, q->steps * 2);
+}
+
 static void fields_band(void)
 {
     const page_t *pg = &PAGE[ui.page];
     int r = ui.row[ui.page], k;
+    if (ui.page == PG_ROLL) { roll_fields(); return; }
     for (k = 0; k < 4; k++) field(k, pg->k[r][k], ui.page, r);
 }
 
@@ -335,6 +421,14 @@ static void foot(void)
 {
     const page_t *pg = &PAGE[ui.page];
     int r = ui.row[ui.page];
+    if (ui.page == PG_ROLL) {                           /* the zoom, or a held note's velocity */
+        char v[16];
+        int h = roll_held(), j = h >= 0 ? seq_find(ui.synth, ui.key_step[h], ui.key_note[h]) : -1;
+        int x = text(PAD + 1, Y_FOOT + 2, j >= 0 ? "Velocity" : "Zoom", &FS, C_LABEL);
+        fmt_int(v, j >= 0 ? sq[ui.synth].n[j].vel : roll_z());
+        text_fit(x + 6, Y_FOOT + 2, 200 - x, v, &FS, lit(4) ? HOLO : C_INK);
+        return;
+    }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
         int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL);
@@ -361,12 +455,12 @@ static void stage_home(void)                            /* the synths: a card ea
         if (*b) *b++ = 0;                               /* "Snow pad": what, which */
         if (i == ui.synth) card(x, SY, w, SH, C_INK, 2);
         else card(x, SY, w, SH, C_LINE, 1);
-        card_title(x, SY, w, a, b, !sounding);
+        card_title(x, SY, w, a, "", !sounding);
         {                                               /* its mark: the sound's initial in Kiloy, lit while it sounds */
             char ini[2] = {(char)(a[0] | 0x20), 0};
             text_c(cx, SY + 64 - FK.ascent + FK.cap / 2, ini, &FK, sounding ? HOLO : C_LINE);
         }
-        text_fit(x + PAD + 1, SY + SH - 20, w - 2 * PAD, ENGINES[0], &FS, C_LABEL);
+        text_fit(x + PAD + 1, SY + SH - 20, w - 2 * PAD, b, &FS, C_LABEL);   /* "pad", "piano": which */
     }
 }
 
@@ -389,17 +483,30 @@ static void stage_patterns(void)                        /* HOME held: the song's
 
 static void stage_roll(void)
 {
-    static const char *const ROW[7] = {"A4", "G4", "E4", "D4", "C4", "B3", "A3"};
-    static const struct { uint8_t row, step, len; } NOTE[4] = {{0, 0, 4}, {2, 4, 2}, {4, 8, 4}, {6, 0, 8}};
-    int gx = SX + 30, gy = SY + 7, cw = 12, rh = 15, i, k, cur;
+    const seq_t *q = &sq[ui.synth];
+    int z = roll_z(), cw = 192 / z, gx = SX + 30, gy = SY + 7, rh = 15, at = roll_at(), x0 = at / z * z;
+    int view = ui.roll_view[ui.synth], end = q->steps - x0, i, k;
+    if (end > z) end = z;
     card(SX, SY, SW, SH, C_LINE, 1);
-    for (k = 0; k <= 16; k += 4) vline(gx + k * cw, gy, rh * 7, C_LINE);   /* the beats: rules; the steps: dots */
-    for (i = 0; i <= 7; i++) for (k = 0; k <= 16; k++) if (k % 4) px_put(gx + k * cw, gy + i * rh, C_LINE);
-    for (i = 0; i < 7; i++) text(SX + PAD + 1, gy + i * rh + 2, ROW[i], &FS, ROW[i][0] == 'A' ? C_INK : C_LABEL);
-    for (i = 0; i < 4; i++)
-        round_fill(gx + NOTE[i].step * cw + 2, gy + NOTE[i].row * rh + 3, NOTE[i].len * cw - 3, rh - 6, (rh - 6) / 2, C_INK);
-    cur = gx + cw * (*vp(PG_ROLL, 0, 0) * 16 / 128);
-    round_fill(cur - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);
+    for (k = 0; k <= end; k += 4) vline(gx + k * cw, gy, rh * 7, C_LINE);   /* the beats: rules; the steps: dots */
+    if (cw >= 6) for (i = 0; i <= 7; i++) for (k = 0; k <= end; k++) if (k % 4) px_put(gx + k * cw, gy + i * rh, C_LINE);
+    if (end < z) vline(gx + end * cw, gy - 3, rh * 7 + 6, C_INK);          /* where this synth's pattern ends */
+    for (i = 0; i < 7; i++) {
+        char nm[8];
+        int d = view + 6 - i;
+        nm[0] = 0;
+        note_name(nm, note_of(d));
+        text(SX + PAD + 1, gy + i * rh + 2, nm, &FS, d % 7 == 0 ? C_INK : C_LABEL);
+    }
+    for (i = 0; i < q->count; i++) {                    /* the notes; those at the cursor lit */
+        const snote_t *n = &q->n[i];
+        int row = 6 - (degree_of(n->note) - view), s0 = n->step - x0, len = n->len, w;
+        if (row < 0 || row > 6 || s0 < 0 || s0 >= end) continue;
+        if (s0 + len > end) len = end - s0;
+        w = len * cw - 2 < 2 ? 2 : len * cw - 2;
+        round_fill(gx + s0 * cw + 1, gy + row * rh + 3, w, rh - 6, (rh - 6) / 2, !seq_on && n->step == at ? HOLO : C_INK);
+    }
+    round_fill(gx + (at - x0) * cw - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);   /* the cursor, or the playhead */
 }
 
 /* a graphic's body, lit: the band between ya[] and yb[] as one shape, the thermal light from its edges in; the ink
@@ -494,8 +601,9 @@ static void stage_rows(int page, const char *const *names, int n, int open)
         int y = SY + i * (h + G), tx = SX + SW - PAD - 22;
         if (i == open) round_line(SX, y, SW, h, h / 2, 2, C_INK);
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
-        text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, C_INK);
-        if (page != PG_FX && i >= 2) continue;              /* the song and the setup are not effects: no switch */
+        text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, row_soon(page, i) ? C_LABEL : C_INK);
+        if (row_soon(page, i)) { text_r(SX + SW - PAD - 4, y + (h - 12) / 2, "Soon", &FS, C_LABEL); continue; }
+        if (page != PG_FX && i >= 2) continue;              /* the setup is not an effect: no switch */
         if (row_off(page, i)) {                             /* the switch: off */
             round_line(tx, y + h / 2 - 6, 22, 12, 6, 1, C_LABEL);
             round_fill(tx + 3, y + h / 2 - 3, 6, 6, 3, C_LABEL);
@@ -534,13 +642,47 @@ static void stage_songs(void)
     }
 }
 
-static void boot(void)
+/* the boot, as the site's splash: on the dark ground the word stacks in Kiloy, "dem" over "ake"; its bits arrive
+ * through the dither, sweeping in, and heat from the blue rim to the pale core; it holds while the bits step and a
+ * meter of ticks fills; then the screen leaves in 16 px blocks by the same dither, Home under it. A key or a button
+ * ends it */
+#define BOOT_ARRIVE 650u
+#define BOOT_HEAT0 150u
+#define BOOT_HEAT1 1150u
+#define BOOT_LEAVE 1750u
+#define BOOT_END 2300u
+static uint8_t boot_fb[DMK_FB_BYTES] POOL;             /* the held frame, while Home comes through it */
+
+static void boot(uint32_t t)
 {
-    int t = (int)ui.now;
-    fill(0, 0, DMK_W, DMK_H, C_PAPER);
-    text_c(DMK_W / 2, 92, "demake", &FL, HOLO);
-    round_fill(70, 149, 100, 4, 2, C_LINE);
-    round_fill(70, 149, 4 + 96 * (t > 1500 ? 1500 : t) / 1500, 4, 2, C_INK);
+    int dark = THEME_DARK[theme], gnd = dark ? C_PAPER : C_INK, lit = dark ? C_INK : C_PAPER;
+    int i, at, y1 = 50, y2 = y1 + FK.ascent + 12;
+    fill(0, 0, DMK_W, DMK_H, gnd);
+    holo_veil = t >= BOOT_ARRIVE ? 256 : (int)(t * 256u / BOOT_ARRIVE);
+    holo_heat = t <= BOOT_HEAT0 ? 0 : t >= BOOT_HEAT1 ? 255 : (int)((t - BOOT_HEAT0) * 112u / (BOOT_HEAT1 - BOOT_HEAT0));
+    holo_bg = gnd;
+    text_c(DMK_W / 2, y1, "dem", &FK, HOLO);
+    text_c(DMK_W / 2, y2, "ake", &FK, HOLO);
+    holo_veil = 256;
+    holo_heat = 255;
+    at = (int)((t < BOOT_LEAVE ? t : BOOT_LEAVE) * 40u / BOOT_LEAVE);
+    for (i = 0; i <= 40; i++) {                         /* the meter: ticks lit up to where it has reached */
+        int x = 59 + i * 3;
+        if (i == at) round_fill(x - 1, 176, 3, 16, 1, HOLO);
+        else fill(x, 180, 1, 8, i < at ? lit : C_LABEL);
+    }
+}
+
+static void boot_leave(uint32_t ms)                     /* the held frame's blocks not yet gone, over Home */
+{
+    int q = (int)((ms - BOOT_LEAVE) * 16u / (BOOT_END - BOOT_LEAVE)), bx, by, r, k;
+    for (by = 0; by < DMK_H / 16; by++)
+        for (bx = 0; bx < DMK_W / 16; bx++)
+            if (T_BAYER6[0][(by & 3) * 4 + (bx & 3)] >= q)
+                for (r = 0; r < 16; r++) {
+                    int o = ((by * 16 + r) * DMK_W + bx * 16) >> 1;
+                    for (k = 0; k < 8; k++) fb[o + k] = boot_fb[o + k];
+                }
 }
 
 /* ---- the overlays: a card in ink, over the rest */
@@ -585,8 +727,16 @@ static const uint8_t *ui_frame(uint32_t ms)
 #ifdef DMK_TEXT_AUDIT
     ta_reset();
 #endif
-    if (!ui.boot_done && ms < 1500u) { boot(); return fb; }
-    ui.boot_done = 1;
+    if (!ui.boot_done) {
+        if (ms < BOOT_LEAVE) { boot(ms); return fb; }
+        if (ms >= BOOT_END) ui.boot_done = 1;
+        else if (!ui.boot_kept) {
+            int i;
+            boot(BOOT_LEAVE);
+            for (i = 0; i < DMK_FB_BYTES; i++) boot_fb[i] = fb[i];
+            ui.boot_kept = 1;
+        }
+    }
     fill(0, 0, DMK_W, DMK_H, C_PAPER);
     head();
     fields_band();
@@ -605,7 +755,99 @@ static const uint8_t *ui_frame(uint32_t ms)
     }
     foot();
     overlays();
+    if (!ui.boot_done) boot_leave(ms);
     return fb;
+}
+
+/* the update (dmk_update_frame; the FM-1 shows it while it takes a new firmware): in the boot's light, the word lit,
+ * what happens now, the five steps as dots, the done ones lit. Its bits step a frame at a time */
+static const uint8_t *ui_update(uint32_t step, int32_t code)
+{
+    static const char *const SAY[6] = {"", "Reading the package", "Checking it", "Staging the loader",
+                                       "Waiting for the computer", "Restarting to write it"};
+    static uint8_t pat;
+    int dark = THEME_DARK[theme], gnd = dark ? C_PAPER : C_INK, lit = dark ? C_INK : C_PAPER, i;
+    int y1 = 30, y2 = y1 + FK.ascent + 12;
+    clip_all();
+#ifdef DMK_TEXT_AUDIT
+    ta_reset();
+#endif
+    holo_pat = (uint8_t)(pat++ % 6u);
+    fill(0, 0, DMK_W, DMK_H, gnd);
+    text_c(DMK_W / 2, y1, "dem", &FK, HOLO);
+    text_c(DMK_W / 2, y2, "ake", &FK, HOLO);
+    if (step < 9u) {
+        text_c(DMK_W / 2, 142, step >= 5u ? "Writing Demake" : "Installing", &FM, lit);
+        text_c(DMK_W / 2, 168, step >= 5u ? "About a minute: leave the cable in" : SAY[step < 6u ? step : 0], &FS, C_LABEL);
+        for (i = 0; i < 5; i++) {                       /* the steps: done lit, now a ring, to come grey */
+            int x = DMK_W / 2 - 36 + i * 16;
+            if (i + 1 < (int)step) round_fill(x, 202, 9, 9, 4, HOLO);
+            else if (i + 1 == (int)step) round_line(x, 202, 9, 9, 4, 2, lit);
+            else round_line(x, 202, 9, 9, 4, 1, C_LABEL);
+        }
+    } else {
+        text_c(DMK_W / 2, 142, code == 1 ? "Checked" : "Stopped", &FM, lit);
+        text_c(DMK_W / 2, 168, code == 1 ? "A trial run: nothing written" : "The firmware is as it was", &FS, C_LABEL);
+    }
+    return fb;
+}
+
+/* ---- the controls */
+
+/* the roll's knobs (docs/plan.md, 3.5): a held note's MOVE, PITCH, LENGTH, VELOCITY; else CURSOR, VIEW, the pen's
+ * LENGTH, the synth's STEPS, ZOOM */
+static void roll_turn(int k, int d)
+{
+    int s = ui.synth, h = roll_held(), st = sq[s].steps, dir = d > 0 ? 1 : -1;
+    if (h >= 0) {
+        int j = seq_find(s, ui.key_step[h], ui.key_note[h]);
+        snote_t *n;
+        if (j < 0) return;
+        n = &sq[s].n[j];
+        if (k == 0) {
+            int t = (n->step + dir + st) % st;
+            if (seq_find(s, t, n->note) >= 0) return;
+            n->step = (uint8_t)t; ui.key_step[h] = (uint8_t)t; ui.roll_cur[s] = (uint8_t)t;
+        }
+        if (k == 1) {
+            int p = note_of(degree_of(n->note) + dir);
+            if (p < 24 || p > 108 || seq_find(s, n->step, p) >= 0) return;
+            note_off_s(s, n->note);
+            n->note = (uint8_t)p; ui.key_note[h] = (uint8_t)p;
+            note_on_s(s, p);
+        }
+        if (k == 2) { int l = n->len + dir; n->len = (uint8_t)(l < 1 ? 1 : l > SEQ_STEPS ? SEQ_STEPS : l); }
+        if (k == 4) { int v = n->vel + dir * 4; n->vel = (uint8_t)(v < 1 ? 1 : v > 127 ? 127 : v); }
+        return;
+    }
+    if (k == 0) ui.roll_cur[s] = (uint8_t)((ui.roll_cur[s] + dir + st) % st);
+    if (k == 1) { int v = ui.roll_view[s] + dir; ui.roll_view[s] = (uint8_t)(v < 14 ? 14 : v > 43 ? 43 : v); }
+    if (k == 2) { int p = ui.roll_pen[s] + dir; ui.roll_pen[s] = (uint8_t)(p < 1 ? 1 : p > 16 ? 16 : p); }
+    if (k == 3) {                                       /* this synth's length: the three loop against each other */
+        int t = st + dir;
+        t = t < 1 ? 1 : t > SEQ_STEPS ? SEQ_STEPS : t;
+        sq[s].steps = (uint8_t)t;
+        if (ui.roll_cur[s] >= t) ui.roll_cur[s] = (uint8_t)(t - 1);
+        if (sq[s].pos >= t) sq[s].pos = 0;
+    }
+    if (k == 4) { int z = ui.roll_zoom[s] + dir; ui.roll_zoom[s] = (uint8_t)(z < 0 ? 0 : z > 2 ? 2 : z); }
+}
+
+static void roll_oct(int dup)                           /* OCT- deletes the held notes; OCT+ copies each after itself */
+{
+    int s = ui.synth, k;
+    for (k = 0; k < DMK_KEYS; k++) {
+        int j;
+        if (!ui.keys_down[k] || ui.key_roll[k] != 1) continue;
+        j = seq_find(s, ui.key_step[k], ui.key_note[k]);
+        if (j < 0) continue;
+        if (!dup) { seq_del(s, j); ui.key_roll[k] = 3; continue; }
+        {
+            snote_t n = sq[s].n[j];
+            int t = (n.step + n.len) % sq[s].steps;
+            if (seq_add(s, t, n.len, n.note, n.vel) >= 0) { ui.key_step[k] = (uint8_t)t; ui.roll_cur[s] = (uint8_t)t; }
+        }
+    }
 }
 
 /* ---- the controls */
@@ -621,6 +863,11 @@ static void ui_button(int b, int down)
         ui.btn_used &= (uint16_t)~bit;
         for (o = 0; o < B_COUNT; o++)                   /* another button held: it was used as a modifier */
             if (o != b && ui.btn_held >> o & 1u) ui.btn_used |= (uint16_t)(1u << o);
+        if ((b == B_OCTD || b == B_OCTU) && ui.page == PG_ROLL && roll_held() >= 0) {
+            roll_oct(b == B_OCTU);                      /* a held note: OCT- takes it away, OCT+ adds a copy */
+            ui.btn_used |= bit;
+            return;
+        }
         if (b == B_OCTD || b == B_OCTU) {
             char t[16];
             if (b == B_OCTD && ui.octave > -2) ui.octave--;
@@ -635,10 +882,21 @@ static void ui_button(int b, int down)
     if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { ui.page = PG_DISCS; return; }
     if (ui.now - ui.btn_down_at[b] > 350u) return;      /* a hold showed its layer: no tap */
     if (b == B_SAVE) { notice("Nothing to save yet"); return; }
+    if (b == B_PLAY) { seq_play(!seq_on); return; }
+    if (b == B_REC) { seq_rec ^= 1u; notice(seq_rec ? "Recording on" : "Recording off"); return; }
     if (BTN_PAGE[b] >= 0) {
         int p = BTN_PAGE[b];
-        if (ui.page == p) ui.row[p] = (uint8_t)((ui.row[p] + 1) % PAGE[p].rows);   /* again: the next row */
-        else ui.page = (uint8_t)p;
+        if (ui.page == p) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);   /* again: the next row built */
+        else {
+            ui.page = (uint8_t)p;
+            if (row_soon(p, ui.row[p])) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);
+            if (rows_built(p) > 1 && !(ui.hinted >> p & 1u)) {   /* the first time: how to reach the next row */
+                char t[32];
+                str_cat(str_cat(t, BTN_NAME[b]), " again: the next row");
+                notice(t);
+                ui.hinted |= (uint16_t)(1u << p);
+            }
+        }
         ui.touch_k = -1;
     }
 }
@@ -668,6 +926,7 @@ static void ui_encoder(int e, int d)
 #endif
     ui.touch_k = (int8_t)k;
     ui.touch_ms = ui.now;
+    if (ui.page == PG_ROLL) { roll_turn(k, d); return; }
     if (ui.page == PG_GLOBAL && r == 3 && k == 0) {    /* theme */
         int t = theme + (d > 0 ? 1 : -1);
         theme = (uint8_t)(t < 0 ? DMK_THEMES - 1 : t >= DMK_THEMES ? 0 : t);
@@ -689,22 +948,57 @@ static void ui_encoder(int e, int d)
     sp_sync();
 }
 
+/* a key: on the roll, stopped, it writes at the cursor (or holds the note of its pitch there); playing with REC, it
+ * is recorded from its nearest step for its length; else it plays. With SNAP the roll's notes are on the scale */
 static void ui_key(int k, int down)
 {
-    int n;
+    int n, s;
     if (k < 0 || k >= DMK_KEYS) return;
     ui.boot_done = 1;
     n = 53 + k + ui.octave * 12;                        /* F3 = 53, chromatic */
     ui.keys_down[k] = (uint8_t)down;
-    if (down) { ui.key_sy[k] = ui.synth; ui.key_note[k] = (uint8_t)n; note_on_s(ui.synth, n); }
-    else note_off_s(ui.key_sy[k], ui.key_note[k]);      /* the synth and the note it started */
+    if (down) {
+        s = ui.synth;
+        ui.key_sy[k] = (uint8_t)s;
+        ui.key_roll[k] = 0;
+        if (ui.page == PG_ROLL && !seq_on) {
+            int c = ui.roll_cur[s];
+            n = snap(n);
+            if (seq_find(s, c, n) >= 0 || seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }
+        } else if (seq_on && seq_rec) {
+            n = snap(n);
+            ui.key_roll[k] = 2;
+            ui.key_t0[k] = seq_now();
+        }
+        ui.key_note[k] = (uint8_t)n;
+        note_on_s(s, n);
+        return;
+    }
+    s = ui.key_sy[k];
+    note_off_s(s, ui.key_note[k]);                      /* the synth and the note it started */
+    if (ui.key_roll[k] == 1) {                          /* step entry: the cursor to the note's end */
+        int j = seq_find(s, ui.key_step[k], ui.key_note[k]);
+        if (j >= 0) ui.roll_cur[s] = (uint8_t)((sq[s].n[j].step + sq[s].n[j].len) % sq[s].steps);
+    } else if (ui.key_roll[k] == 2 && seq_on) {
+        uint32_t t0 = ui.key_t0[k], t1 = seq_now();
+        int st = (int)(((t0 + 128u) >> 8) % sq[s].steps), len = (int)((t1 - t0 + 128u) >> 8);
+        seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_note[k], 100);
+    }
+    ui.key_roll[k] = 0;
 }
 
 static const uint8_t *ui_leds(void)
 {
     int i;
-    for (i = 0; i < DMK_KEYS; i++) leds[i] = ui.keys_down[i] ? 255 : 0;
+    for (i = 0; i < DMK_KEYS; i++) {                    /* on the roll, the keys of the notes at the cursor blink */
+        int n = 53 + i + ui.octave * 12;
+        leds[i] = ui.keys_down[i] ? 255 : 0;
+        if (!ui.keys_down[i] && ui.page == PG_ROLL && !seq_on && seq_find(ui.synth, ui.roll_cur[ui.synth], n) >= 0)
+            leds[i] = (ui.now / 250u) & 1u ? 255 : 0;
+    }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
+    leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;
+    leds[DMK_KEYS + B_REC] = seq_rec && (seq_on || (ui.now / 250u) & 1u) ? 255 : 0;   /* armed: it blinks */
     leds[DMK_KEYS + B_OCTD] = ui.octave < 0 ? 255 : 0;
     leds[DMK_KEYS + B_OCTU] = ui.octave > 0 ? 255 : 0;
     return leds;
