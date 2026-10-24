@@ -158,6 +158,10 @@ So, measured against the yardstick:
 
 ### 2.1 The engines
 
+**Decision (the owner, 2026-10-24): the samples engine only.** Demake plays the owner's curated recordings and
+nothing else: PAD, DRONE and PLUCK below are not built. LAYER and GRIT stay, as controls of a sound on the samples.
+The plan for the sound from here, sound design and effects, is `docs/sound-design.md`.
+
 Any synth can play any engine; a synth's voices all use its engine. Per voice: the engine, a ZDF SVF (TYPE LP12,
 LP24, BP, HP, OFF; 27 [M] with coefficients every 16 samples) and the ADSR (7.5 [M]).
 
@@ -811,6 +815,9 @@ Phase 0 has the home page; the rest come in phase 5. The design is also in the o
 Demake page): the tokens as variables (Paper and Night), the wordmark and the D as vectors, the display's components.
 
 ## 7. Build order
+
+*From 0.2 on, the sound's next steps (stages 1-6: measuring the FM-1, the sound's own controls, more effects, the
+spaces, the song bus, the factory sounds) are planned in `docs/sound-design.md`.*
 
 Each phase ends with something the owner plays on the FM-1, and nothing is kept before it is heard (WAVs and numbers
 first, as on MONO2K).
