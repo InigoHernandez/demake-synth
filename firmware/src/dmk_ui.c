@@ -47,9 +47,9 @@ static const page_t PAGE[PG_COUNT] = {
       {"Amount", "Tone", "Time", "Spice"}, {"Verb", "Echo", "Pan", "Width"}}},
     {"Chord", 2, {"Voice", "Key"}, {"Prog", "Prog"},
      {{"Voicing", "Invert", "Spread", "Strum"}, {"Key", "Mode", "Change", "Rhythm"}}},
-    {"Global", 4, {"Verb", "Echo", "Song", "Setup"}, {"Type", "Type", "", "Velocity"},
+    {"Global", 4, {"Verb", "Echo", "Song", "Theme"}, {"Type", "Type", "", ""},
      {{"Return", "Tone", "Size", "Mod"}, {"Return", "Tone", "Time", "Regen"},
-      {"Swing", "Switch", "Click", "Rec"}, {"Theme", "Keys", "MIDI", "Clock"}}},
+      {"Swing", "Switch", "Click", "Rec"}, {"Theme", "", "", ""}}},
     {"LFO", 1, {"LFO"}, {"Target"}, {{"Rate", "Depth", "Shape", "Fade"}}},
     {"Songs", 1, {"Songs"}, {""}, {{"Song", "Card", "", ""}}},
 };

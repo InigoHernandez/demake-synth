@@ -11,6 +11,12 @@
 
 #define FULL (1 << 24)
 
+#ifdef DMK_METER                                        /* the host's meters: where a sound runs out of room */
+static struct { int32_t pre_max, syn_max, voice_max; uint32_t knee, sat_line, sat_fd, sat_echo, clamp_v; } dmeter;
+#define METER(x) (x)
+#else
+#define METER(x) ((void)0)
+#endif
 static inline int32_t sat16(int32_t v) { return v > 32767 ? 32767 : v < -32768 ? -32768 : v; }
 static inline int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 
@@ -240,16 +246,16 @@ static void colour_block(int sy, int32_t *x)
             int32_t a = x[i] < 0 ? -x[i] : x[i], g, n;
             if (a > fx[sy].nfol) fx[sy].nfol += (a - fx[sy].nfol) >> 4;   /* rides the sound, its tail too */
             else fx[sy].nfol -= (fx[sy].nfol >> 14) + (fx[sy].nfol > 0);   /* at least a step: it reaches zero */
-            g = fx[sy].nfol > 8192 ? 32768 : fx[sy].nfol * 4;
+            g = fx[sy].nfol > 4096 ? 32768 : fx[sy].nfol * 8;
             fx[sy].nlp += ((((int32_t)xs32(&fx[sy].rng) >> 16) - fx[sy].nlp) * tone) >> 15;
-            n = fx[sy].nlp * k0 / 2600;                 /* the hiss: at most ~-26 dB */
+            n = fx[sy].nlp * k0 / 5200;                 /* the hiss: at most ~-26 dB of the sound's full scale */
             if ((xs32(&fx[sy].rng) >> 20) < (uint32_t)(k2 * k2) / 64u) {   /* a crackle: a click of either sign */
                 uint32_t r = xs32(&fx[sy].rng);
-                fx[sy].crk = (int32_t)(2000u + (r & 0x1FFFu)) * (r >> 31 ? -1 : 1);
+                fx[sy].crk = (int32_t)(1000u + (r & 0xFFFu)) * (r >> 31 ? -1 : 1);
             }
             n += fx[sy].crk; fx[sy].crk = fx[sy].crk * 5 / 8;
             fx[sy].hum += 4870390;                      /* 50 Hz */
-            n += ((sinp((uint32_t)fx[sy].hum) + sinp((uint32_t)fx[sy].hum * 3u) / 3) * k3) >> 12;
+            n += ((sinp((uint32_t)fx[sy].hum) + sinp((uint32_t)fx[sy].hum * 3u) / 3) * k3) >> 13;
             x[i] += (n * g) >> 15;
         }
     }
@@ -271,6 +277,7 @@ static void media_block(int sy, int32_t *x)
     for (i = 0; i < DMK_SUB; i++) {
         int32_t m, d, pos, f, y, a, c;
         uint32_t j, rate = t == FM_TAPE ? p->twow : t == FM_CASS ? p->twow + (uint32_t)k2 * 1200u : p->twow / 2u + (uint32_t)k2 * 1000u;
+        METER(dmeter.sat_line += x[i] > 32767 || x[i] < -32768);
         tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
         fx[sy].wow += rate + (uint32_t)(fx[sy].wd * 30);
         fx[sy].flut += p->tflut;
@@ -284,7 +291,7 @@ static void media_block(int sy, int32_t *x)
         fx[sy].tw++;
         if (t == FM_TAPE) {
             fx[sy].hl += ((y - fx[sy].hl) * p->thl) >> 15;
-            y = curve(T_SAT, (fx[sy].hl * p->tdrive) >> 8);
+            y = curve(T_LIM, (fx[sy].hl * p->tdrive) >> 8);   /* clean until AMOUNT drives it */
         } else if (t == FM_CASS) {
             a = y < 0 ? -y : y;
             fx[sy].fol += (a - fx[sy].fol) >> 8;
@@ -293,7 +300,7 @@ static void media_block(int sy, int32_t *x)
             if (c < 1500) c = 1500;
             fx[sy].lp1 += ((y - fx[sy].lp1) * c) >> 15;
             fx[sy].lp2 += ((fx[sy].lp1 - fx[sy].lp2) * c) >> 15;
-            y = curve(T_SAT, fx[sy].lp2 * 5 / 4);
+            y = curve(T_LIM, fx[sy].lp2 * 5 / 4);
         } else {
             fx[sy].hp += (y * 256 - fx[sy].hp) >> 9;    /* ~80 Hz out */
             y -= fx[sy].hp >> 8;
@@ -302,13 +309,13 @@ static void media_block(int sy, int32_t *x)
             y = fx[sy].lp2;
             a = y < 0 ? -y : y;                         /* the machine's noises ride the sound, as the tape's hiss */
             if (a > fx[sy].fol) fx[sy].fol += (a - fx[sy].fol) >> 4; else fx[sy].fol -= (fx[sy].fol >> 13) + (fx[sy].fol > 0);
-            c = fx[sy].fol > 4096 ? 32768 : fx[sy].fol * 8;
+            c = fx[sy].fol > 2048 ? 32768 : fx[sy].fol * 16;
             if (++fx[sy].tick >= 1471u) { fx[sy].tick = 0; y += (k3 * 4 * c) >> 15; }   /* the head switch, 29.97 Hz */
             if (fx[sy].track) {
                 fx[sy].track--;
                 y = (y * 24000 >> 15) + (((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 8) * c) >> 15);
             }
-            y = curve(T_SAT, y);
+            y = curve(T_LIM, y);
         }
         x[i] = y;
     }
@@ -462,6 +469,7 @@ static void fdn_step(int32_t vin)
     for (k = 0; k < FD_N; k++) {
         int32_t w = (k & 1 ? -x : x) + ((y[k] * gp.vfbq + 16384) >> 15);
         if (gp.vtype == VB_LOFI) w = (w + 128) & ~255;  /* eight bits */
+        METER(dmeter.sat_fd += w > 32767 || w < -32768);
         fd_buf[FD_OFF[k] + fd.pos[k]] = (int16_t)sat16(w);
         if (++fd.pos[k] >= FD_LEN[k]) fd.pos[k] = 0;
     }
@@ -661,6 +669,8 @@ static void voices_run(int half)
                 default: y = x; break;
                 }
                 if ((p->ftype == FT_LP24 || p->ftype == FT_LP12) && idx >= 255) y = x;   /* open: the sample as it is */
+                METER(dmeter.clamp_v += y > 65536 || y < -65536);
+                METER(dmeter.voice_max = (y < 0 ? -y : y) > dmeter.voice_max ? (y < 0 ? -y : y) : dmeter.voice_max);
                 out[i] += (int32_t)(((int64_t)clampi(y, -65536, 65536) * ((e0 + de * i) >> 9)) >> 15);
                 if (!o->stage) break;                   /* a one-shot ended */
             }
@@ -699,17 +709,20 @@ static void dsp_render(int16_t *lr, int frames)
             for (s = 0; s < DMK_SYNTHS; s++) {
                 const synth_t *p = &syn[s];
                 int32_t pk = 0, sl[DMK_SUB], sr[DMK_SUB];
-                for (i = 0; i < DMK_SUB; i++) {         /* two voices at full scale before the limiter's knee; no DC */
-                    int32_t x = sm[s][i] >> 1;
+                for (i = 0; i < DMK_SUB; i++) {         /* half the level through the effects, room for a chord; no DC */
+                    int32_t x = sm[s][i] >> 2;
                     syn_dc[s] += (x * 4096 - syn_dc[s]) / 512;   /* ~14 Hz, Q12: its stall under a 512th is under */
-                    sm[s][i] = x - ((syn_dc[s] + 2048) >> 12);   /* an eighth of a step, rounded away */
+                    sm[s][i] = curve(T_LIM, x - ((syn_dc[s] + 2048) >> 12));   /* a chord past full: bent, never cut */
                 }
+#ifdef DMK_METER
+                for (i = 0; i < DMK_SUB; i++) { int32_t a = sm[s][i] < 0 ? -sm[s][i] : sm[s][i]; if (a > dmeter.syn_max) dmeter.syn_max = a; }
+#endif
                 if (p->colour) colour_block(s, sm[s]);
                 if (p->media) media_block(s, sm[s]);
                 if (p->motion == FO_CHORUS) chorus_block(s, sm[s], sl, sr);
                 else for (i = 0; i < DMK_SUB; i++) sl[i] = sr[i] = sm[s][i];
                 for (i = 0; i < DMK_SUB; i++) {
-                    int32_t xl = (sl[i] * p->level) >> 15, xr = (sr[i] * p->level) >> 15, x = (xl + xr) / 2;
+                    int32_t xl = (sl[i] * p->level) >> 14, xr = (sr[i] * p->level) >> 14, x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * p->gl) >> 15;
                     R[i] += (xr * p->gr) >> 15;
                     vin[i] += (x * p->vsend) >> 15;
@@ -729,6 +742,10 @@ static void dsp_render(int16_t *lr, int frames)
                     wl = wr = 0;
                     if (vfill) { wl = wq[0][wq_r & (VQ_LEN - 1)]; wr = wq[1][wq_r & (VQ_LEN - 1)]; wq_r++; vfill--; }
                 } else { wl = bus.vl; wr = bus.vr; }
+#ifdef DMK_METER
+                { int32_t a = L[i] + wl + bus.el, c = R[i] + wr + bus.er; a = a < 0 ? -a : a; c = c < 0 ? -c : c; if (c > a) a = c;
+                  if (a > dmeter.pre_max) dmeter.pre_max = a; dmeter.knee += a > 24575; }
+#endif
                 lr[k] = (int16_t)curve(T_LIM, L[i] + wl + bus.el);
                 lr[k + 1] = (int16_t)curve(T_LIM, R[i] + wr + bus.er);
             }
