@@ -145,7 +145,8 @@ static struct {
     uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
     uint8_t arr_cur, arr_bars;                          /* Arrange: the step cursor; the bars a key writes a step with */
     uint8_t copy_arm, copy_to;                          /* HOME held + OCT+: a pattern key next pastes into it */
-    uint8_t full, full_latch, both_on;                  /* the landscape full screen (OCT- and OCT+ held); held once */
+    uint8_t full, full_latch, both_on, full_note;       /* the landscape full screen (OCT- and OCT+ held); held once;
+                                                           a notice was over it */
     uint32_t both_at;
     uint32_t copy_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
@@ -1724,47 +1725,295 @@ static uint8_t boot_fb[DMK_FB_BYTES] POOL;             /* the held frame, while 
 static uint8_t boot_sc;                                 /* the scene this start shows */
 
 /* a scene full screen (OCT- and OCT+ held; the start): the whole of it at its own pixels, nothing cut (the owner: not
- * its middle doubled, which cut the sides), and taller: above it the sky goes on (its top rows, the stars twinkling;
- * indoors the wall), below it the ground does (its last eight rows again: the rug, the desk, the water, the dark),
- * both fading to the dark in the moving bits */
+ * its middle doubled, which cut the sides), and taller, each landscape going on above and below it (the owner: not a
+ * fade to dark): outdoors its sky spread over the screen down to its horizon, stars, a high cloud, the gulls, the
+ * Milky Way; under it the snow and the near pines, the lake's shore and its reeds and a dock, the waves on a beach, a
+ * meadow and fireflies; indoors the wall above (a picture and fairy lights; a poster and a shelf) and the floor or the
+ * desk's front below. Those parts are built once a scene (lf_build), the moving ones drawn each frame */
 #define LF_Y0 ((DMK_H - SC_H) / 2)                      /* the scene's band */
 #define LF_X0 ((DMK_W - SC_W) / 2)
-static void land_full(int sc, uint32_t t)
+#define LF_H LF_Y0                                      /* the rows above it, and below */
+static uint8_t lf_ext[2][DMK_W / 2 * LF_H] POOL;        /* above, below: packed as the screen */
+static uint8_t lf_key = 0xFF;
+static uint8_t *lf_cv;                                  /* the part being built: a pixel a byte (the light's scratch) */
+static void lp(int x, int y, int c) { if (x >= 0 && x < DMK_W && y >= 0 && y < LF_H) lf_cv[y * DMK_W + x] = (uint8_t)c; }
+static void lrect(int x, int y, int w, int h, int c) { int i, j; for (j = 0; j < h; j++) for (i = 0; i < w; i++) lp(x + i, y + j, c); }
+static void ldisc(int cx, int cy, int r, int c) { int i, j; for (j = -r; j <= r; j++) for (i = -r; i <= r; i++) if (i * i + j * j <= r * r + r / 2) lp(cx + i, cy + j, c); }
+static void lpine(int x, int base, int h, int c, int snow)   /* a pine as the scenes draw them; snow on its boughs */
 {
-    int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y;
-    const uint8_t *bp = T_BAYER6[holo_pat];
-    sc = sc < DMK_SCENES ? sc : 0;
-    scene_frame(sc, t / 140u);
-    for (y = 0; y < DMK_H; y++) {
-        uint8_t *b = &fb[y * (DMK_W / 2)];
-        int sy = y - LF_Y0, d = 0, fade, part = 0;      /* part: 0 the scene, 1 above, 2 below */
-        const uint8_t *src;
-        if (y == DMK_H / 2) ui_yield();                 /* the sound between the halves */
-        if (sy < 0) { d = -sy; sy = (4 - d % 4) % 4; part = 1; }   /* its first four rows again, the dither's period */
-        else if (sy >= SC_H) { d = sy - SC_H + 1; sy = SC_H - 8 + (sy - SC_H) % 8; part = 2; }   /* its last eight */
-        fade = d * 18 / (LF_Y0 + 1);                    /* 0 at the scene .. past every bit at the edge */
-        src = &sc_out[sy * (SC_W / 2)];
-        for (x = 0; x < DMK_W; x += 2) {
-            int k, c2[2];
-            for (k = 0; k < 2; k++) {
-                int px = x + k, sx = clampi(px - LF_X0, 0, SC_W - 1), c;
-                if (part == 1 && sc < 4) c = sky_at(sc, px, sy, dk);   /* outdoors: the sky, not its stars again */
-                else if (part == 1) sx = 8 + (px & 3);  /* indoors: the wall at the left, all across */
-                else if (part == 2 && (sc == 0 || sc == 3)) sx = -1;   /* the peaks' and the night's ground: dark */
-                if (sx < 0) c = dk;
-                else if (!(part == 1 && sc < 4)) c = sx & 1 ? src[sx >> 1] & 15 : src[sx >> 1] >> 4;
-                if (d && bp[(y & 3) * 4 + (px & 3)] < fade) c = dk;
-                if (part == 1 && sc < 4 && c == dk) {   /* more stars, twinkling */
-                    uint32_t h = hsh((uint32_t)px * 131u + (uint32_t)y * 7919u + (uint32_t)sc);
-                    if (!(h & 511u) && hsh(h + t / 420u) & 3u) c = lt;
-                }
-                c2[k] = c;
-            }
-            b[x >> 1] = (uint8_t)(c2[0] << 4 | c2[1]);
-        }
+    int y, i;
+    for (y = 0; y < h; y++) {
+        int half = y / 3 + (y % 6 < 2 ? 0 : 1);
+        for (i = -half; i <= half; i++) lp(x + i, base - h + y, snow && y % 6 == 2 && (i == -half || hsh((uint32_t)(x * 31 + y * 7 + i)) % 4u == 0) ? snow : c);
     }
 }
-static void boot_land(uint32_t t) { land_full(boot_sc, t); }
+static void lcloud(int x, int y, int w, int lt)         /* a high cloud, small: puffs on a flat base, lit pink under */
+{
+    int k, n = 2 + w / 14;
+    for (k = 0; k <= n; k++) { int r = 3 + (int)(hsh((uint32_t)(w * 5 + k)) % 3u) + (k && k < n ? 2 : 0); ldisc(x + k * w / n, y - r + 1, r, C_HOLO6); }
+    lrect(x - 2, y - 1, w + 4, 3, C_HOLO6);
+    for (k = 0; k <= n; k++) { int r = 3 + (int)(hsh((uint32_t)(w * 5 + k)) % 3u) + (k && k < n ? 2 : 0); ldisc(x + k * w / n, y - r - 1, r, lt); }
+    lrect(x - 2, y - 3, w + 4, 2, lt);
+}
+/* the sky over the whole screen: its colours spread from the top down to the horizon, dithered on the screen's rows */
+static int sky_full(int sc, int x, int Y, int dk)
+{
+    int n = SKY[sc].n, last = SKY[sc].at[n - 1], q = Y * 16 * last / (LF_Y0 + last), i = 0, t, a, b;
+    while (i < n - 1 && q >= SKY[sc].at[i + 1] * 16) i++;
+    if (i == n - 1) return SKY[sc].c[i] < 0 ? dk : SKY[sc].c[i];
+    t = (q - SKY[sc].at[i] * 16) / (SKY[sc].at[i + 1] - SKY[sc].at[i]);
+    a = SKY[sc].c[i] < 0 ? dk : SKY[sc].c[i];
+    b = SKY[sc].c[i + 1] < 0 ? dk : SKY[sc].c[i + 1];
+    return bay(x, Y) < t ? b : a;
+}
+static int fgp_at(int bx, int by)                       /* the scene's still parts, a pixel (band coordinates) */
+{
+    uint8_t v = sc_fgp[by * (SC_W / 2) + (bx >> 1)];
+    return bx & 1 ? v & 15 : v >> 4;
+}
+static int cat_y(int x) { return 16 + 18 * 4 * x * (DMK_W - 1 - x) / ((DMK_W - 1) * (DMK_W - 1)); }   /* the fairy lights' wire */
+
+static void lf_top(int sc, int dk, int lt)
+{
+    int x, y, k;
+    if (sc < 4) {
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) lp(x, y, sky_full(sc, x, y, dk));
+        if (sc == 0) lcloud(30, 44, 30, lt);
+        if (sc == 1) lcloud(172, 40, 34, lt);
+        if (sc == 2) {
+            lcloud(70, 42, 28, lt);
+            for (k = 0; k < 3; k++) {                   /* gulls, far: a stroke each side */
+                int gx = 150 + k * 14 + (k == 1 ? 4 : 0), gy = 22 + (k & 1) * 5;
+                lp(gx - 2, gy, dk); lp(gx - 1, gy + 1, dk); lp(gx, gy, dk); lp(gx + 1, gy + 1, dk); lp(gx + 2, gy, dk);
+            }
+        }
+        if (sc == 3)                                    /* the Milky Way: a soft band across, thick with small stars */
+            for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
+                int d = y - (54 - x * 44 / DMK_W) - tri(x, 53, 4), ad = d < 0 ? -d : d;
+                uint32_t h = hsh((uint32_t)(x * 977 + y * 131));
+                if (ad < 12 && bay(x, y) < (12 - ad) / 2) lp(x, y, ad < 4 && bay(x, y) < 2 ? C_HOLO1 : C_HOLO0);
+                if (ad < 10 && !(h % 23u)) lp(x, y, h & 32u ? lt : C_A_LABEL);
+            }
+        return;
+    }
+    if (sc == 4) {                                      /* ROOM: the wall going up, a picture, the fairy lights' wire */
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) lp(x, y, bay(x, y) < 2 ? C_HOLO0 : dk);
+        lrect(14, 16, 30, 26, C_LABEL);                 /* the picture: a frame, a little mountain at dusk */
+        for (y = 18; y < 40; y++) for (x = 16; x < 42; x++) lp(x, y, y < 28 ? (bay(x, y) < (y - 18) ? C_HOLO2 : C_HOLO1) : bay(x, y) < 8 ? C_HOLO3 : C_HOLO2);
+        for (x = 16; x < 42; x++) { int top = 36 - tri(x - 16, 26, 10); for (y = top; y < 40; y++) lp(x, y, y < top + 2 && x > 26 && x < 31 ? lt : dk); }
+        for (x = 0; x < DMK_W; x++) lp(x, cat_y(x), C_A_INK2);
+        return;
+    }
+    for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) lp(x, y, dk);   /* DESK: the wall, a poster, a shelf */
+    lrect(14, 8, 52, 46, C_LABEL);                      /* the poster: a sun going down on the sea, in the light's colours */
+    for (y = 10; y < 52; y++) for (x = 16; x < 64; x++) {
+        int dx = x - 40, dy = y - 32, d = dx * dx + dy * dy, c;
+        if (y > 34) c = (y - 35) % 4 == 0 ? C_HOLO5 : bay(x, y) < 8 ? C_HOLO1 : C_HOLO2;   /* the sea, its lines lit */
+        else c = d < 64 ? (bay(x, y) * 4 < 64 - d ? C_HOLO7 : C_HOLO6) : d < 160 ? (bay(x, y) * 6 < 160 - d ? C_HOLO5 : C_HOLO4) : (bay(x, y) < (y - 10) / 2 ? C_HOLO3 : C_HOLO2);
+        lp(x, y, c);
+    }
+    lp(40, 9, lt);                                      /* its pin */
+    lrect(126, 46, 108, 2, C_LABEL); lrect(126, 48, 108, 1, C_A_INK2);   /* the shelf */
+    lrect(132, 48, 2, 6, C_A_INK2); lrect(226, 48, 2, 6, C_A_INK2);
+    for (k = 0; k < 10; k++) {                          /* CD cases, standing */
+        static const uint8_t TC[5] = {C_LABEL, C_HOLO2, C_LINE, C_HOLO4, C_A_LABEL};
+        int h = 16 + (int)(hsh((uint32_t)k + 17u) % 5u);
+        lrect(132 + k * 4, 46 - h, 3, h, TC[(k * 3) % 5]);
+        lp(133 + k * 4, 46 - h + 3, lt);
+    }
+    lrect(178, 26, 16, 20, C_LINE); lrect(192, 26, 2, 20, C_LABEL);   /* a small speaker */
+    ldisc(185, 37, 5, dk); ldisc(185, 37, 2, C_LABEL); lp(185, 29, C_HOLO6);
+    lrect(208, 38, 14, 8, C_LABEL);                     /* a plant, its pot */
+    for (k = 0; k < 5; k++) ldisc(209 + (int)(hsh((uint32_t)k + 3u) % 12u), 30 + (int)(hsh((uint32_t)k + 9u) % 6u), 3 + (int)(hsh((uint32_t)k) % 2u), dk);
+    lp(212, 28, C_HOLO1); lp(218, 31, C_HOLO1);
+}
+
+static void lf_bottom(int sc, int dk, int lt)
+{
+    int x, y, k;
+    if (sc == 0) {                                      /* PEAKS: the snow from under the treeline, its drifts' blue
+                                                           shade, near pines */
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
+            int edge = y < 7 ? 16 - y * 2 - (int)(hsh((uint32_t)(x * 13 + y)) % 4u) : 0, drift = (y + tri(x + y * 2, 61, 6)) % 13;
+            int c = drift < 2 ? (bay(x, y) < 7 ? C_HOLO0 : C_A_LABEL) : (bay(x, y) < 5 ? lt : C_A_LABEL);
+            lp(x, y, bay(x, y) < edge ? dk : c);
+        }
+        lpine(12, 60, 54, dk, lt); lpine(34, 60, 40, dk, lt); lpine(208, 60, 46, dk, lt); lpine(230, 60, 58, dk, lt);
+        for (k = 0; k < 4; k++) lp(100 + k * 9, 52 + (k & 1) * 3, C_A_INK2);   /* steps in the snow */
+        return;
+    }
+    if (sc == 1) {                                      /* LAKE: the water nearer, the shore, reeds, a dock */
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
+            int bx = clampi(x - LF_X0, 0, SC_W - 1), c = fgp_at(bx, SC_H - 8 + y % 8);
+            lp(x, y, bay(x, y) < y * 6 / 34 ? dk : c);
+        }
+        for (x = 0; x < DMK_W; x++) {                   /* the shore, its reeds */
+            int sh = 36 + tri(x, 70, 5);
+            for (y = sh; y < LF_H; y++) lp(x, y, bay(x, y) < 2 ? C_HOLO0 : dk);
+        }
+        for (k = 0; k < 34; k++) {
+            uint32_t h = hsh((uint32_t)k * 2654435761u + 5u);
+            int rx = (int)(h % 150u), base = 38 + tri(rx, 70, 5), ht = 8 + (int)((h >> 8) % 20u);
+            for (y = 0; y < ht; y++) lp(rx + (y > ht * 2 / 3 && (h & 1u) ? 1 : 0), base - y, y > ht - 3 ? C_HOLO1 : dk);
+            if (!(h % 3u)) { lrect(rx - 1, base - ht + 2, 3, 5, dk); lp(rx - 1, base - ht + 2, C_HOLO2); }   /* a cattail */
+        }
+        for (y = 20; y < LF_H; y++) {                   /* the dock, its planks, from the near right out over the water */
+            int l = 176 - (y - 20) * 26 / 40, r = 196 + (y - 20) * 34 / 40;
+            for (x = l; x <= r; x++) lp(x, y, (y - 20) % 5 == 0 ? dk : x == l ? C_LINE : C_LABEL);
+        }
+        lrect(178, 14, 2, 8, dk); lrect(193, 14, 2, 8, dk);   /* its posts at the end, in the water */
+        return;
+    }
+    if (sc == 2) {                                      /* COAST: the sea nearer, then the wet sand, the dry; the cliff */
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
+            int c;
+            if (y < 14) c = bay(x, y) < 5 ? C_HOLO1 : C_HOLO0;
+            else if (y < 34) c = bay(x, y) < (y - 14) / 3 + 4 ? C_HOLO3 : C_HOLO2;   /* wet: the sunset in it */
+            else { c = bay(x, y) < 8 ? C_LINE : C_A_LABEL; if (!(hsh((uint32_t)(x * 7 + y * 131)) % 61u)) c = dk; }   /* dry, pebbles */
+            lp(x, y, c);
+        }
+        for (y = 0; y < LF_H; y++) for (x = 0; x < 96 + LF_X0 - y * 2; x++) lp(x, y, bay(x, y) < 13 ? dk : C_HOLO0);   /* the cliff's foot */
+        return;
+    }
+    if (sc == 3) {                                      /* NIGHT: a meadow, its grass */
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) lp(x, y, dk);
+        for (k = 0; k < 150; k++) {
+            uint32_t h = hsh((uint32_t)k * 40503u + 11u);
+            int gx = (int)(h % (uint32_t)DMK_W), ht = 4 + (int)((h >> 9) % 22u), lean = (int)((h >> 3) % 3u) - 1;
+            for (y = 0; y < ht; y++) lp(gx + lean * y / 8, LF_H - 1 - y, y > ht - 3 && (h & 4u) ? C_HOLO1 : C_HOLO0);
+        }
+        return;
+    }
+    if (sc == 4) {                                      /* ROOM: the floor, the bed's foot, the nightstand's drawer, a rug */
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
+            int dx = x - (211 + LF_X0), dy = y + SC_H - 80 + 40, d = dx * dx + dy * dy, c;   /* the lamp's light on the boards */
+            c = y % 7 == 0 ? C_HOLO0 : bay(x, y) < 1 ? C_HOLO0 : dk;
+            if (d < 3000 && bay(x, y) * 300 < 3000 - d) c = d < 1200 ? C_HOLO3 : C_HOLO2;
+            lp(x, y, c);
+        }
+        for (y = 0; y < 15; y++) for (x = 0; x < 150 + LF_X0; x++) {   /* the quilt, going on to its hem */
+            int bx = x - LF_X0, by = SC_H + y;
+            lp(x, y, ((bx / 8 + by / 6) & 1) ? (bay(x, y) < 6 ? C_HOLO0 : dk) : (bay(x, y) < 3 ? C_A_INK2 : dk));
+        }
+        lrect(0, 15, 150 + LF_X0, 2, C_LABEL);
+        for (y = 17; y < 24; y++) for (x = 0; x < 150 + LF_X0; x++) lp(x, y, bay(x, y) < 4 ? C_A_INK2 : dk);   /* its frame */
+        lrect(10, 24, 3, 9, C_A_INK2); lrect(150 + LF_X0 - 6, 24, 3, 9, C_A_INK2);
+        lrect(196 + LF_X0, 0, 30, 30, dk);              /* the nightstand: its drawer, a knob, its legs */
+        lrect(198 + LF_X0, 4, 26, 12, C_LABEL); lrect(199 + LF_X0, 5, 24, 10, dk); lp(211 + LF_X0, 10, lt);
+        lrect(197 + LF_X0, 30, 2, 6, dk); lrect(223 + LF_X0, 30, 2, 6, dk);
+        for (y = 38; y < LF_H; y++) for (x = 30; x < 200; x++) {   /* the rug, its rings */
+            int dx = (x - 115) * 9 / 85, dy = y - 49, d = dx * dx + dy * dy;
+            if (d < 81) lp(x, y, d < 25 ? (bay(x, y) < 6 ? C_HOLO2 : C_A_INK2) : d < 49 ? C_A_INK2 : (bay(x, y) < 8 ? C_HOLO1 : C_A_INK2));
+        }
+        return;
+    }
+    for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {   /* DESK: its top going on, its front edge, under it */
+        int by = SC_H + y;
+        lp(x, y, y < 20 ? ((by - 90) % 7 == 0 ? C_HOLO0 : bay(x, y) < 2 ? C_HOLO0 : dk) : dk);
+    }
+    lrect(122, 2, 36, 13, C_A_INK2);                    /* a mouse on its pad, its cable */
+    ldisc(140, 8, 4, C_LINE); lrect(136, 8, 9, 5, C_LINE); lrect(140, 4, 1, 4, C_LABEL);
+    for (y = 0; y < 4; y++) lp(140 + (y & 1), y, C_LABEL);
+    for (k = 0; k < 2; k++) {                           /* floppy disks: the shutter, the label */
+        int fx = 168 + k * 15, fy = 3 + k * 2;
+        lrect(fx, fy, 12, 12, k ? C_LABEL : C_HOLO4); lrect(fx + 3, fy, 6, 4, C_LINE); lrect(fx + 2, fy + 8, 8, 3, lt);
+    }
+    for (k = 0; k < 30; k++) lp(56 + k, 13 - k / 8, k < 3 ? dk : k < 26 ? C_HOLO6 : C_LINE);   /* a pencil */
+    lrect(0, 20, DMK_W, 1, C_LINE); lrect(0, 21, DMK_W, 2, C_LABEL);   /* the desk's front edge */
+    lrect(164, 26, 34, 35, C_LINE); lrect(194, 26, 4, 35, C_LABEL);    /* the tower under it */
+    lrect(168, 30, 24, 2, dk); lrect(168, 36, 16, 1, dk); ldisc(180, 48, 2, lt); lp(188, 52, C_HOLO6);
+    for (y = 23; y < 26; y++) lp(176 + y - 23, y, C_A_INK2);   /* its cable, up to the desk */
+}
+
+static void lf_build(int sc, int dk, int lt)
+{
+    int part, x, y;
+    lf_cv = sc_fg;
+    for (part = 0; part < 2; part++) {
+        if (part) lf_bottom(sc, dk, lt); else lf_top(sc, dk, lt);
+        for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x += 2)
+            lf_ext[part][y * (DMK_W / 2) + x / 2] = (uint8_t)(lf_cv[y * DMK_W + x] << 4 | lf_cv[y * DMK_W + x + 1]);
+        ui_yield();
+    }
+}
+
+static uint32_t lf_tick = 0xFFFFFFFFu;                  /* the frame of the scene the screen holds (full screen) */
+static void land_full(int sc, uint32_t t, int hold)
+{
+    int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, k, out;
+    uint32_t tick = t / 140u;
+    sc = sc < DMK_SCENES ? sc : 0;
+    out = sc < 4;
+    /* held: nothing moves between the scene's frames (140 ms), so the screen is left as it is: no drawing, and nothing
+     * to send (with every effect on, drawing each frame left the sound short: it clicked) */
+    if (hold && tick == lf_tick && lf_key == (uint8_t)(theme * 8 + sc)) return;
+    lf_tick = tick;
+    t = tick * 140u;                                    /* what moves, moves on the scene's frames */
+    scene_frame(sc, tick);
+    if (lf_key != (uint8_t)(theme * 8 + sc)) { lf_build(sc, dk, lt); lf_key = (uint8_t)(theme * 8 + sc); }
+    for (y = 0; y < LF_H; y++)                          /* above and below: as built */
+        for (x = 0; x < DMK_W / 2; x++) {
+            fb[y * (DMK_W / 2) + x] = lf_ext[0][y * (DMK_W / 2) + x];
+            fb[(LF_Y0 + SC_H + y) * (DMK_W / 2) + x] = lf_ext[1][y * (DMK_W / 2) + x];
+        }
+    ui_yield();
+    for (y = 0; y < SC_H; y++) {                        /* the scene, its sky (outdoors) spread as the sky above it */
+        int Y = LF_Y0 + y, org[4], str[4], ph, j;
+        uint8_t ob[2] = {0, 0}, sb[2] = {0, 0};
+        uint8_t *b = &fb[Y * (DMK_W / 2)];
+        const uint8_t *src = &sc_out[y * (SC_W / 2)], *msk = &sc_fgm[y * (SC_W / 2)];
+        if ((y & 15) == 15) ui_yield();                 /* the sound, often (its ring is 17 ms) */
+        if (out) {
+            for (ph = 0; ph < 4; ph++) { org[ph] = sky_at(sc, ph, y, dk); str[ph] = sky_full(sc, ph, Y, dk); }
+            ob[0] = (uint8_t)(org[0] << 4 | org[1]); ob[1] = (uint8_t)(org[2] << 4 | org[3]);   /* a band byte's sky, plain */
+            sb[0] = (uint8_t)(str[0] << 4 | str[1]); sb[1] = (uint8_t)(str[2] << 4 | str[3]);   /* a screen byte's, spread */
+        }
+        for (j = 0; j < DMK_W / 2; j++) {
+            int i = j - LF_X0 / 2, c2[2];
+            if (i >= 0 && i < SC_W / 2) {               /* in the band: a byte at once when it is all plain sky, or ground */
+                if (!out) { b[j] = src[i]; continue; }
+                if (!msk[i] && src[i] == ob[i & 1]) { b[j] = sb[j & 1]; continue; }
+                if (msk[i] == 0xFF) { b[j] = src[i]; continue; }
+            }
+            for (k = 0; k < 2; k++) {
+                int px = j * 2 + k, sx = clampi(px - LF_X0, 0, SC_W - 1);
+                int c = sx & 1 ? src[sx >> 1] & 15 : src[sx >> 1] >> 4, m = sx & 1 ? msk[sx >> 1] & 15 : msk[sx >> 1] >> 4;
+                if (out && !m && c == org[sx & 3]) c = str[px & 3];   /* plain sky (not a cloud, a star): the spread one */
+                c2[k] = c;
+            }
+            b[j] = (uint8_t)(c2[0] << 4 | c2[1]);
+        }
+    }
+    ui_yield();
+    if (out)                                            /* what moves: stars twinkling where the sky above is dark */
+        for (k = 0; k < (sc == 3 ? 90 : 40); k++) {
+            uint32_t h = hsh((uint32_t)k * 7919u + (uint32_t)sc * 31u);
+            int sx = (int)(h % (uint32_t)DMK_W), sy = (int)((h >> 12) % (uint32_t)LF_H);
+            if (sky_full(sc, sx, sy, dk) == dk && hsh(h + t / 420u) & 3u) px_put(sx, sy, k % 5 ? lt : C_A_LABEL);
+        }
+    if (sc == 2)                                        /* the waves coming in, their foam */
+        for (k = 0; k < 2; k++) {
+            int base = LF_Y0 + SC_H + 13 + k * 7 + (sinp((t * 2400u) + (uint32_t)k * 0x55555555u) * 2) / 32768;
+            for (x = 96 + LF_X0 - (base - LF_Y0 - SC_H) * 2; x < DMK_W; x++) {
+                int yy = base + tri(x + (int)(t / 60u) * (k ? 1 : -1), 37, 2);
+                if (bay(x, yy) < 12) px_put(x, yy, lt);
+                if (bay(x, yy + 1) < 6) px_put(x, yy + 1, C_HOLO6);
+            }
+        }
+    if (sc == 3)                                        /* fireflies over the meadow */
+        for (k = 0; k < 14; k++) {
+            uint32_t h = hsh((uint32_t)k * 2654435761u + 77u);
+            int fx = (int)(h % (uint32_t)DMK_W) + sinp(t * 90000u + h) * 6 / 32768, fy = LF_Y0 + SC_H + 6 + (int)((h >> 10) % 48u) + sinp(t * 61000u + (h << 3)) * 3 / 32768;
+            if (hsh(h + t / 300u) % 3u) { px_put(fx, fy, C_HOLO6); px_put(fx + 1, fy, C_HOLO5); }
+        }
+    if (sc == 4)                                        /* the fairy lights, twinkling */
+        for (k = 0; k < 20; k++) {
+            int bx = 6 + k * 12, by = cat_y(bx) + 1, on = (int)(hsh((uint32_t)k + t / 500u) % 4u);
+            int c = on == 0 ? C_HOLO3 : on == 1 ? C_HOLO5 : C_HOLO6;
+            px_put(bx, by, c); px_put(bx + 1, by, c); px_put(bx, by + 1, c); px_put(bx + 1, by + 1, on > 1 ? C_HOLO7 : c);
+        }
+}
+static void boot_land(uint32_t t) { land_full(boot_sc, t, 0); }   /* (the boot draws over it: never held) */
 
 static void boot(uint32_t t)
 {
@@ -1909,11 +2158,14 @@ static const uint8_t *ui_frame(uint32_t ms)
         }
     } else ui.full_latch = ui.both_on = 0;
     if (ui.full) {                                      /* the landscape full screen, the current synth's, moving */
-        land_full(scene_of(ui.synth), ms);
+        int shown = ui.note_ms && ms - ui.note_ms < 1700u;   /* a notice over it: drawn again each frame, and once after */
+        land_full(scene_of(ui.synth), ms, !shown && !ui.full_note);
+        ui.full_note = (uint8_t)shown;
         ta_cover(0, 0, DMK_W, DMK_H);
         overlays();
         return fb;
     }
+    lf_tick = 0xFFFFFFFFu;                              /* back to a page: the next full screen drawn whole */
     fill(0, 0, DMK_W, DMK_H, C_PAPER);
     head();
     ui_yield();
