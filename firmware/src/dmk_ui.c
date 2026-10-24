@@ -1324,12 +1324,12 @@ static void stage_amp(void)
         int v = voice_newest(ui.synth);
         if (v >= 0) {
             const voice_t *o = &vc[v];
-            int32_t sus = syn[ui.synth].sus, e = o->env;
+            int32_t sus = syn[ui.synth].sus >> 8, e = o->env >> 8, full = FULL >> 8;   /* Q16: 32-bit products */
             int px;
-            if (o->stage == 1) px = pts[0][0] + (int)((int64_t)a * e / FULL);
-            else if (o->stage == 2 && e > sus + FULL / 64) px = pts[1][0] + (int)((int64_t)d * (FULL - e) / (FULL - sus > 0 ? FULL - sus : 1));
+            if (o->stage == 1) px = pts[0][0] + a * e / full;
+            else if (o->stage == 2 && e > sus + full / 64) px = pts[1][0] + d * (full - e) / (full - sus > 0 ? full - sus : 1);
             else if (o->stage == 2) px = pts[2][0] + (int)(o->blocks / 8u % (unsigned)(hold > 0 ? hold : 1));   /* held: along the sustain */
-            else px = pts[3][0] + (sus > 0 ? (int)((int64_t)r * (sus - (e < sus ? e : sus)) / sus) : r);
+            else px = pts[3][0] + (sus > 0 ? r * (sus - (e < sus ? e : sus)) / sus : r);
             if (px < x0) px = x0;
             if (px > x0 + w - 1) px = x0 + w - 1;
             spark(px, ys[px - x0]);
