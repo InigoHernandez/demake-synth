@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.2.fwsc",
-  "version": "0.4.2",
+  "file": "demake-0.4.3.fwsc",
+  "version": "0.4.3",
   "date": "2026-10-24",
   "product": "FM-1_969",
-  "sha256": "384992e8fc00bf1a5aafd42e6e719be6014105cb2ade8aacb68b23269c282519",
-  "note": "Fewer stalls (no crackle on SELECT or in full screen), the landscapes whole and taller in full screen, a load meter on GLO, quartal chord names."
+  "sha256": "2446d2b6eb02ed370e001f412ebc91ff9c6a681b8e0728395e1b041293405dcd",
+  "note": "SELECT scrolls the rows (HOME + SELECT picks the synth anywhere); ALGORITHM sets the type with no button held."
 }
