@@ -7,7 +7,7 @@
   <title>Demake</title>
   <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths on its own recordings, scenes and songs, a chord machine, tape, codec and rooms.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="stylesheet" href="style.css?v=17">
   <script>
     /* the splash, once a visit and never for less motion; if anything fails, the page shows after 4 s regardless */
     try {
@@ -39,7 +39,7 @@
   <section class="g hero">
     <h1 class="mark bits" style="--src: url(img/wordmark.png)" role="img" aria-label="Demake"></h1>
     <p class="say">An ambient lofi machine for the M&#8209;VAVE&nbsp;FM&#8209;1.</p>
-    <p class="meta">Nostalgic, lofi and warm: three synths worn by tape. Play it here or on the FM&#8209;1.</p>
+    <p class="meta">Three synths on its own recordings, worn by tape. Play it here, or install it.</p>
   </section>
 
   <!-- 01 play: the device on its light -->
@@ -56,51 +56,15 @@
     <div class="vol"><span class="lb">Volume</span><span class="ticks" id="vol" role="slider" aria-label="Volume"
       aria-valuemin="0" aria-valuemax="100" aria-valuenow="80" tabindex="0"></span></div>
     <ul class="keys" aria-label="The computer's keys">
-      <li><span><kbd>Z</kbd>–<kbd>/</kbd> <kbd>S</kbd>–<kbd>'</kbd></span>The lower keys, F3 to A4</li>
-      <li><span><kbd>Q</kbd>–<kbd>O</kbd></span>The upper keys, B4 to G5</li>
-      <li><span><kbd>1</kbd>–<kbd>=</kbd></span>The twelve buttons, FX to REC</li>
+      <li><span><kbd>Z</kbd>–<kbd>/</kbd> <kbd>Q</kbd>–<kbd>O</kbd></span>The keys</li>
+      <li><span><kbd>1</kbd>–<kbd>=</kbd></span>The buttons</li>
       <li><span><kbd>[</kbd> <kbd>]</kbd></span>OCT− and OCT+</li>
-      <li><span><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>Select, then Algorithm</li>
-      <li><span><kbd>Shift</kbd> click</span>Holds a button down</li>
+      <li><span><kbd>↑</kbd> <kbd>←</kbd></span>Select, Algorithm; Shift-click holds</li>
     </ul>
   </section>
 
-  <!-- 02 the machine: cards of the sizes their content asks, linked as nodes -->
-  <section class="g strip" id="machine"><span class="no">02</span><span class="lb">Machine</span></section>
-  <section class="g machine">
-    <div class="card c1 glow">
-      <canvas class="heat" data-heat="img/art/pool.png" aria-hidden="true"></canvas>
-      <p class="tt"><b>Synths</b><span>Each its own roll</span></p>
-      <p class="big">3</p>
-      <p class="cap">On its own recordings</p>
-    </div>
-    <i class="link l1"></i>
-    <div class="card c2 wide">
-      <p class="tt"><b>Scenes</b><span>A song, switched live</span></p>
-      <p class="big">16</p>
-      <p class="cap">Hold Home, press a key</p>
-    </div>
-    <div class="tiles" aria-hidden="true">
-      <i class="on">1</i><i>2</i><i>3</i><i>4</i><i class="next">5</i><i>6</i><i>7</i><i>8</i>
-    </div>
-    <i class="link l2"></i>
-    <div class="card c3">
-      <p class="tt"><b>Voices</b><span>Shared by the three</span></p>
-      <p class="big">12</p>
-      <p class="cap">A chord machine on top</p>
-    </div>
-  </section>
-
-  <!-- 03 the sound: a statement, then a word of it in line and in light -->
-  <section class="g strip"><span class="no">03</span><span class="lb">Sound</span></section>
-  <section class="g text">
-    <p class="say">Nostalgic sounds at its core, worn soft by tape, codec and a room.</p>
-    <p class="meta">Built in, like a rompler: nothing to load. Then crush, codec, tape, chorus, rooms and halls.</p>
-    <div class="plate bits" style="--src: url(img/plate.png)" role="img" aria-label="Ambient, in line and in light"></div>
-  </section>
-
-  <!-- 04 inside: what a sound goes through, each in its light -->
-  <section class="g strip" id="engines"><span class="no">04</span><span class="lb">Inside</span></section>
+  <!-- 02 inside: what a sound goes through, each in its light -->
+  <section class="g strip" id="engines"><span class="no">02</span><span class="lb">Inside</span></section>
   <section class="g art">
     <figure class="eng e1"><div class="img"><canvas class="heat" data-heat="img/art/flow.png"></canvas></div><figcaption><b>Sample</b><span>Its own recordings, looped, one layered under another.</span></figcaption></figure>
     <figure class="eng e2"><div class="img"><canvas class="heat" data-heat="img/art/pool.png"></canvas></div><figcaption><b>Filter</b><span>Eight shapes and a drive, low-pass to vowel.</span></figcaption></figure>
@@ -110,35 +74,16 @@
     <figure class="eng e6"><div class="img"><canvas class="heat" data-heat="img/art/wave.png"></canvas></div><figcaption><b>Space</b><span>Six rooms and halls, an echo, grains.</span></figcaption></figure>
   </section>
 
-  <!-- 05 the workflow: the rules, on one page -->
-  <section class="g strip" id="workflow"><span class="no">05</span><span class="lb">Workflow</span></section>
-  <section class="g flow">
-    <div class="rule r1"><i class="mk">1</i><b>Keys write</b><p>Stopped, a key writes at the cursor; playing, REC records it.</p></div>
-    <div class="rule r2"><i class="mk">2</i><b>One job a knob</b><p>The same knob does the same thing on every page.</p></div>
-    <div class="rule r3"><i class="mk">3</i><b>Tap, again, hold</b><p>Tap a page, tap again for its next row, hold for its layer.</p></div>
-    <div class="rule r4"><i class="mk">4</i><b>Hold, then act</b><p>Hold a note, a chord or a roll, then change it.</p></div>
-    <div class="rule r5"><i class="mk">5</i><b>Twice to lose</b><p>Clearing a roll or a song asks a second press.</p></div>
-    <div class="rule r6"><i class="mk">6</i><b>Nothing hidden</b><p>Hold a button and the screen shows what it does.</p></div>
-  </section>
-
-  <!-- 06 the screens: the display's anatomy, then its pages, one press each -->
-  <section class="g strip" id="screens"><span class="no">06</span><span class="lb">Screens</span></section>
+  <!-- 03 the screens: its pages, one press each -->
+  <section class="g strip" id="screens"><span class="no">03</span><span class="lb">Screens</span></section>
   <section class="g screens">
     <figure class="main home">
       <div class="frame f432 bits" style="--src: url(img/frame432.png)" aria-hidden="true"></div>
       <div class="frame f288 bits" style="--src: url(img/frame288.png)" aria-hidden="true"></div>
       <img id="shown" src="img/screens/01_home.png" width="360" height="360" alt="Home: the three synths">
       <canvas id="live" width="240" height="240" hidden aria-label="The screen, live"></canvas>
-      <i class="mk m1">1</i><i class="mk m2">2</i><i class="mk m3">3</i><i class="mk m4">4</i><i class="mk m5">5</i>
     </figure>
     <p class="shown" id="shownname"><b>Home</b> The synths, the one sounding lit</p>
-    <ol class="legend">
-      <li><i class="mk">1</i><b>Title</b><span>The page in ink, its row in grey</span></li>
-      <li><i class="mk">2</i><b>Fields</b><span>A label and a value a knob</span></li>
-      <li><i class="mk">3</i><b>Meter</b><span>Ticks up to the value</span></li>
-      <li><i class="mk">4</i><b>Cards</b><span>Rounded, 6 px apart</span></li>
-      <li><i class="mk">5</i><b>Light</b><span>Blue rim, magenta body, pale core</span></li>
-    </ol>
     <div class="index" id="pages" aria-label="The pages">
       <p class="ih"><b>Pages</b> <span>Press one to see it</span></p>
       <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-b="6" data-say="The synths, the one sounding lit"><kbd>HOME</kbd><b>Home</b><span></span></button>

@@ -43,7 +43,10 @@
   const top = () => window.scrollTo({ top: 0 });
   requestAnimationFrame(top);
   window.addEventListener("load", () => { top(); setTimeout(top, 0); });
-  const fromHash = (scroll) => show(decodeURIComponent(location.hash.slice(1)) || "introduction", scroll);
+  /* the articles merged since (the owner: fewer titles): an old link lands where its words went */
+  const MOVED = { emulator: "introduction", rules: "panel", writing: "chords", patterns: "songs", song: "songs",
+                  songmode: "songs", spaces: "effects", lfo: "filter", next: "credits" };
+  const fromHash = (scroll) => { const h = decodeURIComponent(location.hash.slice(1)); show(MOVED[h] || h || "introduction", scroll); };
   window.addEventListener("hashchange", () => fromHash(true));
   fromHash(false);
   side.open = !narrow();

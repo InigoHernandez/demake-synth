@@ -97,7 +97,7 @@ function takePackage(raw, label) {
     if (productOf(raw) !== meta.product) throw new Error(`${meta.file} is not ${meta.product}`);
     takePackage(raw, `Demake ${meta.version}`);
     $("st-pkg").textContent = `${meta.version}, ${meta.date}`;
-    $("pkg-note").textContent = `Demake ${meta.version} (${meta.date}), ${(raw.length / 1024).toFixed(0)} KB. ${meta.note || ""}`;
+    $("pkg-note").textContent = `Ready to install: ${(raw.length / 1024).toFixed(0)} KB.`;
   } catch (e) {
     $("st-pkg").textContent = "Not published yet";
     $("pkg-note").textContent = e.message === "none"

@@ -12,13 +12,13 @@
 :root {
   --m: 48px;                                   /* the module */
   --cols: 24;
-  --paper: #f5f5f2; --grid: #e9e9e5; --line: #dcdcd8; --label: #8e8e8a; --ink: #18181a;   /* the screen's paper theme */
+  --paper: #f5f5f2; --grid: #eeeeea; --line: #dcdcd8; --label: #8e8e8a; --ink: #18181a;   /* the screen's paper theme */
   --t0: #2459ff; --t4: #e52bc2; --t7: #ffddf2;                                           /* the thermal ramp's rim, body, core */
   --s: 16px; --l: 48px; --xl: 144px;           /* the scale: 16, 24, 48, 144 */
   --ph: 528px;                                 /* the emulator's inner height */
   --ring24: url("img/bits/ring24_0.png"); --ring12: url("img/bits/ring12_0.png");
 }
-.dark { --paper: #141416; --grid: #1f1f22; --line: #2a2a2d; --label: #77777a; --ink: #ededea; }   /* the night theme */
+.dark { --paper: #141416; --grid: #1b1b1e; --line: #2a2a2d; --label: #77777a; --ink: #ededea; }   /* the night theme */
 
 * { box-sizing: border-box; }
 html { background: var(--paper); }
@@ -112,7 +112,7 @@ kbd {
 .card > p { position: absolute; z-index: 2; }
 
 /* ---- 01 play: the machine on its light */
-.play { grid-template-rows: repeat(22, var(--m)); }
+.play { grid-template-rows: repeat(20, var(--m)); }
 .emu { grid-column: 3 / span 20; grid-row: 2 / span 13; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #141416; border-color: #141416; }
 .panel { position: relative; z-index: 1; width: min(100% - 96px, var(--ph) * 1.6283); aspect-ratio: 876 / 538; }
 .panel svg { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; }
@@ -125,7 +125,7 @@ kbd {
 .ticks i.on { background: var(--ink); }
 .ticks i.at { width: 2px; height: 24px; background: var(--t4); }
 /* the keys: one column, a row each, the keycaps in their own column */
-.keys { grid-column: 13 / span 10; grid-row: 16 / span 6; margin: 0; padding: 0; list-style: none; display: grid; grid-auto-rows: var(--m); color: var(--label); }
+.keys { grid-column: 13 / span 10; grid-row: 16 / span 4; margin: 0; padding: 0; list-style: none; display: grid; grid-auto-rows: var(--m); color: var(--label); }
 .keys li { display: grid; grid-template-columns: calc(4 * var(--m)) 1fr; align-items: center; box-shadow: inset 0 1px 0 var(--line); }
 .keys li:first-child { box-shadow: none; }
 .keys li > span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
@@ -191,7 +191,7 @@ kbd {
 
 /* ---- 05 the screens: one at 1.5x (whole pixels on a retina screen) in its lit frame, five marks on it and their
  * legend, and the twelve pages as a row of names, the one shown lit */
-.screens { grid-template-rows: repeat(16, var(--m)); }
+.screens { grid-template-rows: repeat(12, var(--m)); }
 .main { grid-column: 1 / span 9; grid-row: 2 / span 9; position: relative; }
 .main .frame { position: absolute; left: 0; top: 0; width: 432px; height: 432px; }
 .main .f288 { display: none; }
@@ -215,7 +215,7 @@ kbd {
 .legend li { display: grid; grid-template-columns: 36px 1fr; grid-auto-rows: 24px; align-content: start; padding-top: 12px; box-shadow: inset 0 1px 0 var(--line); }
 .legend li .mk { grid-row: 1; }
 .legend li span { grid-column: 2; color: var(--label); }
-.index { grid-column: 1 / -1; grid-row: 13 / span 3; display: grid; grid-template-columns: repeat(6, calc(4 * var(--m))); grid-auto-rows: var(--m); }
+.index { grid-column: 11 / span 12; grid-row: 2 / span 5; display: grid; grid-template-columns: repeat(3, calc(4 * var(--m))); grid-auto-rows: var(--m); }
 .ih { grid-column: 1 / -1; padding-top: 12px; color: var(--label); }
 .ih b { color: var(--ink); margin-right: 6px; }
 .page {
@@ -274,11 +274,11 @@ code { font: inherit; color: var(--ink); }
 .bar { grid-column: 17 / span 8; grid-row: 6; align-self: stretch; height: auto; cursor: default; box-shadow: inset 0 1px 0 var(--line); }
 .bar[hidden] { display: none; }
 /* a step: its sentence on one line, what it means under it, its actions at the right; a row of air at its end */
-.step { grid-template-rows: repeat(6, var(--m)); }
+.step { grid-template-rows: repeat(5, var(--m)); }
 .step.one { grid-template-rows: repeat(4, var(--m)); }
 .step.back { grid-template-rows: repeat(5, var(--m)); }
 .step .lede { grid-column: 1 / span 14; grid-row: 2; padding-top: 12px; font-size: 24px; line-height: 24px; font-weight: 500; }
-.step .body { grid-column: 1 / span 12; grid-row: 3 / span 3; padding-top: 12px; margin: 0; color: var(--label); }
+.step .body { grid-column: 1 / span 12; grid-row: 3 / span 2; padding-top: 12px; margin: 0; color: var(--label); }
 .steps { list-style: none; padding: 0 !important; display: grid; grid-auto-rows: var(--m); }
 .steps li { display: grid; grid-template-columns: 36px 1fr; align-items: center; box-shadow: inset 0 1px 0 var(--line); }
 .act { position: relative; }
@@ -348,11 +348,11 @@ code { font: inherit; color: var(--ink); }
   .hero { grid-template-rows: repeat(9, var(--m)); }
   .hero .say { grid-column: 1 / span 16; grid-row: 6 / span 2; }
   .hero .meta { grid-column: 1 / span 14; grid-row: 8; padding-top: 12px; }
-  .play { grid-template-rows: repeat(22, var(--m)); }
+  .play { grid-template-rows: repeat(20, var(--m)); }
   .emu { grid-column: 1 / span 16; grid-row: 2 / span 11; }
   .power { grid-column: 1 / span 4; grid-row: 14; }
   .vol { grid-column: 6 / span 7; grid-row: 14; }
-  .keys { grid-column: 1 / span 12; grid-row: 16 / span 6; }
+  .keys { grid-column: 1 / span 12; grid-row: 16 / span 4; }
   .machine { grid-template-rows: repeat(15, var(--m)); }
   .c3 { grid-column: 1 / span 16; grid-row: 11 / span 4; }
   .c3 .big { left: auto; right: 23px; top: 23px; }
@@ -374,7 +374,7 @@ code { font: inherit; color: var(--ink); }
   .r5 { grid-column: 1 / span 7; grid-row: 8 / span 2; } .r6 { grid-column: 9 / span 8; grid-row: 8 / span 2; }
   .screens { grid-template-rows: repeat(17, var(--m)); }
   .legend { grid-column: 11 / span 6; }
-  .index { grid-row: 13 / span 4; grid-template-columns: repeat(4, calc(4 * var(--m))); }
+  .index { grid-column: 1 / -1; grid-row: 13 / span 4; grid-template-columns: repeat(4, calc(4 * var(--m))); }
   .bandrow { grid-template-rows: repeat(10, var(--m)); }
   .band { grid-row: 2 / span 8; }
   .links { grid-template-rows: repeat(2, var(--m)); }
@@ -417,12 +417,12 @@ code { font: inherit; color: var(--ink); }
   .hero { grid-template-rows: repeat(11, var(--m)); }
   .hero .say { grid-column: 1 / -1; grid-row: 7 / span 3; }
   .hero .meta { grid-column: 1 / -1; grid-row: 10 / span 2; padding-top: 12px; }
-  .play { grid-template-rows: repeat(23, var(--m)); }
+  .play { grid-template-rows: repeat(19, var(--m)); }
   .emu { grid-column: 1 / -1; grid-row: 2 / span 5; }
   .panel { width: min(100% - 48px, var(--ph) * 1.6283); }
   .power { grid-column: 1 / span 4; grid-row: 8; }
   .vol { grid-column: 1 / -1; grid-row: 9; }
-  .keys { grid-column: 1 / -1; grid-row: 11 / span 12; grid-auto-rows: calc(2 * var(--m)); }
+  .keys { grid-column: 1 / -1; grid-row: 11 / span 8; grid-auto-rows: calc(2 * var(--m)); }
   .keys li { grid-template-columns: 1fr; align-content: center; }
   .machine { grid-template-rows: repeat(23, var(--m)); }
   .c1 { grid-column: 1 / -1; grid-row: 2 / span 7; }
@@ -446,7 +446,7 @@ code { font: inherit; color: var(--ink); }
   .rule { grid-column: 1 / -1 !important; }
   .r1 { grid-row: 2 / span 2; } .r2 { grid-row: 5 / span 2; } .r3 { grid-row: 8 / span 2; }
   .r4 { grid-row: 11 / span 2; } .r5 { grid-row: 14 / span 2; } .r6 { grid-row: 17 / span 2; }
-  .screens { grid-template-rows: repeat(34, var(--m)); }
+  .screens { grid-template-rows: repeat(23, var(--m)); }
   .main { grid-column: 1 / -1; grid-row: 2 / span 6; }
   .main .f432 { display: none; }
   .main .f288 { display: block; left: 24px; width: 288px; height: 288px; }
@@ -456,7 +456,7 @@ code { font: inherit; color: var(--ink); }
   .shown { grid-column: 1 / -1; grid-row: 8; padding-left: 48px; }
   .legend { grid-column: 1 / -1; grid-row: 10 / span 10; }
   .legend li { grid-auto-rows: auto; }
-  .index { grid-row: 21 / span 13; grid-template-columns: 1fr; }
+  .index { grid-column: 1 / -1; grid-row: 10 / span 13; grid-template-columns: 1fr; }
   .bandrow { grid-template-rows: repeat(6, var(--m)); }
   .band { grid-row: 2 / span 4; align-self: start; }   /* 3.5 rows tall: its corner on the lines */
   .links { grid-template-rows: repeat(6, var(--m)); }
@@ -472,7 +472,10 @@ code { font: inherit; color: var(--ink); }
   .st2 { grid-column: 1 / -1; grid-row: 7 / span 5; }
   .log { grid-column: 1 / -1; grid-row: 13 / span 2; }
   .bar { grid-column: 1 / -1; grid-row: 14; }   /* while writing, the line is one line */
-  .step, .step.list { grid-template-rows: repeat(16, var(--m)); }
+  .step { grid-template-rows: repeat(16, var(--m)); }
+  .step.list { grid-template-rows: repeat(12, var(--m)); }   /* its sentence, one line under it, its two actions */
+  .list .body { grid-row: 4 / span 2; } .list .a1 { grid-row: 7; } .list .b1 { grid-row: 8; }
+  .list .a2 { grid-row: 10; } .list .b2 { grid-row: 11; }
   .step.one { grid-template-rows: repeat(9, var(--m)); }
   .one .body { grid-row: 4 / span 2; } .one .a1 { grid-row: 7; } .one .b1 { grid-row: 8; }
   .step.back { grid-template-rows: repeat(13, var(--m)); }
