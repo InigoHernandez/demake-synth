@@ -2214,6 +2214,7 @@ static void ui_button(int b, int down)
                 song_start(ui.arr_cur);
             }
         } else if (!seq_on && song_mode && song_n) song_start(0);   /* song mode: from the first step */
+        if (!seq_on && clock_ext && !ext_running()) notice("No clock in: its own tempo");
         seq_play(!seq_on);
         return;
     }
@@ -2359,11 +2360,11 @@ static void ui_encoder(int e, int d)
             if (k == 1) c->q = (uint8_t)((c->q + Q_COUNT + dir) % Q_COUNT);
             if (k == 2) { int l = c->half + dir; c->half = (uint8_t)(l < 1 ? 1 : l > 16 ? 16 : l); ch_len = c->half; }
             if (k == 3) c->pedal = (uint8_t)(dir > 0);
-            for (i = 0; i < ui.key_nch[h]; i++) later_off(ui.key_sy[h], ui.key_ch[h][i], SRC_KEY);   /* heard as it is now */
+            for (i = 0; i < ui.key_nch[h]; i++) later_off(ui.key_sy[h], ui.key_ch[h][i], SRC_KEY, h + 1);   /* heard as it is now */
             ch_pn = 0;
             ui.key_nch[h] = (uint8_t)voice(48 + (seq_key + c->root) % 12, QI[c->q], c->pedal, ui.key_ch[h]);
             ch_name[0] = 0; chord_name(ch_name, seq_key + c->root, c->q);
-            strike(ui.key_sy[h], ui.key_ch[h], ui.key_nch[h]);
+            strike(ui.key_sy[h], ui.key_ch[h], ui.key_nch[h], h);
             ch_shown = ui.key_slot[h] - 1;
             return;
         }
@@ -2474,7 +2475,7 @@ static void ui_key(int k, int down)
             }
             ui.key_nch[k] = (uint8_t)chord_key(n, ui.octave, ui.key_ch[k]);
             if (ui.key_slot[k]) ch_shown = ui.key_slot[k] - 1;
-            strike(s, ui.key_ch[k], ui.key_nch[k]);
+            strike(s, ui.key_ch[k], ui.key_nch[k], k);
             ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */
             ui.key_t0[k] = seq_now();
             if (ui.key_roll[k] == 2) ui.key_step[k] = (uint8_t)seq_rec_step(s);   /* where on its own roll */
@@ -2493,7 +2494,7 @@ static void ui_key(int k, int down)
         if (ui.key_roll[k] == 4) ui.roll_cur[s] = (uint8_t)((ui.key_step[k] + ui.roll_pen[s]) % sq[s].steps);   /* after the chord */
         if (ui.key_roll[k] == 2 && seq_on) roll_heard(s);
         for (j = 0; j < ui.key_nch[k]; j++) {
-            later_off(s, ui.key_ch[k][j], SRC_KEY);
+            later_off(s, ui.key_ch[k][j], SRC_KEY, k + 1);
             if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll */
                 uint32_t t0 = ui.key_t0[k], t1 = seq_now();
                 int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
@@ -2565,6 +2566,7 @@ static const uint8_t *ui_leds(void)
     }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
     leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;
+    leds[DMK_KEYS + B_REC] = seq_rec ? 255 : 0;         /* REC armed: lit (it never was) */
     if (ch.keys) leds[DMK_KEYS + B_ARP] = 255;          /* the keys play chords everywhere: ARP lit */
     if (song_mode) leds[DMK_KEYS + B_HOME] = !seq_on || seq_ticks % 16u < 2u || ui.page == PG_HOME ? 255 : 0;   /* the bar */
     if (ui.page == PG_ARR && !(ui.btn_held >> B_HOME & 1u)) {   /* the Scene row: the synth's patterns; the Song row: the step's scene */
@@ -2591,6 +2593,7 @@ static void midi_in(int st, int d1, int d2)
     if (st == 0xF8) {                                   /* a clock */
         uint32_t now = seq_frames, dt = now - mi_last;
         mi_last = now;
+        ext_last = now; ext_seen = 1;
         if (dt > 200u && dt < 20000u) mi_per = mi_per ? mi_per + (int32_t)(dt * 16u - mi_per) / 8 : dt * 16u;
         if (clock_ext && mi_per) { int b = (int)(DMK_SR * 60u * 16u / (mi_per * 24u)); seq_bpm = b < 20 ? 20 : b > 300 ? 300 : b; }
         if (clock_ext && seq_on && ++mi_clk % 6u == 0u) {

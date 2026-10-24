@@ -23,6 +23,11 @@ static int seq_bpm = 72;
 static uint8_t seq_stop_req;                            /* the song ended inside a step: stopped after it */
 static uint32_t clk_acc;                                /* MIDI out: Q8 samples into the clock's 24th of a beat */
 static uint32_t seq_frames;                             /* samples rendered: a MIDI clock in's pace is measured on it */
+static uint32_t ext_last;                               /* when the last MIDI clock came (seq_frames), if one has */
+static uint8_t ext_seen;
+/* the outside clock steps the sequences only while it runs (a clock within half a second): set to Ext with none
+ * coming, PLAY froze on its first step, its notes held (the owner's 0.2 song loaded as Ext) */
+static int ext_running(void) { return clock_ext && ext_seen && seq_frames - ext_last < (uint32_t)DMK_SR / 2u; }
 static uint32_t seq_per_q8(void);
 static uint32_t seq_acc, seq_ticks;                     /* Q8 samples into the step; steps since PLAY */
 
@@ -360,7 +365,7 @@ static void seq_render(int frames)
     lfo_sync();
     seq_frames += (uint32_t)frames;
     later_tick(frames);                                 /* the strum's notes, playing or not */
-    if (!seq_on || clock_ext) return;                   /* an outside clock steps it instead (dmk_midi) */
+    if (!seq_on || ext_running()) return;               /* an outside clock running steps it instead (dmk_midi) */
     per = seq_per();
     if (midi_out & 2u)                                  /* MIDI out: the clock, 24 a beat, 6 a step */
         for (clk_acc += (uint32_t)frames * 256u; clk_acc >= per / 6u; clk_acc -= per / 6u) mq_put(0xF8, 0, 0);
@@ -385,6 +390,7 @@ static void seq_init(void)
     static const uint8_t PAD[][3] = {{0, 16, 57}, {0, 16, 60}, {0, 16, 64}, {16, 16, 53}, {16, 16, 57}, {16, 16, 60}};
     static const uint8_t PIANO[][3] = {{0, 3, 69}, {4, 2, 72}, {6, 2, 71}, {8, 4, 67}, {12, 4, 64}};
     static const uint8_t PLUCK[][3] = {{0, 1, 76}, {3, 1, 69}, {6, 1, 72}, {9, 1, 74}};
+    ext_seen = 0;                                       /* no outside clock heard yet */
     unsigned i;
     for (i = 0; i < DMK_SYNTHS; i++) { sq[i].count = 0; sq[i].pos = 0; }
     sq[0].steps = 32; sq[1].steps = 16; sq[2].steps = 12;

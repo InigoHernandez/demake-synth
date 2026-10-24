@@ -536,11 +536,27 @@ static void selftest(void)
         ui.val[0][PG_GLOBAL][2][2] = choice_val(1, 2); sp_sync();   /* the clock outside */
         dmk_midi(0xFA, 0, 0);
         if (!seq_on) { fails++; printf("selftest: an outside start does not play\n"); }
-        { uint32_t t0 = seq_ticks; wait_ms(500); if (seq_ticks != t0) { fails++; printf("selftest: with the clock outside the steps run on their own\n"); }
+        { uint32_t t0 = seq_ticks, t1;                  /* none coming: its own tempo (it froze, its notes held) */
+          wait_ms(500); if (seq_ticks == t0) { fails++; printf("selftest: the clock set outside but none coming, PLAY does not run\n"); }
+          t1 = seq_ticks;                               /* then the clock: it steps them */
           for (int k = 0; k < 12; k++) { dmk_midi(0xF8, 0, 0); wait_ms(20); }
-          if (seq_ticks != t0 + 2) { fails++; printf("selftest: 12 clocks are not 2 steps (%u)\n", (unsigned)(seq_ticks - t0)); } }
+          if (seq_ticks != t1 + 2) { fails++; printf("selftest: 12 clocks are not 2 steps (%u)\n", (unsigned)(seq_ticks - t1)); } }
         dmk_midi(0xFC, 0, 0);
         if (seq_on) { fails++; printf("selftest: an outside stop does not stop\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    /* a song of 0.2 (the MIDI row not there yet, its values 64) loads with the MIDI defaults, not an outside clock;
+     * REC armed lights REC */
+    {
+        host_store_on(1, 1);
+        dmk_init(28); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_GLOBAL][2][0] = ui.val[0][PG_GLOBAL][2][1] = ui.val[0][PG_GLOBAL][2][2] = 64;
+        tap(B_SAVE); dmk_init(29); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        if (clock_ext || midi_chans || midi_out != 1) { fails++; printf("selftest: an old song's MIDI row loads as set (clock %d, in %d, out %d)\n", clock_ext, midi_chans, midi_out); }
+        host_store_on(0, 0);
+        tap(B_REC);
+        if (!dmk_leds()[DMK_KEYS + B_REC]) { fails++; printf("selftest: REC armed is not lit\n"); }
+        tap(B_REC);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     /* the Keys row: chords everywhere (the roll's keys still notes), of the type it picks; released whole */

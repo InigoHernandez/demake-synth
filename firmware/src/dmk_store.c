@@ -185,6 +185,13 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
     if (n < 1u + DMK_SYNTHS * PG_SAVED * 20u + 1u + DMK_SYNTHS + 4u * (3u + PROG_SLOTS * 4u) + DMK_SYNTHS * 4u + DMK_SYNTHS * 2u) return -1;
     seq_play(0);
     for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
+    for (k = 0; k < 3; k++) if (ui.val[0][PG_GLOBAL][2][k] == 64) {   /* the MIDI row never set (a song of 0.2, before
+                                                           it was there; no choice is 64): In Synth, Out Notes, the
+                                                           own clock. It loaded as Ch 1-3, Clock out, an outside
+                                                           clock: PLAY waited for one */
+        static const uint8_t MD[3] = {32, 48, 32};
+        ui.val[0][PG_GLOBAL][2][k] = MD[k];
+    }
     if (st_ver < 5u) {                                  /* before 0.4: its new controls off; Off first in the verb's
                                                            and the echo's types */
         for (s = 0; s < DMK_SYNTHS; s++) snd_new_defaults(s);

@@ -75,20 +75,23 @@ static char ch_name[24];                                /* (F#maj7#11/C#: 19 byt
 
 /* ---- the strum's queue: notes to start a few ms from now, as the render runs */
 #define LATER_N 16
-static struct { int32_t at; uint8_t sy, note, src, used; } later[LATER_N];
-static void later_on(int sy, int note, int32_t samples, int src)
+/* own: who started it (a key + 1, or 0 the chord machine), so letting one key go never cancels another's note to come */
+static struct { int32_t at; uint8_t sy, note, src, own, used; } later[LATER_N];
+static void later_on(int sy, int note, int32_t samples, int src, int own)
 {
     int i;
     if (samples <= 0) { note_on_src(sy, note, src); return; }
     for (i = 0; i < LATER_N && later[i].used; i++) {}
     if (i == LATER_N) { note_on_src(sy, note, src); return; }
-    later[i].at = samples; later[i].sy = (uint8_t)sy; later[i].note = (uint8_t)note; later[i].src = (uint8_t)src; later[i].used = 1;
+    later[i].at = samples; later[i].sy = (uint8_t)sy; later[i].note = (uint8_t)note; later[i].src = (uint8_t)src;
+    later[i].own = (uint8_t)own; later[i].used = 1;
 }
-static void later_off(int sy, int note, int src)        /* off, or never started if it was still to come (then no off:
-                                                           it would end another's of that note) */
+static void later_off(int sy, int note, int src, int own)   /* off, or never started if it was still to come (then no
+                                                           off: it would end another's of that note) */
 {
     int i, gone = 0;
-    for (i = 0; i < LATER_N; i++) if (later[i].used && later[i].sy == sy && later[i].note == note && later[i].src == src) { later[i].used = 0; gone = 1; }
+    for (i = 0; i < LATER_N; i++)
+        if (later[i].used && later[i].sy == sy && later[i].note == note && later[i].src == src && later[i].own == own) { later[i].used = 0; gone = 1; }
     if (!gone) note_off_src(sy, note, src);
 }
 static void later_tick(int frames)
@@ -338,35 +341,35 @@ static int diatonic(int n, int8_t *iv)
 }
 
 /* strike notes on a synth, strummed */
-static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms)
+static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms, int own)
 {
     int i, ms = ch.strum < 0 ? -ch.strum : ch.strum;
     if (most_ms > 0 && n > 1 && ms * (n - 1) > most_ms) ms = most_ms / (n - 1);   /* all in before the next pulse */
     for (i = 0; i < n; i++) {
         int k = ch.strum < 0 ? n - 1 - i : i;
-        later_on(sy, notes[k], (int32_t)ms * i * (DMK_SR / 1000), src);
+        later_on(sy, notes[k], (int32_t)ms * i * (DMK_SR / 1000), src, own);
     }
 }
-static void strike(int sy, const uint8_t *notes, int n) { strike_src(sy, notes, n, SRC_KEY, 0); }   /* the keys' */
+static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1); }   /* a key's */
 /* a synth that comes to play the chords while they hold (set to Plays chords, unmuted): the chord sounding now, not
  * silence until the next */
 static void chord_join(int s)
 {
     if (seq_on && ch.rhythm == RH_HOLD && ch_np && ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u))
-        strike_src(s, ch_play, ch_np, SRC_CHORD, 0);
+        strike_src(s, ch_play, ch_np, SRC_CHORD, 0, 0);
 }
 
 /* the sounding chord off on the synths that play chords */
 static void chord_quiet(void)
 {
     int s, i;
-    for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) for (i = 0; i < ch_np; i++) later_off(s, ch_play[i], SRC_CHORD);
+    for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) for (i = 0; i < ch_np; i++) later_off(s, ch_play[i], SRC_CHORD, 0);
     ch_np = 0;
 }
 static void chord_off(int s)                            /* the sounding chord off on synth s (its FOLLOW changing) */
 {
     int i;
-    for (i = 0; i < ch_np; i++) later_off(s, ch_play[i], SRC_CHORD);
+    for (i = 0; i < ch_np; i++) later_off(s, ch_play[i], SRC_CHORD, 0);
 }
 static void chord_rest(void)                            /* stopped, or a new progression: nothing shown as sounding */
 {
@@ -411,7 +414,7 @@ static void chord_step(void)
         if (newslot) {
             for (i = 0; i < ch_n; i++) ch_play[i] = ch_notes[i];
             ch_np = ch_n;
-            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike_src(s, ch_notes, ch_n, SRC_CHORD, 0);
+            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike_src(s, ch_notes, ch_n, SRC_CHORD, 0, 0);
         }
     } else if (ch.rhythm == RH_PULSE4 || ch.rhythm == RH_PULSE8) {
         int every = ch.rhythm == RH_PULSE4 ? 4 : 2;
@@ -420,7 +423,7 @@ static void chord_step(void)
             for (i = 0; i < ch_n; i++) ch_play[i] = ch_notes[i];
             ch_np = ch_n;
             for (s = 0; s < DMK_SYNTHS; s++)
-                if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike_src(s, ch_notes, ch_n, SRC_CHORD, every * 15000 / seq_bpm / 2);
+                if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike_src(s, ch_notes, ch_n, SRC_CHORD, every * 15000 / seq_bpm / 2, 0);
         }
     } else {                                            /* the arpeggio: a note a step */
         int k = ch_arp % ch_n, note = ch.rhythm == RH_ARPUP ? ch_notes[k] : ch_notes[ch_n - 1 - k];
