@@ -816,8 +816,8 @@ Demake page): the tokens as variables (Paper and Night), the wordmark and the D 
 
 ## 7. Build order
 
-*From 0.2 on, the sound's next steps (stages 1-6: measuring the FM-1, the sound's own controls, more effects, the
-spaces, the song bus, the factory sounds) are planned in `docs/sound-design.md`.*
+*From 0.2 on, the next steps (stages 1-7: measuring the FM-1, the song mode, the sound's own controls, more effects,
+the spaces, the song bus, the factory sounds) are planned in `docs/sound-design.md`.*
 
 Each phase ends with something the owner plays on the FM-1, and nothing is kept before it is heard (WAVs and numbers
 first, as on MONO2K).

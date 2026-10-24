@@ -31,12 +31,14 @@ them.
   - a song-wide patina: a master tape stage, a tempo pump, a tape stop.
 - **Factory sounds:** today PRESETS steps through bare recordings. Each recording should come with a designed sound
   that the owner picks and names from sheets.
-- **The budget is the limit, not ideas:**
+- **The song mode:** the eight patterns arranged into a whole piece, an intro to an ending, played start to finish.
+  It can be stepped in on a page, or played live with HOME and recorded as it is played.
+- **The budget is the limit for the sound, not ideas:**
   - CPU0 is at 1818 in the heaviest case, past the proven 1650 a core. The calibration puts a core near 3470, but the
     FM-1 hasn't been measured.
   - The RAM pool has 28 KB free.
   - Stage 1 measures the FM-1, moves work to the second core and frees RAM before anything heavy is added.
-- **Order:** six stages, below. Section 9 lists what is the owner's to decide.
+- **Order:** seven stages, below. Section 10 lists what is the owner's to decide.
 
 ## 1. Where it is
 
@@ -77,9 +79,52 @@ them.
    - velocity is stored but unused;
    - the LFO page draws but does nothing.
 
-   Both come first in stage 2, because they are the cheapest sound design there is.
+   Both come first in stage 3, because they are the cheapest sound design there is.
 
-## 3. Stage 2: the sound itself
+## 3. Stage 2: the song mode
+
+The patterns become a piece. Today a pattern loops until HOME and a key switch it, and a chain (several keys in one
+hold of HOME) loops its patterns. A song is an **arrangement**: steps in order, each a pattern for a number of bars,
+from the first to an ending.
+
+- **A step:**
+  - a pattern (1–8);
+  - its length (1, 2, 4, 8 or 16 bars);
+  - which synths it mutes;
+  - its key, the song's or one of its own, for a lift in the last section (optional, later).
+- **A song:** up to 32 steps, and its end:
+  - Loop: back to the first step;
+  - Stop: after the last;
+  - Fade: the whole mix fades over the last step, the space's tails left to ring out.
+
+  Also a fade-in for the first step, for an intro that rises from silence.
+- **The page, Arrange:** HOME held + SEQ opens it, and it stays open. All 8 page buttons are taken, so it shares
+  HOME, the patterns' button.
+  - The steps are a strip of cards: the pattern's number big, its bars under it, the muted synths as dots.
+  - The step playing is lit; the cursor is a ring.
+  - The foot gives the song's length in bars and in minutes at the tempo.
+- **Editing, as the Roll and the chord slots edit:**
+  - K1 the step;
+  - K2 its pattern, or a white key 1–8 directly;
+  - K3 its bars;
+  - K4 its mutes;
+  - ALGORITHM the end (Loop, Stop, Fade);
+  - OCT− deletes the step, OCT+ copies it after itself;
+  - an empty step at the end takes the next one.
+- **Recording it live:** on Arrange, REC armed and PLAY. Each switch and mute played with HOME held (as now) is
+  written as a step, with the bars it lasted. Play the song as a performance once, then tidy it on the page. A live
+  chain can be printed the same way (ARP held + OCT+, as a progression prints into a roll).
+- **Playing it:** PLAY on Arrange plays the song from the cursor's step.
+  - The head shows where it is (step 3 of 9, bar 2 of 4).
+  - The HOME light blinks with the bar.
+  - PLAY elsewhere still loops the pattern, as now: the song plays only when started from its page, so the mode
+    is never hidden.
+  - A pattern picked live with HOME held while the song plays leaves the song for that pattern, unless REC is armed.
+- **Saved with the song:** 32 steps × 3 bytes, about 100 bytes more in its record (record version 3; version 2
+  songs load with an empty arrangement).
+- **Cost:** none for the sound beyond the fade (~1 a sample); all of it is the sequencer's clock and the screen.
+
+## 4. Stage 3: the sound itself
 
 Everything here reads the same recordings; a sound gains depth, not new sources.
 
@@ -95,11 +140,11 @@ Everything here reads the same recordings; a sound gains depth, not new sources.
 
 Not here, on purpose:
 - **Reverse recordings.** The ADPCM blocks decode forwards only. Storing each block's state would cost ~95 KB of
-  flash. Reverse comes as an echo instead (section 5).
+  flash. Reverse comes as an echo instead (section 6).
 - **Unison.** It would double the voices a note uses. Drift's per-note detune and Chorus give the width more
   cheaply.
 
-## 4. Stage 3: effects per synth
+## 5. Stage 4: effects per synth
 
 Each row keeps its four macros: K1 Amount, K2 Tone, K3 Time or Rate, K4 Character. Every new type gets the same
 treatment as 0.2's:
@@ -122,7 +167,7 @@ treatment as 0.2's:
 
 The rows have room: Colour holds 4 types and Off, Media 3, Motion 3. With these, each row has 6 or 7.
 
-## 5. Stage 4: the spaces
+## 6. Stage 5: the spaces
 
 Shared buses, at 22.05 kHz, one type each at a time, as now.
 
@@ -139,7 +184,7 @@ Shared buses, at 22.05 kHz, one type each at a time, as now.
 
 Spring is left out: its drip suits surf more than this machine's sound. It can come back if the owner wants it.
 
-## 6. Stage 5: the song and the hands
+## 7. Stage 6: the song and the hands
 
 | Part | What it gives | Where | Cost |
 | --- | --- | --- | --- |
@@ -148,7 +193,7 @@ Spring is left out: its drip suits surf more than this machine's sound. It can c
 | **Tape stop** | the whole machine slows to a halt, then spins back up: the voices' pitch and the lines' speed together | HOME held + a key or a button | ~5 [E] |
 | **Performance** | the three cutoffs and the verb's return live (as plan 3.6 has it), and Freeze | HOME held, K1–K4 | — |
 
-## 7. Stage 6: the factory sounds
+## 8. Stage 7: the factory sounds
 
 Today a sound is a recording and whatever the synth was set to. Instead:
 - **A designed sound for every recording.** Its filter, envelope, effects and LFO are set so the recording sounds
@@ -163,27 +208,32 @@ Today a sound is a recording and whatever the synth was set to. Instead:
 - **INIT** stays the first song's plain sound, the recording kept.
 - **Space:** a sound is 45 bytes, so 64 factory sounds take ~3 KB of flash.
 
-## 8. The order
+## 9. The order
 
 | Stage | Contents | Ends with |
 | --- | --- | --- |
 | 1 | measure the FM-1; balance the cores; free RAM | the two load numbers; the heaviest case at ~1500 a core |
-| 2 | velocity, the LFO, layer, glide, grit, short loops, keytrack and drive | WAVs; a build |
-| 3 | Warm, Distort, Vinyl, Radio, Dictaphone, Ensemble, Phaser, Flanger, Tremolo | WAVs of each one's corners; a build |
-| 4 | Shimmer, Freeze, Ping-pong, Filtered, Reverse, Swell, Grains+, Plate if the RAM allows | WAVs; a build |
-| 5 | master tape, pump, tape stop, the performance layer | WAVs; a build |
-| 6 | the factory sounds, from the owner's sheets | the release |
+| 2 | the song mode: Arrange, its steps, live recording, the endings | a song played start to end on the FM-1; a build |
+| 3 | velocity, the LFO, layer, glide, grit, short loops, keytrack and drive | WAVs; a build |
+| 4 | Warm, Distort, Vinyl, Radio, Dictaphone, Ensemble, Phaser, Flanger, Tremolo | WAVs of each one's corners; a build |
+| 5 | Shimmer, Freeze, Ping-pong, Filtered, Reverse, Swell, Grains+, Plate if the RAM allows | WAVs; a build |
+| 6 | master tape, pump, tape stop, the performance layer | WAVs; a build |
+| 7 | the factory sounds, from the owner's sheets | the release |
+
+The song mode comes early: it costs no CPU, needs no measurement, and turns the patterns into finished pieces.
 
 Releases: only two identities are left in Demake's range (0.3 = FM-1_968, 0.4 = FM-1_969). One plan:
-- 0.3 after stages 1–3;
-- 0.4 after stages 4–6.
+- 0.3 after stages 1–4;
+- 0.4 after stages 5–7.
 
-Or the range is widened (section 9). Every package goes to the owner first, as `~/Downloads` builds, before a
+Or the range is widened (section 10). Every package goes to the owner first, as `~/Downloads` builds, before a
 release.
 
-## 9. For the owner
+## 10. For the owner
 
-- **What first:** which of sections 3–6 matter most? The order above is a suggestion; any stage can move.
+- **What first:** which of sections 3–8 matter most? The order above is a suggestion; any stage can move.
+- **The song mode:** is an arrangement of up to 32 steps enough? Should a step also be able to change the key, or
+  the tempo?
 - **The effects list:** strike anything that doesn't fit Demake's sound, and add what's missing, as a sound to
   describe or a reference to listen to (as the long modulated verb and the cloud of grains were).
 - **The master and the pump:** wanted, or does the mix stay as the three synths make it?
