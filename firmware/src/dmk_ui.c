@@ -331,7 +331,7 @@ static void ui_init(void)
 {
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
      * env, level, tape, wow, verb, echo, pan] */
-    static const char *const FIRST[DMK_SYNTHS] = {"Lunaria", "Nymphaea", "Myrtus"};
+    static const uint8_t FIRST[DMK_SYNTHS] = {DMK_FIRST_PAD, DMK_FIRST_KEY, DMK_FIRST_PLUCK};   /* a pad, keys, a pluck */
     static const uint8_t SET[DMK_SYNTHS][13] = {
         {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
         {0, 80, 56, 72, 96, 12, 76, 96, 1, 24, 60, 52, 72},
@@ -343,7 +343,7 @@ static void ui_init(void)
                 for (k = 0; k < 5; k++) ui.val[s][p][r][k] = 64;
     for (s = 0; s < DMK_SYNTHS; s++) {
         const uint8_t *t = SET[s];
-        ui.val[s][PG_SOUND][0][0] = (uint8_t)smp_named(FIRST[s]);
+        ui.val[s][PG_SOUND][0][0] = FIRST[s] < DMK_SAMPLES_N ? FIRST[s] : 0;
         ui.val[s][PG_SOUND][0][1] = 0;
         ui.val[s][PG_SOUND][0][2] = 127;                /* the loop on */
         ui.val[s][PG_SOUND][0][4] = 64;                 /* in tune */
@@ -740,11 +740,13 @@ static uint32_t hsh(uint32_t a) { a ^= a >> 16; a *= 0x7FEB352Du; a ^= a >> 15; 
 static int bay(int x, int y) { return T_BAYER6[0][(y & 3) * 4 + (x & 3)]; }
 
 /* each scene's sky: colours from the top (-1 the dark), where each is whole, dithered between */
-static const struct { uint8_t n, at[8]; int8_t c[8]; } SKY[4] = {
+static const struct { uint8_t n, at[8]; int8_t c[8]; } SKY[DMK_SCENES] = {
     {6, {0, 14, 30, 46, 64, 84}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO5, C_HOLO6}},
     {8, {0, 12, 26, 38, 49, 58, 66, 80}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6}},
     {7, {0, 10, 24, 38, 50, 60, 72}, {-1, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6, C_HOLO7}},
-    {4, {0, 40, 66, 76}, {-1, -1, C_HOLO0, C_HOLO1}}};
+    {4, {0, 40, 66, 76}, {-1, -1, C_HOLO0, C_HOLO1}},
+    {5, {0, 14, 34, 54, 72}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO3}},   /* ROOM: the city's night through the window */
+    {3, {0, 64, 96}, {-1, -1, C_HOLO0}}};                                  /* DESK: the wall, dark, a glow low by the screen */
 static int sky_at(int sc, int x, int y, int dk)
 {
     int i = 0, t, a, b, n = SKY[sc].n;
@@ -757,6 +759,26 @@ static int sky_at(int sc, int x, int y, int dk)
 }
 
 static void fg_put(int x, int y, int c) { if (x >= 0 && x < SC_W && y >= 0 && y < SC_H) sc_fg[y * SC_W + x] = (uint8_t)c; }
+static void fg_rect(int x, int y, int w, int h, int c) { int i, j; for (j = 0; j < h; j++) for (i = 0; i < w; i++) fg_put(x + i, y + j, c); }
+static void fg_disc(int cx, int cy, int r, int c)       /* a disc, its edge stepped */
+{
+    int i, j;
+    for (j = -r; j <= r; j++) for (i = -r; i <= r; i++) if (i * i + j * j <= r * r + r / 2) fg_put(cx + i, cy + j, c);
+}
+/* the ROOM's window and the DESK's things, where the frame draws what moves on them */
+#define RW_X0 40
+#define RW_X1 176
+#define RW_Y0 8
+#define RW_Y1 80
+#define RW_MX 106                                       /* its mullions: a cross */
+#define RW_MY 42
+#define RT_X 150                                        /* the tower, its beacon at RT_Y */
+#define RT_Y 22
+static int room_glass(int x, int y)                     /* a pane of the ROOM's window, not its frame or the plant */
+{
+    return x >= RW_X0 && x < RW_X1 && y >= RW_Y0 && y < RW_Y1 && (x < RW_MX || x > RW_MX + 2) && (y < RW_MY || y > RW_MY + 1) &&
+           !(x >= 44 && x < 72 && y >= 54) && x >= 47 && x < 170;
+}
 static void fg_pine(int x, int base, int h, int dk)     /* a pine: stepped, a row a step */
 {
     int y, i;
@@ -825,13 +847,109 @@ static void scene_build(int sc, int dk, int lt)
             for (y = top; y < SC_H; y++) fg_put(x, y, y < top + 2 ? (bay(x, y) < 8 ? C_HOLO4 : C_HOLO2) : bay(x, y) < 13 ? dk : C_HOLO0);
             if (!(x % 4)) for (y = 1; y < 4; y++) fg_put(x, top - y, dk);
         }
-    } else {                                            /* NIGHT: hills, a forest, mist */
+    } else if (sc == 3) {                               /* NIGHT: hills, a forest, mist */
         for (x = 0; x < SC_W; x++) {
             int h1 = 66 - tri(x + 30, 110, 16) - tri(x, 31, 5), h2 = 82 - tri(x + 70, 64, 10) - tri(x + 3, 17, 3);
             for (y = h1; y < SC_H; y++) fg_put(x, y, bay(x, y) < 5 ? C_HOLO0 : dk);
             for (y = h2; y < SC_H; y++) fg_put(x, y, dk);
         }
         for (k = 0; k < 18; k++) fg_pine(k * 13 + (int)(hsh((uint32_t)k + 7u) % 7u), 108, 14 + (int)(hsh((uint32_t)k + 99u) % 22u), dk);
+    } else if (sc == 4) {                               /* ROOM: a city at night through a bedroom's window */
+        for (y = 0; y < SC_H; y++) for (x = 0; x < SC_W; x++) {   /* the walls, warmed by the lamp in the corner */
+            int dx = x - 211, dy = y - 80, d = dx * dx + dy * dy;
+            if (x >= RW_X0 && x < RW_X1 && y >= RW_Y0 && y < RW_Y1) continue;
+            fg_put(x, y, d < 260 ? (bay(x, y) * 16 < 260 - d + 40 ? C_HOLO4 : C_HOLO3) : d < 1300 ? (bay(x, y) * 90 < 1300 - d ? C_HOLO3 : dk)
+                         : d < 2600 ? (bay(x, y) * 260 < 2600 - d ? C_HOLO2 : dk) : bay(x, y) < 2 ? C_HOLO0 : dk);   /* the lamp's light, warm, small */
+        }
+        for (x = RW_X0, k = 0; x < RW_X1; k++) {        /* the city: far towers, then near blocks with their windows lit */
+            int w = 7 + (int)(hsh((uint32_t)k * 3u + 1u) % 9u), h = 18 + (int)(hsh((uint32_t)k + 70u) % 26u);
+            fg_rect(x, RW_Y1 - h, w - 1, h, C_HOLO1);
+            x += w;
+        }
+        for (x = RW_X0, k = 0; x < RW_X1; k++) {
+            int w = 10 + (int)(hsh((uint32_t)k * 5u + 9u) % 12u), h = 8 + (int)(hsh((uint32_t)k + 31u) % 22u), i, j;
+            if (x <= RT_X && x + w > RT_X) h = RW_Y1 - RT_Y - 8;   /* the tower */
+            fg_rect(x, RW_Y1 - h, w - 1, h, dk);
+            for (j = RW_Y1 - h + 3; j < RW_Y1 - 2; j += 5)
+                for (i = x + 2; i < x + w - 3; i += 4)
+                    if (hsh((uint32_t)(i * 131 + j)) % 5u < 2u) fg_rect(i, j, 1, 2, hsh((uint32_t)(i + j * 7)) & 1u ? C_HOLO5 : C_HOLO6);
+            x += w;
+        }
+        fg_rect(RT_X, RT_Y, 1, 10, dk);                 /* the tower's mast */
+        fg_rect(RW_X0 - 3, RW_Y0 - 3, RW_X1 - RW_X0 + 6, 3, C_LABEL);   /* the frame, the cross */
+        fg_rect(RW_X0 - 3, RW_Y1, RW_X1 - RW_X0 + 6, 3, C_LABEL);
+        fg_rect(RW_X0 - 3, RW_Y0, 3, RW_Y1 - RW_Y0, C_LABEL);
+        fg_rect(RW_X1, RW_Y0, 3, RW_Y1 - RW_Y0, C_LABEL);
+        fg_rect(RW_MX, RW_Y0, 3, RW_Y1 - RW_Y0, C_LABEL);
+        fg_rect(RW_X0, RW_MY, RW_X1 - RW_X0, 2, C_LABEL);
+        fg_rect(30, RW_Y1 + 3, 158, 3, C_LINE);         /* the sill */
+        fg_rect(30, RW_Y1 + 6, 158, 2, C_LABEL);
+        for (k = 0; k < 2; k++)                         /* the curtains, gathered, their folds */
+            for (y = 3; y < 98; y++) {
+                int x0 = k ? 168 : 26, w = 20 - (y > 60 ? (y - 60) / 6 : 0) + (y < 10 ? 2 : 0);
+                for (x = 0; x < w; x++) { int f = (x + (y > 60 ? (y - 60) / 8 : 0)) % 6; fg_put(k ? x0 + 20 - w + x : x0 + x, y, f == 0 ? C_LABEL : f == 1 ? (bay(x, y) < 8 ? C_A_INK2 : dk) : dk); }   /* dark cloth, its folds lit */
+            }
+        fg_rect(20, 2, 180, 1, C_LABEL);                /* the rod */
+        fg_rect(52, 75, 12, 8, C_LABEL);                /* the plant on the sill, its pot */
+        fg_rect(51, 74, 14, 2, C_LINE);
+        for (k = 0; k < 6; k++) {                       /* its leaves, split, lit at the edge by the city */
+            int cx = 50 + (int)(hsh((uint32_t)k + 5u) % 18u), cy = 58 + (int)(hsh((uint32_t)k + 11u) % 12u), r = 4 + (int)(hsh((uint32_t)k) % 3u);
+            fg_disc(cx, cy, r, dk);
+            fg_put(cx - r + 1, cy - 1, C_HOLO2); fg_put(cx, cy - r + 1, C_HOLO1);
+            fg_put(cx + 1, cy, C_HOLO0); fg_put(cx + 2, cy + 1, C_HOLO0);   /* the holes of its split leaves */
+        }
+        fg_rect(57, 66, 1, 9, dk);
+        fg_rect(122, 77, 16, 2, C_LINE); fg_rect(123, 79, 14, 2, C_HOLO4); fg_rect(121, 81, 18, 2, C_LABEL);   /* books */
+        fg_rect(146, 76, 7, 7, lt); fg_rect(153, 78, 2, 3, lt);   /* a mug */
+        for (y = 92; y < SC_H; y++) for (x = 0; x < 150; x++) {   /* the bed, its quilt in squares */
+            int top = 98 + tri(x, 40, 3);
+            if (y < top) continue;
+            fg_put(x, y, ((x / 8 + y / 6) & 1) ? (bay(x, y) < 6 ? C_HOLO0 : dk) : (bay(x, y) < 3 ? C_A_INK2 : dk));
+        }
+        fg_rect(8, 92, 34, 8, C_LINE); fg_rect(9, 91, 32, 1, C_LABEL);   /* its pillow */
+        fg_rect(196, 92, 30, 26, dk); fg_rect(196, 92, 30, 2, C_LABEL);  /* the nightstand, the lamp on it */
+        fg_rect(210, 84, 3, 8, C_LABEL); fg_rect(205, 90, 13, 2, C_LABEL);
+        for (y = 0; y < 9; y++) fg_rect(206 - y / 2, 75 + y, 11 + y, 1, C_HOLO5);   /* its shade, lit */
+    } else {                                            /* DESK: a 2000s desk, a screen, cassettes, a CD-ROM */
+        for (y = 90; y < SC_H; y++) for (x = 0; x < SC_W; x++)   /* the desk, its grain */
+            fg_put(x, y, y < 92 ? C_LABEL : (y - 90) % 7 == 0 ? C_HOLO0 : bay(x, y) < 2 ? C_HOLO0 : dk);
+        for (y = 92; y < 104; y++) for (x = 8; x < 120; x++)   /* the screen's light on it */
+            if (bay(x, y) * 4 < 40 - (y - 92) * 3) fg_put(x, y, C_HOLO1);
+        for (y = 14; y < 88; y++) for (x = 16; x < 112; x++) {   /* the screen: a beige box, rounded, darker to the right */
+            int cx = x < 22 ? 22 - x : x > 105 ? x - 105 : 0, cy = y < 20 ? 20 - y : y > 81 ? y - 81 : 0;
+            if (cx * cx + cy * cy > 36) continue;
+            fg_put(x, y, x > 103 || y > 84 ? C_LABEL : C_LINE);   /* the light from the left: its right and foot in shade */
+        }
+        for (y = 21; y < 74; y++) for (x = 26; x < 102; x++) {   /* its glass, dark, its rim */
+            int edge = y == 21 || y == 73 || x == 26 || x == 101;
+            fg_put(x, y, edge ? C_LABEL : dk);
+        }
+        for (k = 0; k < 5; k++) fg_rect(30 + k * 4, 80, 2, 3, C_LABEL);   /* the vents */
+        fg_rect(50, 88, 28, 2, C_LABEL); fg_rect(46, 90, 36, 2, C_LINE);  /* the stand */
+        fg_rect(14, 96, 96, 8, C_LABEL);                /* the keyboard, its keys */
+        for (y = 97; y < 103; y += 2) for (x = 16; x < 108; x += 4) fg_rect(x, y, 3, 1, C_LINE);
+        fg_rect(2, 80, 9, 10, lt); fg_rect(11, 82, 2, 4, lt);   /* a mug */
+        fg_rect(113, 84, 7, 6, C_LABEL);                /* a cactus, its pot */
+        fg_rect(115, 74, 3, 10, dk); fg_rect(113, 77, 2, 4, dk); fg_rect(118, 76, 2, 4, dk);
+        fg_put(114, 76, C_HOLO1); fg_put(118, 75, C_HOLO1);
+        for (k = 0; k < 9; k++) {                       /* the tapes on their spines, standing */
+            static const uint8_t TC[5] = {C_LABEL, C_HOLO2, C_LINE, C_HOLO4, C_A_LABEL};
+            int x0 = 172 + k * 4, top = 48 + (int)(hsh((uint32_t)k + 3u) % 6u);
+            fg_rect(x0, top, 3, 90 - top, TC[k % 5]);
+            fg_rect(x0, top + 14, 3, 6, lt);
+        }
+        fg_disc(194, 74, 16, C_LINE);                   /* a CD, leaning on them */
+        fg_disc(194, 74, 15, C_LABEL);
+        fg_disc(194, 74, 13, C_LINE);
+        fg_disc(194, 74, 5, lt);
+        fg_disc(194, 74, 2, dk);
+        fg_rect(120, 64, 46, 26, C_LABEL);              /* a cassette, standing in front */
+        fg_rect(120, 64, 46, 1, C_LINE);
+        fg_rect(124, 67, 38, 9, lt);                    /* its label, written on */
+        fg_rect(127, 70, 22, 1, dk); fg_rect(127, 73, 15, 1, C_A_INK2);
+        fg_rect(131, 78, 24, 8, dk);                    /* its window, the tape */
+        fg_disc(135, 82, 3, C_LINE); fg_disc(151, 82, 3, C_LINE);
+        fg_rect(139, 81, 8, 3, C_A_INK2);
     }
 }
 
@@ -844,11 +962,12 @@ static void cloud(int x, int y, int w, int lt)          /* a cloud: puffs on a f
     round_fill(SX + x - 3, SY + y - 5, w + 6, 4, 2, lt);
 }
 
+static int scene_of(int s) { int c = DMK_SAMPLES[VS(s, PG_SOUND, 0, 0)].scene; return c < DMK_SCENES ? c : 0; }   /* a synth's landscape */
 /* a frame of scene sc at its card's place (the boot shows it full screen), drawn every 140 ms and held in sc_out */
 static void scene_frame(int sc, uint32_t tick)
 {
     int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, i;
-    if (sc_key != (uint8_t)(theme * 4 + sc)) {
+    if (sc_key != (uint8_t)(theme * 8 + sc)) {
         ui_yield();
         scene_build(sc, dk, lt);
         ui_yield();
@@ -857,7 +976,7 @@ static void scene_frame(int sc, uint32_t tick)
             sc_fgp[i] = (uint8_t)((a != 0xFF ? a << 4 : 0) | (b != 0xFF ? b : 0));
             sc_fgm[i] = (uint8_t)((a != 0xFF ? 0xF0 : 0) | (b != 0xFF ? 0x0F : 0));
         }
-        sc_key = (uint8_t)(theme * 4 + sc); sc_tick = 0xFFFFFFFFu;
+        sc_key = (uint8_t)(theme * 8 + sc); sc_tick = 0xFFFFFFFFu;
     }
     if (tick != sc_tick) {                              /* a new frame of the scene: drawn, then held */
         sc_tick = tick;
@@ -866,7 +985,7 @@ static void scene_frame(int sc, uint32_t tick)
             uint8_t p0 = (uint8_t)(sky_at(sc, 0, y, dk) << 4 | sky_at(sc, 1, y, dk)), p1 = (uint8_t)(sky_at(sc, 2, y, dk) << 4 | sky_at(sc, 3, y, dk));
             for (x = 0; x < SC_W / 2; x += 2) { b[x] = p0; b[x + 1] = p1; }
         }
-        for (i = 0; i < (sc == 3 ? 34 : 14); i++) {     /* the stars, twinkling (the night has many) */
+        for (i = 0; i < (sc == 3 ? 34 : sc == 5 ? 0 : 14); i++) {   /* the stars, twinkling (the night has many; the desk none) */
             uint32_t h = hsh((uint32_t)i * 7919u + (uint32_t)sc);
             if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 ? 54u : 22u)), lt);
         }
@@ -874,10 +993,12 @@ static void scene_frame(int sc, uint32_t tick)
         if (sc == 1) round_fill(SX + 140, SY + 50, 22, 22, 11, HOLO);    /* the sun in the valley */
         if (sc == 2) round_fill(SX + 128, SY + 56, 30, 30, 15, HOLO);    /* the sun, low on the sea */
         if (sc == 3) { round_fill(SX + 150, SY + 14, 30, 30, 15, HOLO); round_fill(SX + 156, SY + 20, 18, 18, 9, lt); }   /* the moon, haloed */
-        for (i = 0; i < (sc == 3 ? 1 : 3); i++) {       /* clouds, drifting */
+        if (sc == 4) round_fill(SX + 158, SY + 12, 10, 10, 5, lt);   /* the moon over the city, in the window's corner */
+        for (i = 0; i < (sc == 3 || sc == 4 ? 1 : sc == 5 ? 0 : 3); i++) {   /* clouds, drifting (in the room's window one) */
             int w = i == 0 ? 36 : i == 1 ? 26 : 20, cy = i == 0 ? 46 : i == 1 ? 34 : 40;
             int cx = (int)((i == 0 ? 30u : i == 1 ? 150u : 95u) + tick / (3u + (uint32_t)i)) % (SC_W + 80) - 40;
             if (sc == 3) cy = 60;
+            if (sc == 4) cy = 30;
             cloud(cx, cy, w, lt);
         }
         ui_yield();
@@ -895,6 +1016,50 @@ static void scene_frame(int sc, uint32_t tick)
                 }
             }
         }
+        if (sc == 4) {                                  /* ROOM: the city's windows going on and off, the beacon, rain, steam */
+            for (i = 0; i < 60; i++) {
+                uint32_t h = hsh((uint32_t)i * 977u + tick / 6u);
+                x = RW_X0 + (int)(h % (uint32_t)(RW_X1 - RW_X0)); y = RW_Y0 + 20 + (int)((h >> 9) % (uint32_t)(RW_Y1 - RW_Y0 - 20));
+                if ((sc_fg[y * SC_W + x] == C_HOLO5 || sc_fg[y * SC_W + x] == C_HOLO6) && !(h >> 20 & 3u)) px_put(SX + x, SY + y, dk);
+            }
+            if (tick % 8u < 2u) { px_put(SX + RT_X, SY + RT_Y - 1, C_HOLO7); px_put(SX + RT_X - 1, SY + RT_Y, C_HOLO5); px_put(SX + RT_X + 1, SY + RT_Y, C_HOLO5); }
+            for (i = 0; i < 28; i++) {                  /* rain on the glass: streaks running down, a little aslant */
+                uint32_t h = hsh((uint32_t)i * 2654435761u);
+                int len = 2 + (int)(h % 3u), rx = RW_X0 + (int)((h >> 4) % (uint32_t)(RW_X1 - RW_X0));
+                int ry = RW_Y0 + (int)(((h >> 12) % (uint32_t)(RW_Y1 - RW_Y0)) + tick * (2u + (h >> 28 & 1u))) % (RW_Y1 - RW_Y0), j;
+                for (j = 0; j < len; j++) { int px = rx - (ry + j) / 9 % 3, py = ry + j; if (room_glass(px, py)) px_put(SX + px, SY + py, j ? C_LABEL : C_LINE); }
+            }
+            for (i = 0; i < 4; i++) {                   /* the mug's steam */
+                int sy = 74 - (int)((tick + (uint32_t)i * 3u) % 10u), sx = 148 + i % 2 * 2 + tri((int)tick + i * 3, 6, 2);
+                px_put(SX + sx, SY + sy, (tick + (uint32_t)i) % 10u < 6u ? C_LINE : C_LABEL);
+            }
+        }
+        if (sc == 5) {                                  /* DESK: the screen playing, the reels turning, the disc's glint, steam */
+            for (y = 23; y < 72; y += 2) for (x = 28; x < 100; x += 1) if (bay(x, y) < 2) px_put(SX + x, SY + y, C_HOLO0);   /* scanlines */
+            fill(SX + 30, SY + 25, 40, 3, C_HOLO4);     /* a player: its title, its time, a bar moving */
+            fill(SX + 74, SY + 25, 12, 3, C_HOLO2);
+            fill(SX + 30, SY + 31, 68, 1, C_HOLO1);
+            fill(SX + 30 + (int)(tick % 68u), SY + 30, 2, 3, C_HOLO6);
+            for (i = 0; i < 12; i++) {                  /* its bars: the three synths, four each, rising with them */
+                int sy = i / 4, lvl = syn_peak[sy] * 30 / 32768 + (int)(hsh((uint32_t)i + tick) % 4u), hb = lvl < 2 ? 2 : lvl > 30 ? 30 : lvl;
+                fill(SX + 32 + i * 5 + sy * 4, SY + 68 - hb, 4, hb, hb > 20 ? C_HOLO6 : hb > 10 ? C_HOLO4 : C_HOLO2);
+            }
+            if ((tick / 4u) & 1u) fill(SX + 92, SY + 25, 3, 4, C_HOLO5);   /* a cursor, blinking */
+            for (i = 0; i < 2; i++) {                   /* the reels: spokes turning */
+                static const int8_t SPX[6] = {2, 1, -1, -2, -1, 1}, SPY[6] = {0, 2, 2, 0, -2, -2};
+                int a = (int)((tick + (uint32_t)i) % 6u), cx = i ? 151 : 135;
+                px_put(SX + cx + SPX[a], SY + 82 + SPY[a], dk); px_put(SX + cx - SPX[a], SY + 82 - SPY[a], dk);
+            }
+            for (i = 0; i < 5; i++) {                   /* the disc's light going round */
+                static const int8_t GX[12] = {0, 5, 9, 10, 9, 5, 0, -5, -9, -10, -9, -5}, GY[12] = {-10, -9, -5, 0, 5, 9, 10, 9, 5, 0, -5, -9};
+                int a = (int)((tick + (uint32_t)i) % 12u);
+                px_put(SX + 194 + GX[a], SY + 74 + GY[a], i == 2 ? C_HOLO7 : i == 1 || i == 3 ? C_HOLO5 : C_HOLO3);
+            }
+            for (i = 0; i < 4; i++) {                   /* the mug's steam */
+                int sy = 78 - (int)((tick + (uint32_t)i * 3u) % 10u), sx = 5 + i % 2 * 2 + tri((int)tick + i * 3, 6, 2);
+                px_put(SX + sx, SY + sy, (tick + (uint32_t)i) % 10u < 6u ? C_LINE : C_LABEL);
+            }
+        }
         if (sc == 0)                                    /* snow, falling slow */
             for (i = 0; i < 26; i++) {
                 uint32_t h = hsh((uint32_t)i * 2654435761u);
@@ -905,7 +1070,14 @@ static void scene_frame(int sc, uint32_t tick)
             int on = syn_peak[i] > 200 || i == ui.synth, lx, ly;
             if (sc == 1) { lx = 39 + i * 6; ly = 74; fill(SX + lx, SY + ly, 3, 3, on ? C_HOLO6 : C_A_INK2);
                 if (on) for (y = 0; y < 8; y += 2) if (hsh((uint32_t)(i * 17 + y) + tick) & 1u) px_put(SX + lx + 1, SY + 89 + y, C_HOLO4); }
-            else if (sc == 3) {                         /* fireflies, wandering over the forest */
+            else if (sc == 4) {                         /* fairy lights along the curtains' rod */
+                lx = 56 + i * 52; ly = 4;
+                fill(SX + lx, SY + ly, 3, 3, on ? C_HOLO7 : C_A_INK2);
+                if (on) px_put(SX + lx + 1, SY + ly + 3, C_HOLO5);
+            } else if (sc == 5) {                       /* the screen's LEDs */
+                lx = 88 + i * 5; ly = 81;
+                fill(SX + lx, SY + ly, 3, 2, on ? C_HOLO6 : C_LABEL);
+            } else if (sc == 3) {                       /* fireflies, wandering over the forest */
                 lx = 40 + i * 64 + tri((int)tick + i * 11, 40, 14); ly = 80 + tri((int)tick * 2 + i * 7, 26, 8);
                 if (on || (hsh(tick + (uint32_t)i) & 1u)) fill(SX + lx, SY + ly, 2, 2, on ? C_HOLO7 : C_HOLO4);
             } else {                                    /* lanterns along the shore, or the treeline */
@@ -931,7 +1103,7 @@ static void scene_frame(int sc, uint32_t tick)
 static void stage_home(void)
 {
     int lt = THEME_DARK[theme] ? C_INK : C_PAPER;
-    scene_frame(DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3, ui.now / 140u);
+    scene_frame(scene_of(ui.synth), ui.now / 140u);
     card(SX, SY, SW, SH, C_LINE, 1);
     text(SX + PAD + 2, SY + 7, DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].name, &FS, lt);   /* the sound, on the dark */
 }
@@ -1300,9 +1472,12 @@ static uint8_t boot_sc;                                 /* the scene this start 
 
 static void land_full(int sc, uint32_t t)               /* a scene, its middle 120 x 118 doubled over the screen */
 {
-    static const uint8_t CROP[4] = {54, 42, 90, 90};    /* the peak; the cabin and the sun; the stacks; the moon */
-    int x, y, cx = CROP[sc & 3];
-    scene_frame(sc & 3, t / 140u);
+    static const uint8_t CROP[DMK_SCENES] = {54, 42, 90, 90, 56, 40};   /* the peak; the cabin, the sun; the stacks; the moon;
+                                                                     * the window; the screen and the tape */
+    int x, y, cx;
+    sc = sc < DMK_SCENES ? sc : 0;
+    cx = CROP[sc];
+    scene_frame(sc, t / 140u);
     for (y = 0; y < DMK_H; y++) {
         const uint8_t *src = &sc_out[(y / 2 < SC_H ? y / 2 : SC_H - 1) * (SC_W / 2)];
         uint8_t *b = &fb[y * (DMK_W / 2)];
@@ -1417,7 +1592,7 @@ static const uint8_t *ui_frame(uint32_t ms)
         }
     } else ui.full_latch = 0;
     if (ui.full) {                                      /* the landscape full screen, the current synth's, moving */
-        land_full(DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3, ms);
+        land_full(scene_of(ui.synth), ms);
         ta_cover(0, 0, DMK_W, DMK_H);
         overlays();
         return fb;

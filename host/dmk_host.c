@@ -178,7 +178,12 @@ static void tour(const char *dir)
     dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); wait_ms(100); shot(dir, "roll_clear_armed"); dmk_button(B_SEQ, 0); wait_ms(2100);
     ta_reset(); boot(1650); shot_fr(dir, "boot_arrive", fb);
     ta_reset(); boot(2200); shot_fr(dir, "boot_heat", fb);
-    for (int k = 0; k < 4; k++) { char nm[16]; boot_sc = (uint8_t)k; ta_reset(); boot(700); snprintf(nm, sizeof nm, "boot_land%d", k); shot_fr(dir, nm, fb); }
+    for (int k = 0; k < DMK_SCENES; k++) { char nm[16]; boot_sc = (uint8_t)k; ta_reset(); boot(700); snprintf(nm, sizeof nm, "boot_land%d", k); shot_fr(dir, nm, fb); }
+    ui.boot_done = 1; ui.synth = 0; tap(B_HOME);
+    for (int k = 4; k < DMK_SCENES; k++) {              /* Home on the room and on the desk */
+        for (int i = 0; i < DMK_SAMPLES_N; i++) if (DMK_SAMPLES[i].scene == k) { ui.val[0][PG_SOUND][0][0] = (uint8_t)i; break; }
+        wait_ms(1600); shot(dir, k == 4 ? "home_room" : "home_desk");
+    }
     shot_fr(dir, "update", dmk_update_frame(3, 0));
     shot_fr(dir, "update_write", dmk_update_frame(5, 0));
     shot_fr(dir, "update_stopped", dmk_update_frame(9, -3));
@@ -615,7 +620,7 @@ static void fx_demo(const char *dir)
     fx_one(dir, "media_1_tape", "Lunaria", PG_FX, 1, FM_TAPE, TA, 0, 0);
     fx_one(dir, "media_2_cassette", "Lunaria", PG_FX, 1, FM_CASS, CA, 0, 0);
     fx_one(dir, "media_3_vhs", "Lunaria", PG_FX, 1, FM_VHS, VH, 0, 0);
-    fx_one(dir, "motion_1_chorus", "Myrtus", PG_FX, 2, FO_CHORUS, CH, 0, 0);
+    fx_one(dir, "motion_1_chorus", "Lithops", PG_FX, 2, FO_CHORUS, CH, 0, 0);
     fx_one(dir, "motion_2_vibrato", "Nymphaea", PG_FX, 2, FO_VIB, VI, 0, 0);
     fx_one(dir, "motion_3_drift", "Lunaria", PG_FX, 2, FO_DRIFT, DR, 0, 0);
     for (t = 0; t < 3; t++) fx_one(dir, FN[t], "Lunaria", PG_FILTER, 0, FT_NOTCH + t, FI, 0, 1);

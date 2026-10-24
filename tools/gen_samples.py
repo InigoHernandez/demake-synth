@@ -38,18 +38,22 @@ FILTERS = [(0, 0), (60, 0), (115, -52), (98, -55), (122, -60)]
 BANK_A = 32                                              # the FM-1's bank in the app slot (2.5); the owner picks it
 
 # the names: one word each, the Latin name of a plant that grows where the sound's landscape is (the owner, 2026-10-24):
-# alpine and snow plants for the peaks, water and lakeside plants for the lake, seaside plants for the coast,
-# night-blooming and shade plants for the night; given in the recordings' order, a pool a scene and kind
+# alpine and snow plants for the peaks, water plants for the lake, seaside plants for the coast, night-blooming and
+# shade plants for the night, houseplants for the room, succulents for the desk; given in the recordings' order, a pool
+# a scene and kind
 NAMES = {
     (0, "pad"): ["Soldanella", "Galanthus", "Saxifraga", "Dryas", "Gentiana", "Leontopodium", "Chionodoxa",
-                 "Pulsatilla", "Androsace", "Draba", "Cassiope", "Diapensia", "Abies", "Picea", "Larix", "Betula"],
+                 "Pulsatilla", "Androsace", "Draba", "Cassiope", "Abies", "Picea", "Larix", "Betula", "Diapensia"],
     (1, "key"): ["Nymphaea", "Nuphar", "Nelumbo", "Caltha", "Myosotis", "Menyanthes", "Sagittaria", "Salix", "Typha"],
     (2, "pad"): ["Armeria", "Limonium", "Crithmum", "Ammophila", "Eryngium", "Salicornia", "Zostera", "Crambe", "Cakile",
-                 "Glaucium", "Tamarix", "Calystegia", "Elymus", "Helichrysum", "Santolina", "Lavandula"],
-    (2, "pluck"): ["Myrtus", "Cistus", "Thymus"],
+                 "Glaucium", "Tamarix", "Lavandula", "Calystegia", "Elymus", "Helichrysum", "Santolina"],
     (3, "pad"): ["Lunaria", "Oenothera", "Hesperis", "Cestrum", "Ipomoea", "Datura", "Nicotiana", "Matthiola",
-                 "Selenicereus", "Mirabilis", "Epiphyllum", "Monotropa", "Viscum", "Hedera", "Valeriana", "Papaver"],
-    (3, "bass"): ["Mandragora", "Taxus", "Atropa", "Aconitum"],
+                 "Selenicereus", "Mirabilis", "Epiphyllum", "Papaver", "Monotropa", "Viscum", "Hedera", "Valeriana"],
+    (3, "bass"): ["Mandragora", "Taxus", "Atropa", "Aconitum", "Solanum", "Ilex"],
+    (4, "pad"): ["Monstera", "Ficus", "Epipremnum", "Sansevieria", "Pilea", "Calathea", "Philodendron", "Peperomia",
+                 "Maranta", "Hoya", "Chlorophytum", "Begonia", "Aspidistra", "Fittonia", "Tradescantia", "Oxalis"],
+    (5, "key"): ["Echeveria", "Haworthia", "Crassula", "Gasteria", "Kalanchoe", "Sempervivum", "Graptopetalum"],
+    (5, "pluck"): ["Lithops", "Aloe", "Mammillaria", "Rebutia", "Opuntia"],
 }
 
 
@@ -274,14 +278,18 @@ def main():
                             l0=l0 if loop else 0, l1=l1 if loop else blocks, loop=loop, ls=ls, data=data, env=env,
                             loop_s=(l1 - l0) * 28 / sr if loop else 0))
     # bank A first: the keys, plucks and basses, then the pads, to BANK_A; then the rest in their order
-    # the landscapes: keys by the lake, plucks on the coast, basses at night; the pads by brightness, a third each to
-    # the peaks (the brightest), the coast and the night (the darkest)
+    # the landscapes (0 peaks, 1 lake, 2 coast, 3 night, 4 room, 5 desk): the pads by brightness, a quarter each to
+    # the night (the darkest), the room, the coast and the peaks (the brightest); the keys by brightness too, the
+    # darker by the lake, the brighter on the desk with the plucks; the basses at night
     pads = sorted((e for e in entries if e["kind"] == "pad"), key=lambda e: e["cen"])
     for i, e in enumerate(pads):
-        e["scene"] = 3 if i < len(pads) // 3 else 2 if i < 2 * len(pads) // 3 else 0
+        e["scene"] = (3, 4, 2, 0)[i * 4 // len(pads)]
+    keys = sorted((e for e in entries if e["kind"] == "key"), key=lambda e: e["cen"])
+    for i, e in enumerate(keys):
+        e["scene"] = 1 if i < len(keys) // 2 else 5
     for e in entries:
-        if e["kind"] != "pad":
-            e["scene"] = {"key": 1, "pluck": 2, "bass": 3}[e["kind"]]
+        if e["kind"] in ("pluck", "bass"):
+            e["scene"] = {"pluck": 5, "bass": 3}[e["kind"]]
     used = {}                                           # the names, by scene and kind, in the recordings' order
     for e in entries:
         k = (e["scene"], e["kind"])
@@ -320,8 +328,8 @@ def main():
          "    int8_t cents;            /* how far off it, -50..50 */",
          "    uint8_t loops;           /* 1: loops from loop0 to loop1, else one-shot */",
          "    uint8_t kind;            /* 0 pad, 1 key, 2 pluck, 3 bass */",
-         "    uint8_t scene;           /* Home's landscape: 0 peaks (bright pads), 1 lake (keys), 2 coast (plucks, warm",
-         "                                pads), 3 night (basses, dark pads) */",
+         "    uint8_t scene;           /* Home's landscape: 0 peaks (bright pads), 1 lake (dark keys), 2 coast (warm pads),",
+         "                                3 night (dark pads, basses), 4 room (mellow pads), 5 desk (bright keys, plucks) */",
          "    uint32_t rate_q16;       /* its rate over 44.1 kHz, Q16 */",
          "    uint16_t blocks, loop0, loop1;",
          "    int16_t ls1, ls2;        /* the decoder's state entering loop0 */",
@@ -329,7 +337,10 @@ def main():
          "    uint8_t env[48];         /* its shape, 48 peaks 0..255, for the screen */",
          "} dmk_sample_t;", "",
          f"#define DMK_BANK_A {BANK_A}",
-         "#ifndef DMK_SAMPLES_N", f"#define DMK_SAMPLES_N {len(ordered)}", "#endif", ""]
+         "#ifndef DMK_SAMPLES_N", f"#define DMK_SAMPLES_N {len(ordered)}", "#endif",
+         "/* the first song's sounds: the first recording of a pad, of keys, of a pluck */",
+         *[f"#define DMK_FIRST_{k.upper()} {next(i for i, e in enumerate(ordered) if e['kind'] == k)}" for k in ("pad", "key", "pluck")],
+         "#define DMK_SCENES 6", ""]
     for i, e in enumerate(ordered):
         L.append(f"#if DMK_SAMPLES_N > {i}")
         L.append(f"static const uint8_t SMP{i:02d}[{len(e['data'])}] = {{" + ",".join(map(str, e["data"])) + "};")
