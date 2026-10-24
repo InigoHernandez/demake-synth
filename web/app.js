@@ -242,7 +242,7 @@
   // the rings (border-image) and the sprites (six frames, one under another)
   for (const r of [24, 12]) for (let k = 0; k < 6; k++) new Image().src = `img/bits/ring${r}_${k}.png`;
   for (let k = 0; k < 6; k++) { new Image().src = `img/bits/spark_${k}.png`; new Image().src = `img/bits/glint_${k}.png`; }
-  const glinted = [...document.querySelectorAll(".nav, .foot a")], here = document.querySelector(".nav[aria-current]");
+  const glinted = [...document.querySelectorAll(".nav, .foot a, .mside a, .mpager a")], here = document.querySelector(".nav[aria-current]");
   const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .page")];
   const visible = new Set();
   const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));

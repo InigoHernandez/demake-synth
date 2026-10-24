@@ -8,7 +8,8 @@
 //   gaps     each section's rows, then the air above its content and below it, in modules (the rhythm: 1 below)
 (() => {
   const cv = document.querySelector(".canvas");
-  const vis = (el) => !el.closest("[hidden]") && !el.closest("svg") && getComputedStyle(el).display !== "none";
+  const shown = (el) => !el.checkVisibility || el.checkVisibility();   /* not inside a folded details */
+  const vis = (el) => !el.closest("[hidden]") && !el.closest("svg") && shown(el) && getComputedStyle(el).display !== "none";
   const lines = [];
   const walker = document.createTreeWalker(cv, NodeFilter.SHOW_TEXT);
   for (let n; (n = walker.nextNode());) {
