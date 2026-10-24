@@ -264,7 +264,7 @@ def check(img, syms, dis, rt):
 def main():
     global PRODUCT, VERSION
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="0.Y", help="a release: identity FM-1_965+Y (Y 1..4), version 0.Y")
+    ap.add_argument("--release", metavar="0.Y[.Z]", help="a release: identity FM-1_965+Y (Y 1..4), version 0.Y; a fix 0.Y.Z keeps 0.Y's identity")
     ap.add_argument("--sdk", type=Path, help="the JieLi AC79 SDK (default: $AC79_SDK or ~/fw-AC79_AIoT_SDK)")
     ap.add_argument("--diag", action="store_true", help="a test build: the render's load along the top edge")
     ap.add_argument("--bench", action="store_true", help="the meter and a known load on K1, for the device's ratio")
@@ -277,9 +277,9 @@ def main():
         CORE.extend(["-DDMK_BENCH=1"])
         name = "demake-bench.fwsc"
     if a.release:
-        m = re.fullmatch(r"0\.([1-4])", a.release)
+        m = re.fullmatch(r"0\.([1-4])(\.[1-9][0-9]?)?", a.release)
         if not m:
-            raise SystemExit(f"--release {a.release}: 0.1 .. 0.4 (FM-1_966 .. 969)")
+            raise SystemExit(f"--release {a.release}: 0.1 .. 0.4 (FM-1_966 .. 969), or a fix of one, 0.4.1")
         PRODUCT, VERSION, name = f"FM-1_{965 + int(m[1])}", a.release, f"demake-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk or os.environ.get("AC79_SDK") or str(Path.home() / "fw-AC79_AIoT_SDK")
     for rel, sha in SDK_SHA256.items():
