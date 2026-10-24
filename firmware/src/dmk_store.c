@@ -153,6 +153,7 @@ static int song_pack(uint8_t *o)                        /* the song open into o:
     }
     *p++ = song_n; *p++ = song_end; *p++ = song_mode;   /* the song: its steps, scenes for bars */
     for (i = 0; i < song_n; i++) { *p++ = song[i].scene; *p++ = song[i].bars; }
+    for (s = 0; s < DMK_SYNTHS; s++) *p++ = (uint8_t)ch.hint[s];   /* the harmonies' intervals */
     return (int)(p - o);
 }
 
@@ -243,6 +244,10 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
             song_end = (uint8_t)(*p++ % SE_COUNT); song_mode = (uint8_t)(*p++ ? 1 : 0);
             for (i = 0; i < c && i < SONG_STEPS && e - p >= 2; i++, p += 2) song_put(i, p[0], p[1]);
             song_n = (uint8_t)i;
+        }
+        for (s = 0; s < DMK_SYNTHS; s++) {               /* the harmonies' intervals (a song without them: a third) */
+            int h = e - p >= 1 ? (int8_t)*p++ : 2;
+            ch.hint[s] = (int8_t)(h < -7 || h > 7 ? 2 : h);
         }
     }
     scn[scn_cur].used = 1;

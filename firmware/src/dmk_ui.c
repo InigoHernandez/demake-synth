@@ -62,7 +62,7 @@ static const int8_t BTN_PAGE[B_COUNT] = {PG_FX, PG_FILTER, PG_AMP, PG_LFO, PG_SO
 static const char *const BTN_NAME[B_COUNT] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ",
                                               "PLAY", "REC", "OCT−", "OCT+"};
 static const char *const LAYER_NAME[B_COUNT] = {"ALGORITHM, the effect", "help", "help", "help", "the sound", "ALGORITHM, the type",
-                                                "", "songs", "the progression", "OCT\xE2\x88\x92 clears the roll", "", "", "", ""};
+                                                "", "songs", "the progression", "K2 the harmony, OCT\xE2\x88\x92 clears", "", "", "", ""};
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
@@ -89,7 +89,8 @@ static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\x
 static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Arp up", "Arp down"};
 static const char *const KEYMODES[] = {"Chord", "All"};   /* the keys play chords on CHORD, or on every page but the roll */
 static const char *const KTYPES[] = {"Sevenths", "Triads", "Ninths", "Add9", "Sus2", "Sus4", "6/9", "Power"};
-static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords"};
+static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords",
+                                      "Harmony of 1", "Harmony of 2", "Harmony of 3"};
 static const char *const PROGS[20] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
     "Power lines", "Tower beacon", "Slow thaw", "Candle", "Embers", "Low clouds", "Snowfield", "Static", "Mixtape", "Night drive",
     "User 1", "User 2", "User 3", "User 4"};
@@ -117,6 +118,7 @@ static struct {
     uint16_t btn_held, btn_used;                        /* bit per button */
     char note[32];                                      /* a notice, shown for 1.5 s from note_ms */
     uint8_t keys_down[DMK_KEYS], key_sy[DMK_KEYS], key_note[DMK_KEYS], key_home[DMK_KEYS];
+    uint8_t key_hn[DMK_KEYS][DMK_SYNTHS];               /* a key's harmony on each follower, + 1 (0: none) */
     /* the roll, per synth: the cursor, the lowest scale row shown, the pen's length, the zoom (16 << z steps) */
     uint8_t roll_cur[DMK_SYNTHS], roll_view[DMK_SYNTHS], roll_pen[DMK_SYNTHS], roll_zoom[DMK_SYNTHS];
     uint8_t key_roll[DMK_KEYS], key_step[DMK_KEYS];     /* a key's note: 1 written or held on the roll (at key_step),
@@ -1208,6 +1210,12 @@ static void arr_scene(void)                             /* the scene open: each 
         if (sel) round_fill(SX + 46, y + 1, 18, lh - 4, 6, HOLO);
         else round_line(SX + 46, y + 1, 18, lh - 4, 6, 1, C_LINE);
         text_c(SX + 55, y + 4, n, &FS, sel ? (THEME_DARK[theme] ? C_PAPER : C_INK) : muted ? C_LINE : C_INK);
+        if (harm_of(s) >= 0) {                          /* in harmony: the lead's notes, not its own */
+            char t[16];
+            fmt_int(str_cat(t, "Harmony of "), harm_of(s) + 1);
+            text(x0, y + 4, t, &FS, C_LABEL);
+            continue;
+        }
         hline(x0, y + lh / 2 - 1, w, C_LINE);           /* the pattern's length, its notes on it */
         for (i = 0; i < sq[s].count; i++) {
             int nx = x0 + sq[s].n[i].step * (w - 3) / steps, nw = sq[s].n[i].len * w / steps;
@@ -1739,10 +1747,22 @@ static void ui_encoder(int e, int d)
 #endif
     ui.touch_k = (int8_t)k;
     ui.touch_ms = ui.now;
+    if (k == 1 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, K2: the harmony's interval, in scale steps */
+        static const char *const IV[8] = {"Unison", "A 2nd", "A 3rd", "A 4th", "A 5th", "A 6th", "A 7th", "An octave"};
+        char t[24];
+        int h = ch.hint[ui.synth] + (d > 0 ? 1 : -1);
+        ch.hint[ui.synth] = (int8_t)(h < -7 ? -7 : h > 7 ? 7 : h);
+        h = ch.hint[ui.synth];
+        str_cat(str_cat(t, IV[h < 0 ? -h : h]), h > 0 ? " above" : h < 0 ? " below" : "");
+        notice(t);
+        return;
+    }
     if (k == 4 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, ALGORITHM: how this synth follows the chords */
         char t[32];
-        int f = ch.follow[ui.synth] + (d > 0 ? 1 : -1);
-        ch.follow[ui.synth] = (uint8_t)(f < 0 ? 0 : f >= FW_COUNT ? FW_COUNT - 1 : f);
+        int dir = d > 0 ? 1 : -1, f = ch.follow[ui.synth] + dir;
+        if (f == FW_HARM1 + ui.synth) f += dir;          /* not in harmony with itself */
+        if (f < 0 || f >= FW_COUNT) return;
+        ch.follow[ui.synth] = (uint8_t)f;
         if (ch.follow[ui.synth] != FW_PLAYS) chord_off(ui.synth);
         str_cat(t, FOLLOWS[ch.follow[ui.synth]]);
         notice(t);
@@ -1935,10 +1955,21 @@ static void ui_key(int k, int down)
         }
         ui.key_note[k] = (uint8_t)n;
         note_on_s(s, n);
+        {                                               /* the synths in harmony with this one play along */
+            int f;
+            for (f = 0; f < DMK_SYNTHS; f++) {
+                ui.key_hn[k][f] = 0;
+                if (f != s && harm_of(f) == s) { int h = harm_note(f, n); note_on_s(f, h); ui.key_hn[k][f] = (uint8_t)(h + 1); }
+            }
+        }
         return;
     }
     s = ui.key_sy[k];
     note_off_s(s, ui.key_note[k]);                      /* the synth and the note it started */
+    {
+        int f;
+        for (f = 0; f < DMK_SYNTHS; f++) if (ui.key_hn[k][f]) { note_off_s(f, ui.key_hn[k][f] - 1); ui.key_hn[k][f] = 0; }
+    }
     if (ui.key_roll[k] == 1) {                          /* step entry: the cursor to the note's end */
         int j = seq_find(s, ui.key_step[k], ui.key_note[k]);
         if (j >= 0) ui.roll_cur[s] = (uint8_t)((sq[s].n[j].step + sq[s].n[j].len) % sq[s].steps);

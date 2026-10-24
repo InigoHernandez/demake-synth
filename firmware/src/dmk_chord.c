@@ -23,7 +23,7 @@ static const char *const QN[Q_COUNT] = {"m", "", "m7", "maj7", "7", ("m7\xE2\x99
 
 enum { MO_AEOL, MO_DOR, MO_PHRY, MO_LYD, MO_MIXO, MO_ION, MO_COUNT };
 enum { VO_CLOSE, VO_OPEN, VO_WIDE, VO_SHELL, VO_QUART, VO_COUNT };
-enum { FW_FREE, FW_KEY, FW_CHORD, FW_ROOT, FW_PLAYS, FW_COUNT };
+enum { FW_FREE, FW_KEY, FW_CHORD, FW_ROOT, FW_PLAYS, FW_HARM1, FW_HARM2, FW_HARM3, FW_COUNT };   /* HARMn: synth n's notes, moved */
 enum { RH_HOLD, RH_PULSE4, RH_PULSE8, RH_ARPUP, RH_ARPDN, RH_COUNT };
 
 /* the presets (plan 4.2): a chord a slot, its root in semitones above the key, its quality, its length in half-bars,
@@ -61,7 +61,8 @@ static struct {
     int16_t strum;                                       /* ms between voices, + up, - down */
     uint8_t follow[DMK_SYNTHS];
     uint8_t keys, ktype;                                 /* the keys play chords: on CHORD (0) or everywhere (1); their type */
-} ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, 0, {FW_PLAYS, FW_KEY, FW_ROOT}, 0, 0};
+    int8_t hint[DMK_SYNTHS];                             /* HARMONY: the interval over the lead, in scale steps (-7..7) */
+} ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, 0, {FW_PLAYS, FW_KEY, FW_ROOT}, 0, 0, {2, 2, 2}};
 enum { KT_SEVENTH, KT_TRIAD, KT_NINTH, KT_ADD9, KT_SUS2, KT_SUS4, KT_69, KT_POWER, KT_COUNT };
 
 /* what sounds: the slot, its notes as voiced (the last ones too, for AUTO), its tones as a mask */
@@ -126,6 +127,14 @@ static int snap_set(int p, uint16_t set, uint16_t pref)  /* the nearest pitch in
 }
 
 static int plays_chords(int s) { return ch.follow[s] == FW_PLAYS; }
+/* HARMONY (after the sequencers that harmonize one track from another): a synth that follows another plays each note
+ * the lead plays, its roll left, moved by its interval in scale steps on the scale as the chord bends it (S') */
+static int harm_of(int s) { return ch.follow[s] >= FW_HARM1 && ch.follow[s] <= FW_HARM3 ? ch.follow[s] - FW_HARM1 : -1; }
+static int harm_note(int f, int n)
+{
+    int h = note_of(degree_of(snap(n)) + ch.hint[f]);
+    return snap_set(h, pc_bent(), ch_cmask);
+}
 static const prog_t *cur_prog(void) { return ch.prog < 16 ? &PROG[ch.prog] : &uprog[ch.prog - 16]; }
 
 /* a synth's note as it plays, by its FOLLOW */
@@ -337,6 +346,7 @@ static void chord_init(void)                            /* the first song's: the
 {
     int i;
     ch.follow[0] = FW_PLAYS; ch.follow[1] = FW_KEY; ch.follow[2] = FW_ROOT;
+    ch.hint[0] = ch.hint[1] = ch.hint[2] = 2;           /* a harmony: a third above */
     ch_np = 0; ch_cmask = 0; ch_shown = -1; ch_name[0] = 0;
     for (i = 0; i < LATER_N; i++) later[i].used = 0;
     chord_start();

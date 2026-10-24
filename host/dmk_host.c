@@ -431,6 +431,31 @@ static void selftest(void)
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
+    /* harmony: synth 3 in harmony with synth 2, a third above: its roll left, each of 2's notes moved on the scale;
+     * a key played on 2 sounds on 3 too, and lets go there too */
+    {
+        int seen = 0, own = 0, bad = 0;
+        dmk_init(17); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ch.follow[2] = FW_HARM2; ch.hint[2] = 2;
+        seq_play(1);
+        for (int t = 0; t < 400; t++) {
+            wait_ms(10);
+            for (int v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == 2 && vc[v].src == SRC_ROLL) {
+                int lead = 0;
+                for (int u = 0; u < DMK_VOICES; u++) if (vc[u].on && vc[u].sy == 1 && harm_note(2, vc[u].note) == vc[v].note) lead = 1;
+                seen++; if (!lead) bad++;
+                for (int i = 0; i < sq[2].count; i++) if (sq[2].n[i].note == vc[v].note) own++;
+            }
+        }
+        seq_play(0);
+        if (!seen || bad > seen / 10) { fails++; printf("selftest: a synth in harmony does not move the lead's notes (%d of %d)\n", bad, seen); }
+        ui.synth = 1; tap(B_HOME); dmk_key(4, 1); wait_ms(30);
+        { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2; if (!on) { fails++; printf("selftest: a key on the lead is not harmonized\n"); } }
+        dmk_key(4, 0); wait_ms(30);
+        { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2; if (on) { fails++; printf("selftest: a harmonized key leaves its harmony held\n"); } }
+        (void)own;
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     /* the Keys row: chords everywhere (the roll's keys still notes), of the type it picks; released whole */
     {
         int on;

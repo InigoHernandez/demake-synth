@@ -35,6 +35,8 @@ static void chord_start(void);
 static void chord_quiet(void);
 static int follow_note(int s, int n);
 static int plays_chords(int s);
+static int harm_of(int s);
+static int harm_note(int f, int n);
 static void later_tick(int frames);
 static void chord_rest(void);
 
@@ -244,6 +246,18 @@ static void seq_quiet(int s)                            /* every note the patter
     for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i]) { note_off_src(s, sq[s].live[i], SRC_ROLL); sq[s].left[i] = 0; }
 }
 
+/* a note of a roll on synth s for len steps, in its free slot (all sounding: the first gives way) */
+static void roll_on(int s, int note, int len)
+{
+    seq_t *q = &sq[s];
+    int k, slot = 0;
+    for (k = 0; k < SEQ_LIVE; k++) if (!q->left[k]) { slot = k; break; }
+    if (k == SEQ_LIVE) note_off_src(s, q->live[0], SRC_ROLL);
+    q->live[slot] = (uint8_t)note;
+    q->left[slot] = (uint8_t)(len < 1 ? 1 : len);
+    note_on_src(s, note, SRC_ROLL);
+}
+
 static void seq_step(void)                              /* every synth one step on */
 {
     int s, i, k;
@@ -259,14 +273,13 @@ static void seq_step(void)                              /* every synth one step 
         for (i = 0; i < SEQ_LIVE; i++) if (q->left[i] && !--q->left[i]) note_off_src(s, q->live[i], SRC_ROLL);
         for (i = 0; i < q->count; i++) {
             const snote_t *n = &q->n[i];
-            int len = n->len, slot = 0;
-            if (n->step != q->pos || plays_chords(s) || pat_mute >> s & 1u) continue;   /* the chords' synth leaves its roll */
+            int len = n->len, note;
+            if (n->step != q->pos || plays_chords(s) || harm_of(s) >= 0 || pat_mute >> s & 1u) continue;   /* a follower leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
-            for (k = 0; k < SEQ_LIVE; k++) if (!q->left[k]) { slot = k; break; }
-            if (k == SEQ_LIVE) { note_off_src(s, q->live[0], SRC_ROLL); slot = 0; }   /* all sounding: the first gives way */
-            q->live[slot] = (uint8_t)follow_note(s, n->note);
-            q->left[slot] = (uint8_t)(len < 1 ? 1 : len);
-            note_on_src(s, q->live[slot], SRC_ROLL);
+            note = follow_note(s, n->note);
+            roll_on(s, note, len);
+            for (k = 0; k < DMK_SYNTHS; k++)            /* the synths in harmony with this one: its note, moved */
+                if (k != s && harm_of(k) == s && !(pat_mute >> k & 1u)) roll_on(k, harm_note(k, note), len);
         }
         q->pos = (uint8_t)((q->pos + 1) % q->steps);
     }
