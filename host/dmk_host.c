@@ -145,7 +145,8 @@ static void tour(const char *dir)
     tap(B_SEL); for (int i = 0; i < 30; i++) dmk_encoder(E_K1, -1); for (int i = 0; i < 40; i++) dmk_encoder(E_K2, 1);
     shot(dir, "filter_turned");
     tap(B_HOME); dmk_encoder(E_SELECT, 1); shot(dir, "home_synth2");
-    dmk_button(B_HOME, 1); wait_ms(500); shot(dir, "home_held"); dmk_button(B_HOME, 0); wait_ms(60);
+    dmk_button(B_HOME, 1); wait_ms(500); dmk_key(4, 1); dmk_key(4, 0); dmk_key(3, 1); dmk_key(3, 0); wait_ms(60); shot(dir, "home_held");
+    dmk_key(0, 1); dmk_key(0, 0); dmk_key(3, 1); dmk_key(3, 0); dmk_button(B_HOME, 0); wait_ms(60);   /* pattern 3 made, synth 2 muted and back */
     tap(B_OCTU); wait_ms(300); shot(dir, "notice");
     tap(B_SAVE); wait_ms(100); shot(dir, "saved"); wait_ms(1500);   /* SAVE: the song into its slot */
     dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); dmk_encoder(E_K1, 1); wait_ms(60); shot(dir, "discs");
@@ -318,6 +319,33 @@ static void selftest(void)
         if (ui.val[1][PG_FILTER][0][1] != 99 || strcmp(ui.note, "User 01")) { fails++; printf("selftest: PRESETS does not reach the library (%s)\n", ui.note); }
         dmk_init(11);
         if (lib_count() != 1) { fails++; printf("selftest: the library is not kept\n"); }
+        host_store_on(0, 0);
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    /* the patterns: HOME held and a white key; an empty one starts as a copy; playing, the switch waits for the bar;
+     * a black key mutes its synth; a song saves all eight */
+    {
+        int n0;
+        dmk_init(12); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        n0 = sq[1].count;
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); wait_ms(30);
+        if (pat_cur != 1 || !pat[1].used || sq[1].count != n0) { fails++; printf("selftest: an empty pattern is not a copy of this one\n"); }
+        seq_add(1, 3, 1, 70, 100);                      /* pattern 2 has a note more */
+        dmk_key(0, 1); dmk_key(0, 0); wait_ms(30);
+        if (pat_cur != 0 || sq[1].count != n0) { fails++; printf("selftest: back to pattern 1, its rolls are not its own\n"); }
+        dmk_button(B_HOME, 0); wait_ms(30);
+        if (ui.page == PG_HOME && ui.btn_used) {}
+        seq_play(1); wait_ms(100);
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); dmk_button(B_HOME, 0);
+        if (pat_cur != 0 || pat_next != 1) { fails++; printf("selftest: playing, a switch does not wait for the bar\n"); }
+        wait_ms(16 * 60000 / 72 / 4 + 100);              /* a bar at 72 */
+        if (pat_cur != 1 || sq[1].count != n0 + 1) { fails++; printf("selftest: the switch does not happen on the bar\n"); }
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(1, 1); dmk_key(1, 0); dmk_button(B_HOME, 0); wait_ms(1500);
+        { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 0; if (!(pat_mute & 1u) || on) { fails++; printf("selftest: a muted synth still plays (%d)\n", on); } }
+        seq_play(0);
+        host_store_on(1, 1);
+        tap(B_SAVE); dmk_init(13); now_ms = 0; wait_ms(60);
+        if (!pat[0].used || !pat[1].used || pat[2].used || pat_cur != 1 || sq[1].count != n0 + 1) { fails++; printf("selftest: a song does not keep its patterns\n"); }
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }

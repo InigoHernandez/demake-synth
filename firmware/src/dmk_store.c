@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 1u
+#define ST_VER 2u                                       /* 2: eight patterns (1: the rolls alone, still read) */
 
 static uint8_t st_buf[ST_SECTOR] POOL;                  /* a sector as it is written or was read */
 static uint8_t lib[ST_USER][ST_SOUND] POOL;             /* the library, as the flash holds it: [used, 0, 45 values] */
@@ -43,12 +43,14 @@ static void st_put32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_
 static uint32_t st_get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 
 /* a record at at into st_buf: 0 and its length, or -1 (none there, another firmware's, or damaged) */
+static uint32_t st_ver;                                 /* the last record read's version */
 static int st_load(uint32_t at, uint32_t magic, uint32_t *len, uint32_t *gen)
 {
     uint32_t n;
     if (!store_on() || dmk_store_read(at, st_buf, ST_HDR) || st_get32(st_buf) != magic) return -1;
     n = st_get32(st_buf + 4);
-    if (n > ST_SECTOR - ST_HDR || (st_get32(st_buf + 12) & 0xFFFFu) != ST_VER) return -1;
+    st_ver = st_get32(st_buf + 12) & 0xFFFFu;
+    if (n > ST_SECTOR - ST_HDR || st_ver < 1u || st_ver > ST_VER) return -1;
     if (dmk_store_read(at + ST_HDR, st_buf + ST_HDR, n) || st_crc(st_buf + ST_HDR, n) != st_get32(st_buf + 8)) return -1;
     *len = n;
     if (gen) *gen = st_get32(st_buf + 12) >> 16;
@@ -131,12 +133,32 @@ static int song_pack(uint8_t *o)                        /* the song open into o:
         for (k = 0; k < PROG_SLOTS; k++) { *p++ = uprog[i].s[k].root; *p++ = uprog[i].s[k].q; *p++ = uprog[i].s[k].half; *p++ = uprog[i].s[k].pedal; }
     }
     for (s = 0; s < DMK_SYNTHS; s++) { *p++ = ui.roll_cur[s]; *p++ = ui.roll_view[s]; *p++ = ui.roll_pen[s]; *p++ = ui.roll_zoom[s]; }
-    for (s = 0; s < DMK_SYNTHS; s++) {
-        *p++ = sq[s].steps; *p++ = sq[s].count;
-        if (p - o + sq[s].count * 4 > (int)(ST_SECTOR - ST_HDR)) return -1;
-        for (i = 0; i < sq[s].count; i++) { *p++ = sq[s].n[i].step; *p++ = sq[s].n[i].len; *p++ = sq[s].n[i].note; *p++ = sq[s].n[i].vel; }
+    pat_keep();                                         /* the open pattern with the others */
+    *p++ = pat_cur;
+    for (g = 0; g < PATTERNS; g++) {
+        *p++ = pat[g].used; *p++ = pat[g].prog;
+        if (!pat[g].used) continue;
+        for (s = 0; s < DMK_SYNTHS; s++) {
+            const pseq_t *q = &pat[g].s[s];
+            *p++ = q->steps; *p++ = q->count;
+            if (p - o + q->count * 4 > (int)(ST_SECTOR - ST_HDR)) return -1;
+            for (i = 0; i < q->count; i++) { *p++ = q->n[i].step; *p++ = q->n[i].len; *p++ = q->n[i].note; *p++ = q->n[i].vel; }
+        }
     }
     return (int)(p - o);
+}
+
+static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a roll: its length, its notes */
+{
+    const uint8_t *p = *pp;
+    int st, c, i;
+    if (e - p < 2) return -1;
+    st = *p++; c = *p++;
+    q->steps = (uint8_t)(st < 1 ? 1 : st > SEQ_STEPS ? SEQ_STEPS : st);
+    q->count = 0;
+    for (i = 0; i < c && e - p >= 4; i++, p += 4) if (q->count < SEQ_NOTES && p[0] < q->steps) q->n[q->count++] = (snote_t){p[0], p[1], p[2], p[3]};
+    *pp = p;
+    return 0;
 }
 
 static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is the one in p */
@@ -155,16 +177,24 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
         for (k = 0; k < PROG_SLOTS; k++) { uprog[i].s[k].root = *p++; uprog[i].s[k].q = *p++; uprog[i].s[k].half = *p++; uprog[i].s[k].pedal = *p++; }
     }
     for (s = 0; s < DMK_SYNTHS; s++) { ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++; }
-    for (s = 0; s < DMK_SYNTHS; s++) {
-        int st, c;
-        if (e - p < 2) return -1;
-        st = *p++; c = *p++;
-        sq[s].steps = (uint8_t)(st < 1 ? 1 : st > SEQ_STEPS ? SEQ_STEPS : st);
-        sq[s].count = 0;
-        for (i = 0; i < c && e - p >= 4; i++, p += 4) if (sq[s].count < SEQ_NOTES && p[0] < sq[s].steps) sq[s].n[sq[s].count++] = (snote_t){p[0], p[1], p[2], p[3]};
-        sq[s].pos = 0;
-        if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
+    pat_init();
+    if (st_ver < 2u) {                                  /* version 1: the rolls, the one pattern */
+        for (s = 0; s < DMK_SYNTHS; s++) if (seq_unpack(&pat[0].s[s], &p, e)) return -1;
+        pat[0].used = 1; pat[0].prog = ui.val[0][PG_CHORD][0][4];
+    } else {
+        int cur;
+        if (e - p < 1) return -1;
+        cur = *p++;
+        for (g = 0; g < PATTERNS; g++) {
+            if (e - p < 2) return -1;
+            pat[g].used = *p++; pat[g].prog = *p++;
+            if (pat[g].used) for (s = 0; s < DMK_SYNTHS; s++) if (seq_unpack(&pat[g].s[s], &p, e)) return -1;
+        }
+        pat_cur = (uint8_t)(cur < PATTERNS && pat[cur].used ? cur : 0);
+        pat[pat_cur].used = 1;
     }
+    pat_load(pat_cur);
+    for (s = 0; s < DMK_SYNTHS; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
     for (s = 0; s < DMK_SYNTHS; s++) {
         if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N) ui.val[s][PG_SOUND][0][0] = 0;
     }

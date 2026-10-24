@@ -276,7 +276,7 @@ static void chord_step(void)
         if (newslot) {
             for (i = 0; i < ch_n; i++) ch_play[i] = ch_notes[i];
             ch_np = ch_n;
-            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) strike(s, ch_notes, ch_n);
+            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike(s, ch_notes, ch_n);
         }
     } else if (ch.rhythm == RH_PULSE4 || ch.rhythm == RH_PULSE8) {
         int every = ch.rhythm == RH_PULSE4 ? 4 : 2;
@@ -284,14 +284,14 @@ static void chord_step(void)
             chord_quiet();
             for (i = 0; i < ch_n; i++) ch_play[i] = ch_notes[i];
             ch_np = ch_n;
-            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) strike(s, ch_notes, ch_n);
+            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike(s, ch_notes, ch_n);
         }
     } else {                                            /* the arpeggio: a note a step */
         int k = ch_arp % ch_n, note = ch.rhythm == RH_ARPUP ? ch_notes[k] : ch_notes[ch_n - 1 - k];
         chord_quiet();
         ch_play[0] = (uint8_t)note;
         ch_np = 1;
-        for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) note_on_s(s, note);
+        for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) note_on_s(s, note);
         ch_arp++;
     }
     ch_left--;

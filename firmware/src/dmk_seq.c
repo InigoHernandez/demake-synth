@@ -35,6 +35,53 @@ static int follow_note(int s, int n);
 static int plays_chords(int s);
 static void later_tick(int frames);
 
+/* the patterns (docs/plan.md, 3.6.1): a song has eight; a pattern is the three rolls and the progression, the
+ * sounds, effects, key and tempo being the song's, so a switch changes the notes and the harmony, never the timbre.
+ * The open one is sq[]; the others wait in pat[]. Playing, a switch waits for the bar (16 steps since PLAY), then
+ * every roll and the progression start again from their beginnings. A synth muted plays nothing of its roll or of
+ * the chords (the keys still sound) */
+#define PATTERNS 8
+typedef struct { snote_t n[SEQ_NOTES]; uint8_t count, steps; } pseq_t;
+static struct { pseq_t s[DMK_SYNTHS]; uint8_t prog, used; } pat[PATTERNS] POOL;
+static uint8_t pat_cur, pat_next = 0xFF, pat_mute;
+static uint8_t pat_prog_get(void);                      /* the CHORD page's progression (dmk_ui.c) */
+static void pat_prog_put(uint8_t v);
+
+static void pat_keep(void)                              /* the open pattern into its place */
+{
+    int s, i;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        pat[pat_cur].s[s].count = sq[s].count; pat[pat_cur].s[s].steps = sq[s].steps;
+        for (i = 0; i < sq[s].count; i++) pat[pat_cur].s[s].n[i] = sq[s].n[i];
+    }
+    pat[pat_cur].prog = pat_prog_get();
+    pat[pat_cur].used = 1;
+}
+static void seq_quiet(int s);
+static void chord_quiet(void);
+static void chord_start(void);
+static void pat_load(int p)                             /* pattern p into the open one (what was open not kept) */
+{
+    int s, i;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        seq_quiet(s);
+        sq[s].count = pat[p].s[s].count; sq[s].steps = pat[p].s[s].steps ? pat[p].s[s].steps : 16;
+        for (i = 0; i < sq[s].count; i++) sq[s].n[i] = pat[p].s[s].n[i];
+        sq[s].pos = 0;
+    }
+    pat_cur = (uint8_t)p;
+    pat_prog_put(pat[p].prog);
+    chord_quiet();
+    chord_start();
+}
+static void pat_open(int p) { pat_keep(); pat_load(p); }   /* pattern p open: the last kept first */
+static void pat_init(void)                              /* the first song: one pattern, the open one */
+{
+    int p;
+    for (p = 0; p < PATTERNS; p++) pat[p].used = 0;
+    pat_cur = 0; pat_next = 0xFF; pat_mute = 0;
+}
+
 static int snap(int n)                                  /* the scale's note at or under n */
 {
     int rel = ((n - SCALE_ROOT) % 12 + 12) % 12, i = 6;
@@ -82,6 +129,7 @@ static void seq_quiet(int s)                            /* every note the patter
 static void seq_step(void)                              /* every synth one step on */
 {
     int s, i, k;
+    if (pat_next < PATTERNS && !(seq_ticks % 16u)) { pat_open(pat_next); pat_next = 0xFF; }   /* on the bar */
     chord_step();                                       /* the harmony first: the notes follow the chord now */
     for (s = 0; s < DMK_SYNTHS; s++) {
         seq_t *q = &sq[s];
@@ -89,7 +137,7 @@ static void seq_step(void)                              /* every synth one step 
         for (i = 0; i < q->count; i++) {
             const snote_t *n = &q->n[i];
             int len = n->len, slot = 0;
-            if (n->step != q->pos || plays_chords(s)) continue;   /* a synth that plays the chords leaves its roll */
+            if (n->step != q->pos || plays_chords(s) || pat_mute >> s & 1u) continue;   /* the chords' synth leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
             for (k = 0; k < SEQ_LIVE; k++) if (!q->left[k]) { slot = k; break; }
             if (k == SEQ_LIVE) { note_off_s(s, q->live[0]); slot = 0; }   /* all sounding: the first gives way */
@@ -146,4 +194,5 @@ static void seq_init(void)
     for (i = 0; i < sizeof PLUCK / sizeof PLUCK[0]; i++) seq_add(2, PLUCK[i][0], PLUCK[i][1], PLUCK[i][2], 100);
     seq_on = seq_rec = 0;
     for (i = 0; i < DMK_SYNTHS; i++) { unsigned k; for (k = 0; k < SEQ_LIVE; k++) sq[i].left[k] = 0; }
+    pat_init();
 }

@@ -111,7 +111,7 @@ static struct {
     int8_t touch_k;                                     /* the field turned last (lit for a second) */
     uint16_t btn_held, btn_used;                        /* bit per button */
     char note[32];                                      /* a notice, shown for 1.5 s from note_ms */
-    uint8_t keys_down[DMK_KEYS], key_sy[DMK_KEYS], key_note[DMK_KEYS];
+    uint8_t keys_down[DMK_KEYS], key_sy[DMK_KEYS], key_note[DMK_KEYS], key_home[DMK_KEYS];
     /* the roll, per synth: the cursor, the lowest scale row shown, the pen's length, the zoom (16 << z steps) */
     uint8_t roll_cur[DMK_SYNTHS], roll_view[DMK_SYNTHS], roll_pen[DMK_SYNTHS], roll_zoom[DMK_SYNTHS];
     uint8_t key_roll[DMK_KEYS], key_step[DMK_KEYS];     /* a key's note: 1 written or held on the roll (at key_step),
@@ -135,6 +135,24 @@ static void notice(const char *s)
     for (i = 0; i < 31 && s[i]; i++) ui.note[i] = s[i];
     ui.note[i] = 0;
     ui.note_ms = ui.now ? ui.now : 1;
+}
+
+/* the patterns' progression is the CHORD page's (dmk_seq.c keeps the rest) */
+static uint8_t pat_prog_get(void) { return ui.val[0][PG_CHORD][0][4]; }
+static void pat_prog_put(uint8_t v) { ui.val[0][PG_CHORD][0][4] = v; ch.prog = (uint8_t)(v * PROG_N / 128); }
+/* HOME held, a white key: that pattern, at the bar when playing; an empty one starts as a copy of this one */
+static void pat_pick(int p)
+{
+    if (!pat[p].used) { pat_keep(); pat[p] = pat[pat_cur]; }
+    if (p == pat_cur) { pat_next = 0xFF; return; }
+    if (seq_on) pat_next = (uint8_t)p;
+    else pat_open(p);
+}
+static void pat_mute_flip(int s)                        /* HOME held, a black key: that synth muted, or back */
+{
+    int i;
+    pat_mute ^= (uint8_t)(1u << s);
+    if (pat_mute >> s & 1u) { seq_quiet(s); if (ch.follow[s] == FW_PLAYS) for (i = 0; i < ch_np; i++) later_off(s, ch_play[i]); }
 }
 
 /* the store (dmk_store.c, after this file) */
@@ -560,8 +578,12 @@ static void foot(void)
         if (store_on()) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "SAVE: save here", &FS, C_LABEL);
         return;
     }
-    if (ui.btn_held >> B_HOME & 1u && ui.now - ui.btn_down_at[B_HOME] > 350u) {   /* the patterns */
-        text(PAD + 1, Y_FOOT + 2, "Patterns", &FS, C_LABEL);
+    if (ui.btn_held >> B_HOME & 1u && ui.now - ui.btn_down_at[B_HOME] > 350u) {   /* the patterns; the synths muted */
+        char t[16];
+        int s;
+        char *o = str_cat(t, pat_mute ? "Muted" : "Patterns");
+        for (s = 0; s < DMK_SYNTHS; s++) if (pat_mute >> s & 1u) { *o++ = ' '; *o++ = (char)('1' + s); *o = 0; }
+        text(PAD + 1, Y_FOOT + 2, t, &FS, C_LABEL);
         text_r(DMK_W - PAD - 1, Y_FOOT + 2, "OCT\xE2\x88\x92 twice: clear all", &FS, C_LABEL);
         return;
     }
@@ -817,11 +839,11 @@ static void stage_patterns(void)                        /* HOME held: the song's
         char n[2] = {(char)('1' + i), 0};
         int x = cell_x(SX, SW, 4, i % 4), w = cell_w(SX, SW, 4, i % 4), h = (SH - G) / 2, y = SY + (i / 4) * (h + G);
         int ty = y + (h - 20) / 2 - 1;
-        if (i == 0) {                                   /* playing: a lit card, its number dark on the core */
+        if (i == pat_cur) {                             /* playing: a lit card, its number dark on the core */
             round_fill(x, y, w, h, R_CARD, HOLO);
             text_c(x + w / 2, ty, n, &FM, THEME_DARK[theme] ? C_PAPER : C_INK);
-        } else if (i == 4) { card(x, y, w, h, HOLO, 2); text_c(x + w / 2, ty, n, &FM, HOLO); }   /* next */
-        else { card(x, y, w, h, C_LINE, 1); text_c(x + w / 2, ty, n, &FM, C_LABEL); }
+        } else if (i == pat_next) { card(x, y, w, h, HOLO, 2); text_c(x + w / 2, ty, n, &FM, HOLO); }   /* next */
+        else { card(x, y, w, h, C_LINE, 1); text_c(x + w / 2, ty, n, &FM, pat[i].used ? C_INK : C_LABEL); }   /* empty: grey */
     }
 }
 
@@ -1571,6 +1593,15 @@ static void ui_key(int k, int down)
     if (k < 0 || k >= DMK_KEYS) return;
     ui.boot_done = 1;
     n = 53 + k + ui.octave * 12;                        /* F3 = 53, chromatic */
+    if (down && ui.btn_held >> B_HOME & 1u) {           /* HOME held: white keys 1-8 the patterns, black 1-3 the mutes */
+        static const int8_t WK[13] = {0, -1, 1, -1, 2, -1, 3, 4, -1, 5, -1, 6, 7};
+        ui.btn_used |= (uint16_t)(1u << B_HOME);
+        ui.key_home[k] = 1;
+        if (k < 13 && WK[k] >= 0) pat_pick(WK[k]);
+        else if (k == 1 || k == 3 || k == 5) pat_mute_flip(k / 2);
+        return;
+    }
+    if (!down && ui.key_home[k]) { ui.key_home[k] = 0; return; }   /* its release: nothing sounded */
     ui.keys_down[k] = (uint8_t)down;
     if (ui.page == PG_CHORD || (!down && ui.key_nch[k])) {   /* the CHORD page: a key, a chord */
         int j;
@@ -1642,6 +1673,12 @@ static const uint8_t *ui_leds(void)
         if (!ui.keys_down[i] && ui.page == PG_ROLL && !seq_on && seq_find(ui.synth, ui.roll_cur[ui.synth], n) >= 0)
             leds[i] = (ui.now / 250u) & 1u ? 255 : 0;
         if (!ui.keys_down[i] && ui.page == PG_CHORD && ch_cmask >> (n % 12) & 1u) leds[i] = 255;   /* the chord now */
+    }
+    if (ui.btn_held >> B_HOME & 1u) {                   /* HOME held: the patterns kept lit (the next blinking), the synths playing */
+        static const uint8_t WK[8] = {0, 2, 4, 6, 7, 9, 11, 12};
+        for (i = 0; i < DMK_KEYS; i++) leds[i] = 0;
+        for (i = 0; i < 8; i++) leds[WK[i]] = i == pat_cur || (pat[i].used && i != pat_next) || (i == pat_next && (ui.now / 250u) & 1u) ? 255 : 0;
+        for (i = 0; i < DMK_SYNTHS; i++) leds[1 + 2 * i] = pat_mute >> i & 1u ? 0 : 255;
     }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
     leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;
