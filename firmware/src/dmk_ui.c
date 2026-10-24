@@ -1183,6 +1183,36 @@ static void ink_line(int x0, int w, const int16_t *ys)
     }
 }
 
+/* the lit shapes' bits move as the landscapes' do (a new arrangement every 140 ms): a few lights travel along the
+ * edge, a few twinkle in the body. Drawn after the light is made, so a graph's cached depths stay */
+static void graph_life(int x0, int w, const int16_t *ya, const int16_t *yb, int salt)
+{
+    uint32_t t = ui.now / 140u;
+    int i;
+    for (i = 0; i < 6; i++) {                           /* along the edge, each its own pace: a short light, two rows */
+        uint32_t h = hsh((uint32_t)(i * 7 + salt));
+        int x = (int)((h % (uint32_t)w + t * (1u + (h >> 8) % 3u)) % (uint32_t)w), k;
+        for (k = 0; k < 3 && x + k < w; k++)
+            if (yb[x + k] - ya[x + k] > 4) { px_put(x0 + x + k, ya[x + k] + 1, k == 1 ? C_HOLO7 : C_HOLO6); px_put(x0 + x + k, ya[x + k] + 2, C_HOLO6); }
+    }
+    for (i = 0; i < 8; i++) {                           /* inside, twinkling */
+        uint32_t h = hsh((uint32_t)(i * 131 + salt) + t);
+        int x = (int)(h % (uint32_t)w), span = yb[x] - ya[x] - 4;
+        if (span > 2) { int y = ya[x] + 2 + (int)((h >> 12) % (uint32_t)span); px_put(x0 + x, y, C_HOLO7); if (x + 1 < w) px_put(x0 + x + 1, y, C_HOLO6); }
+    }
+}
+static int voice_newest(int s)                          /* the newest sounding voice of synth s, or -1 */
+{
+    int v, best = -1;
+    for (v = 0; v < DMK_VOICES; v++) if (vc[v].stage && vc[v].sy == s && (best < 0 || vc[v].age > vc[best].age)) best = v;
+    return best;
+}
+static void spark(int x, int y)                         /* a point of light: a pale core in a pink ring */
+{
+    fill(x - 1, y - 2, 3, 5, C_HOLO5); fill(x - 2, y - 1, 5, 3, C_HOLO5);
+    fill(x - 1, y - 1, 3, 3, C_HOLO7);
+}
+
 static void stage_sound(void)
 {
     int16_t ya[DMK_W], yb[DMK_W];
@@ -1197,7 +1227,17 @@ static void stage_sound(void)
         ya[i] = (int16_t)(mid - h); yb[i] = (int16_t)(mid + h + 1);
     }
     lit_band(x0, w, ya, yb);
+    graph_life(x0, w, ya, yb, 1);
     for (i = 0; i < w; i++) { px_put(x0 + i, ya[i], C_INK); px_put(x0 + i, yb[i] - 1, C_INK); }
+    if (!ui.row[PG_SOUND]) {                            /* each voice playing it: where it is in the sound */
+        int v, y;
+        for (v = 0; v < DMK_VOICES; v++)
+            if (vc[v].stage && vc[v].sy == ui.synth && vc[v].s == sm) {
+                int px = vc[v].blk * (w - 1) / (n ? n : 1);
+                for (y = ya[px] + 1; y < yb[px] - 1; y++) px_put(x0 + px, y, C_HOLO7);
+                spark(x0 + px, ya[px]);
+            }
+    }
     if (sm->loops && *vp(PG_SOUND, 0, 2) >= 64)         /* the loop's ends, as tall as the sample is there */
         for (i = 0; i < 2; i++) {
             int lx = (i ? sm->loop1 : sm->loop0) * (w - 1) / n, lh = mid - ya[lx] + 5;
@@ -1241,7 +1281,15 @@ static void stage_filter(void)
         yb[i] = (int16_t)(base + 1);
     }
     lit_band(x0, w, ys, yb);
+    graph_life(x0, w, ys, yb, 2);
     ink_line(x0, w, ys);
+    {                                                   /* a note playing: where its envelope has the cutoff now */
+        int v = voice_newest(ui.synth);
+        if (v >= 0 && type != FT_OFF && type != FT_VOWEL && syn[ui.synth].fenv) {
+            int idx = clampi(syn[ui.synth].cut + (int32_t)(((int64_t)syn[ui.synth].fenv * vc[v].env) >> 24), 0, 255), lx = x0 + idx * (w - 1) / 255;
+            spark(lx, ys[lx - x0] + 1);
+        }
+    }
     ex = fc + env * (w - 1) / 127;                      /* where the envelope takes the cutoff */
     if (ex < x0) ex = x0;
     if (ex > x0 + w - 1) ex = x0 + w - 1;
@@ -1269,8 +1317,24 @@ static void stage_amp(void)
             ys[pts[i][0] + k - x0] = (int16_t)(pts[i][1] + (n ? (pts[i + 1][1] - pts[i][1]) * k / n : 0));
     }
     lit_band(x0, w, ys, yb);
+    graph_life(x0, w, ys, yb, 3);
     ink_line(x0, w, ys);
     for (i = 1; i < 4; i++) round_fill(pts[i][0] - 4, pts[i][1] - 4, 9, 9, 4, lit(i - 1) || (i == 3 && lit(3)) ? HOLO : C_INK);
+    {                                                   /* a note playing: its envelope's point, travelling the shape */
+        int v = voice_newest(ui.synth);
+        if (v >= 0) {
+            const voice_t *o = &vc[v];
+            int32_t sus = syn[ui.synth].sus, e = o->env;
+            int px;
+            if (o->stage == 1) px = pts[0][0] + (int)((int64_t)a * e / FULL);
+            else if (o->stage == 2 && e > sus + FULL / 64) px = pts[1][0] + (int)((int64_t)d * (FULL - e) / (FULL - sus > 0 ? FULL - sus : 1));
+            else if (o->stage == 2) px = pts[2][0] + (int)(o->blocks / 8u % (unsigned)(hold > 0 ? hold : 1));   /* held: along the sustain */
+            else px = pts[3][0] + (sus > 0 ? (int)((int64_t)r * (sus - (e < sus ? e : sus)) / sus) : r);
+            if (px < x0) px = x0;
+            if (px > x0 + w - 1) px = x0 + w - 1;
+            spark(px, ys[px - x0]);
+        }
+    }
 }
 
 /* the LFO: its wave across the card, as many cycles as the rate (1..8), as tall as the depth, of its shape (sine,
@@ -1296,6 +1360,7 @@ static void stage_lfo(void)
     }
     hline(x0, mid, w, C_LINE);
     lit_band(x0, w, ya, yb);
+    graph_life(x0, w, ya, yb, 4);
     ink_line(x0, w, ys);
     if (fade) round_fill(x0 + fade - 4, mid - 4, 9, 9, 4, lit(3) ? HOLO : C_INK);
 }
