@@ -169,6 +169,8 @@ static void tour(const char *dir)
     dmk_key(0, 1); dmk_key(0, 0); dmk_key(4, 1); dmk_key(4, 0); dmk_encoder(E_K1, -1); dmk_encoder(E_K3, 1); dmk_encoder(E_K3, 1);
     dmk_encoder(E_K1, 1); dmk_key(0, 1); dmk_key(0, 0); dmk_key(4, 1); dmk_key(4, 0); dmk_encoder(E_K1, -1); dmk_encoder(E_K1, -1);
     wait_ms(60); shot(dir, "arrange");
+    dmk_button(B_OCTD, 1); dmk_button(B_OCTU, 1); wait_ms(700); dmk_button(B_OCTU, 0); dmk_button(B_OCTD, 0); wait_ms(1600);
+    shot(dir, "landscape"); dmk_encoder(E_K1, -1);       /* the landscape full screen, and back */
     dmk_encoder(E_ALGO, 1);
     tap(B_ARP); tap(B_ARP); tap(B_ARP); dmk_encoder(E_K2, 1); dmk_encoder(E_K2, 1); wait_ms(60); shot(dir, "chord_keys");   /* the Keys row */
     dmk_encoder(E_K2, -1); dmk_encoder(E_K2, -1); tap(B_SEQ);
@@ -456,6 +458,23 @@ static void selftest(void)
         (void)own;
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
+    /* the landscape full screen: OCT- and OCT+ held half a second, the octave left as it was; the keys still play; a
+     * knob or a page button, or the two again, back */
+    {
+        dmk_init(18); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_HOME);
+        dmk_button(B_OCTD, 1); dmk_button(B_OCTU, 1); wait_ms(700); dmk_button(B_OCTU, 0); dmk_button(B_OCTD, 0); wait_ms(30);
+        if (!ui.full || ui.octave != 0) { fails++; printf("selftest: OCT- and OCT+ held do not show the landscape (octave %d)\n", ui.octave); }
+        dmk_key(4, 1); wait_ms(30);
+        { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on; if (!on) { fails++; printf("selftest: the keys do not play over the landscape\n"); } }
+        dmk_key(4, 0); wait_ms(30);
+        dmk_button(B_OCTU, 1); dmk_button(B_OCTD, 1); wait_ms(700); dmk_button(B_OCTD, 0); dmk_button(B_OCTU, 0); wait_ms(30);
+        if (ui.full) { fails++; printf("selftest: the two held again do not leave the landscape\n"); }
+        dmk_button(B_OCTD, 1); dmk_button(B_OCTU, 1); wait_ms(700); dmk_button(B_OCTU, 0); dmk_button(B_OCTD, 0); wait_ms(30);
+        dmk_encoder(E_K1, 1);
+        if (ui.full) { fails++; printf("selftest: a knob does not leave the landscape\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     /* the Keys row: chords everywhere (the roll's keys still notes), of the type it picks; released whole */
     {
         int on;
@@ -587,19 +606,19 @@ static void fx_demo(const char *dir)
     static const uint8_t VL[4] = {100, 60, 124, 100}, GR[4] = {110, 70, 70, 60};
     static const char *const FN[3] = {"filter_notch", "filter_peak", "filter_vowel"};
     int t;
-    for (t = 0; t < 6; t++) fx_one(dir, VN[t], t == 4 ? "Snow pad" : "Felt piano", PG_GLOBAL, 0, t, t == 1 || t == 2 || t == 3 ? VL : VB, 1, 0);
-    fx_one(dir, "echo_grains", "Felt piano", PG_GLOBAL, 1, ET_GRAINS, GR, 1, 0);
-    fx_one(dir, "colour_1_saturate", "Felt piano", PG_FX, 0, FC_SAT, SAT, 0, 0);
-    fx_one(dir, "colour_2_crush", "Felt piano", PG_FX, 0, FC_CRUSH, CR, 0, 0);
-    fx_one(dir, "colour_3_lossy", "Felt piano", PG_FX, 0, FC_LOSSY, LO, 0, 0);
-    fx_one(dir, "colour_4_noise", "Felt piano", PG_FX, 0, FC_NOISE, NO, 0, 0);
-    fx_one(dir, "media_1_tape", "Snow pad", PG_FX, 1, FM_TAPE, TA, 0, 0);
-    fx_one(dir, "media_2_cassette", "Snow pad", PG_FX, 1, FM_CASS, CA, 0, 0);
-    fx_one(dir, "media_3_vhs", "Snow pad", PG_FX, 1, FM_VHS, VH, 0, 0);
-    fx_one(dir, "motion_1_chorus", "Glass pluck", PG_FX, 2, FO_CHORUS, CH, 0, 0);
-    fx_one(dir, "motion_2_vibrato", "Felt piano", PG_FX, 2, FO_VIB, VI, 0, 0);
-    fx_one(dir, "motion_3_drift", "Snow pad", PG_FX, 2, FO_DRIFT, DR, 0, 0);
-    for (t = 0; t < 3; t++) fx_one(dir, FN[t], "Snow pad", PG_FILTER, 0, FT_NOTCH + t, FI, 0, 1);
+    for (t = 0; t < 6; t++) fx_one(dir, VN[t], t == 4 ? "Lunaria" : "Nymphaea", PG_GLOBAL, 0, t, t == 1 || t == 2 || t == 3 ? VL : VB, 1, 0);
+    fx_one(dir, "echo_grains", "Nymphaea", PG_GLOBAL, 1, ET_GRAINS, GR, 1, 0);
+    fx_one(dir, "colour_1_saturate", "Nymphaea", PG_FX, 0, FC_SAT, SAT, 0, 0);
+    fx_one(dir, "colour_2_crush", "Nymphaea", PG_FX, 0, FC_CRUSH, CR, 0, 0);
+    fx_one(dir, "colour_3_lossy", "Nymphaea", PG_FX, 0, FC_LOSSY, LO, 0, 0);
+    fx_one(dir, "colour_4_noise", "Nymphaea", PG_FX, 0, FC_NOISE, NO, 0, 0);
+    fx_one(dir, "media_1_tape", "Lunaria", PG_FX, 1, FM_TAPE, TA, 0, 0);
+    fx_one(dir, "media_2_cassette", "Lunaria", PG_FX, 1, FM_CASS, CA, 0, 0);
+    fx_one(dir, "media_3_vhs", "Lunaria", PG_FX, 1, FM_VHS, VH, 0, 0);
+    fx_one(dir, "motion_1_chorus", "Myrtus", PG_FX, 2, FO_CHORUS, CH, 0, 0);
+    fx_one(dir, "motion_2_vibrato", "Nymphaea", PG_FX, 2, FO_VIB, VI, 0, 0);
+    fx_one(dir, "motion_3_drift", "Lunaria", PG_FX, 2, FO_DRIFT, DR, 0, 0);
+    for (t = 0; t < 3; t++) fx_one(dir, FN[t], "Lunaria", PG_FILTER, 0, FT_NOTCH + t, FI, 0, 1);
     printf("fx demo: %s\n", dir);
 }
 

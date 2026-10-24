@@ -32,7 +32,9 @@ dithered, for what is lit.
   - Each synth can play the chords, follow the key, the chord or the root, or harmonize another synth's notes.
 - **The rest.**
   - Fourteen songs and 32 of your own sounds are saved on the FM-1.
-  - Each start shows one of four pixel landscapes, and Home keeps one moving while you play.
+  - Each start shows one of four pixel landscapes, and Home keeps one moving while you play; OCT− and OCT+ held show
+    it full screen.
+  - Each sound is named after a plant of its landscape, in Latin, one word.
 
 ## Build
 

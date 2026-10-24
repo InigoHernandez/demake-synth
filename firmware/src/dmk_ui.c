@@ -133,6 +133,9 @@ static struct {
     uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
     uint8_t arr_cur, arr_bars;                          /* Arrange: the step cursor; the bars a key writes a step with */
     uint8_t copy_arm, copy_to;                          /* HOME held + OCT+: a pattern key next pastes into it */
+    uint8_t full, full_latch;                           /* the landscape full screen (OCT- and OCT+ held); held once */
+    int8_t oct_before;                                  /* the octave before an OCT press, for the two pressed together */
+    uint32_t both_at;
     uint32_t copy_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
 } ui;
@@ -328,7 +331,7 @@ static void ui_init(void)
 {
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
      * env, level, tape, wow, verb, echo, pan] */
-    static const char *const FIRST[DMK_SYNTHS] = {"Snow pad", "Felt piano", "Glass pluck"};
+    static const char *const FIRST[DMK_SYNTHS] = {"Lunaria", "Nymphaea", "Myrtus"};
     static const uint8_t SET[DMK_SYNTHS][13] = {
         {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
         {0, 80, 56, 72, 96, 12, 76, 96, 1, 24, 60, 52, 72},
@@ -375,7 +378,7 @@ static void ui_init(void)
     ui.page = PG_HOME;
     ui.touch_k = -1;
     for (s = 0; s < DMK_SYNTHS; s++) { sound_put(s, ui_first[s]); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
-    ui.arr_cur = 0; ui.arr_bars = 4; ui.copy_arm = 0;
+    ui.arr_cur = 0; ui.arr_bars = 4; ui.copy_arm = 0; ui.full = 0;
     sp_sync();
 }
 
@@ -1295,11 +1298,11 @@ static void stage_songs(void)
 static uint8_t boot_fb[DMK_FB_BYTES] POOL;             /* the held frame, while Home comes through it */
 static uint8_t boot_sc;                                 /* the scene this start shows */
 
-static void boot_land(uint32_t t)                       /* the scene, its middle 120 x 118 doubled over the screen */
+static void land_full(int sc, uint32_t t)               /* a scene, its middle 120 x 118 doubled over the screen */
 {
     static const uint8_t CROP[4] = {54, 42, 90, 90};    /* the peak; the cabin and the sun; the stacks; the moon */
-    int x, y, cx = CROP[boot_sc & 3];
-    scene_frame(boot_sc & 3, t / 140u);
+    int x, y, cx = CROP[sc & 3];
+    scene_frame(sc & 3, t / 140u);
     for (y = 0; y < DMK_H; y++) {
         const uint8_t *src = &sc_out[(y / 2 < SC_H ? y / 2 : SC_H - 1) * (SC_W / 2)];
         uint8_t *b = &fb[y * (DMK_W / 2)];
@@ -1309,6 +1312,7 @@ static void boot_land(uint32_t t)                       /* the scene, its middle
         }
     }
 }
+static void boot_land(uint32_t t) { land_full(boot_sc, t); }
 
 static void boot(uint32_t t)
 {
@@ -1405,6 +1409,18 @@ static const uint8_t *ui_frame(uint32_t ms)
             for (i = 0; i < DMK_FB_BYTES; i++) boot_fb[i] = fb[i];
             ui.boot_kept = 1;
         }
+    }
+    if (ui.btn_held >> B_OCTD & 1u && ui.btn_held >> B_OCTU & 1u) {   /* both held half a second: the landscape, or back */
+        if (!ui.full_latch && ms - ui.both_at > 500u) {
+            ui.full = (uint8_t)!ui.full; ui.full_latch = 1;
+            if (ui.full) notice("OCT\xE2\x88\x92 OCT+ held: back");
+        }
+    } else ui.full_latch = 0;
+    if (ui.full) {                                      /* the landscape full screen, the current synth's, moving */
+        land_full(DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3, ms);
+        ta_cover(0, 0, DMK_W, DMK_H);
+        overlays();
+        return fb;
     }
     fill(0, 0, DMK_W, DMK_H, C_PAPER);
     head();
@@ -1557,6 +1573,14 @@ static void ui_button(int b, int down)
             ui.btn_used |= bit;
             return;
         }
+        if ((b == B_OCTD || b == B_OCTU) && ui.btn_held >> (b == B_OCTD ? B_OCTU : B_OCTD) & 1u) {
+            /* OCT- and OCT+ together: held, the landscape full screen (ui_frame); the octave left as it was */
+            ui.octave = ui.oct_before;
+            ui.btn_used |= (uint16_t)(1u << B_OCTD | 1u << B_OCTU);
+            ui.both_at = ui.now;
+            return;
+        }
+        if (b == B_OCTD || b == B_OCTU) ui.oct_before = ui.octave;
         if (b != B_HOME && ui.btn_held >> B_HOME & 1u && (b == B_SEQ || b == B_PLAY || b == B_OCTU)) {
             /* HOME held: SEQ opens Arrange; PLAY switches pattern mode and song mode; OCT+, then a pattern key, copies */
             ui.btn_used |= (uint16_t)(bit | 1u << B_HOME);
@@ -1695,6 +1719,7 @@ static void ui_button(int b, int down)
         return;
     }
     if (b == B_REC) { seq_rec ^= 1u; notice(seq_rec ? "Recording on" : "Recording off"); return; }
+    if (BTN_PAGE[b] >= 0 && ui.full) { ui.full = 0; return; }   /* the landscape: a page button, back to the page */
     if (BTN_PAGE[b] >= 0) {
         int p = BTN_PAGE[b];
         if (ui.page == p) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);   /* again: the next row built */
@@ -1718,6 +1743,7 @@ static void ui_encoder(int e, int d)
     int r = ui.row[ui.page], k;
     uint8_t *v;
     ui.boot_done = 1;
+    ui.full = 0;                                        /* the landscape: a knob turned, back to the page it turns */
     if (ui.btn_held) {                                  /* a held button's layer: it was used */
         int b;
         for (b = 0; b < B_COUNT; b++) if (ui.btn_held >> b & 1u) ui.btn_used |= (uint16_t)(1u << b);

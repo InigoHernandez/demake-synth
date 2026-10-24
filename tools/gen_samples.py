@@ -37,19 +37,19 @@ SR_IN = 48000
 FILTERS = [(0, 0), (60, 0), (115, -52), (98, -55), (122, -60)]
 BANK_A = 32                                              # the FM-1's bank in the app slot (2.5); the owner picks it
 
-# new names, a pool a kind, given in order (provisional: the owner names the factory sounds)
+# the names: one word each, the Latin name of a plant that grows where the sound's landscape is (the owner, 2026-10-24):
+# alpine and snow plants for the peaks, water and lakeside plants for the lake, seaside plants for the coast,
+# night-blooming and shade plants for the night; given in the recordings' order, a pool a scene and kind
 NAMES = {
-    "pad": ["Snow pad", "Mist", "Low tide", "Pale dawn", "Frost veil", "Ash cloud", "Slow river", "Night bus",
-            "Dust motes", "Old film", "Warm static", "Grey hours", "Lantern", "Far shore", "Soft engine", "Moth wing",
-            "Ice field", "Haze", "Tin choir", "Cold room", "Velvet", "Ember glow", "Fog lamp", "Paper moon",
-            "Driftwood", "Quiet hall", "Glow worm", "Rain glass", "Static sea", "Sleep cycle", "Dim stage",
-            "Rust choir", "Wool cloud", "Late train", "Blue hour", "Hollow", "Slow bloom", "Ghost tape", "Silk",
-            "Cinder", "Morning ash", "Pale wave", "Tide pool", "Steam", "Long shadow", "Thaw", "Nimbus", "Dusk choir",
-            "Glimmer", "Snowfield", "Halo", "Lull", "Undertow", "Veil", "Murmur", "Orbit"],
-    "key": ["Felt piano", "Toy piano", "Dusty keys", "Music box", "Old upright", "Bell keys", "Soft keys",
-            "Tape keys", "Glass keys", "Lamp keys"],
-    "pluck": ["Glass pluck", "Kalimba", "Wood pluck", "Harp dust", "Tin pluck", "Rain drop"],
-    "bass": ["Sub hum", "Deep bass", "Round bass", "Low drum"],
+    (0, "pad"): ["Soldanella", "Galanthus", "Saxifraga", "Dryas", "Gentiana", "Leontopodium", "Chionodoxa",
+                 "Pulsatilla", "Androsace", "Draba", "Cassiope", "Diapensia", "Abies", "Picea", "Larix", "Betula"],
+    (1, "key"): ["Nymphaea", "Nuphar", "Nelumbo", "Caltha", "Myosotis", "Menyanthes", "Sagittaria", "Salix", "Typha"],
+    (2, "pad"): ["Armeria", "Limonium", "Crithmum", "Ammophila", "Eryngium", "Salicornia", "Zostera", "Crambe", "Cakile",
+                 "Glaucium", "Tamarix", "Calystegia", "Elymus", "Helichrysum", "Santolina", "Lavandula"],
+    (2, "pluck"): ["Myrtus", "Cistus", "Thymus"],
+    (3, "pad"): ["Lunaria", "Oenothera", "Hesperis", "Cestrum", "Ipomoea", "Datura", "Nicotiana", "Matthiola",
+                 "Selenicereus", "Mirabilis", "Epiphyllum", "Monotropa", "Viscum", "Hedera", "Valeriana", "Papaver"],
+    (3, "bass"): ["Mandragora", "Taxus", "Atropa", "Aconitum"],
 }
 
 
@@ -245,7 +245,6 @@ def main():
     files = sorted(SRC.glob("*.wav"))
     if not files:
         raise SystemExit(f"no recordings in {SRC} (DMK_SAMPLES)")
-    used = {k: 0 for k in NAMES}
     rows, entries = [], []
     for num, f in enumerate(files, 1):
         x = load(f)
@@ -265,30 +264,15 @@ def main():
         x16 = np.concatenate([x16, np.zeros((-len(x16)) % 28, np.int64)])
         data, dec, states = encode(x16)
         snr = 10 * np.log10(np.sum(x16.astype(float) ** 2) / (np.sum((x16 - dec).astype(float) ** 2) + 1e-9))
-        pool = NAMES[kind]
-        name = pool[used[kind] % len(pool)]
-        used[kind] += 1
         blocks = len(data) // 16
         loop = l0 is not None
         ls = states[l0] if loop else (0, 0)
         seg = np.array_split(np.abs(dec), 48)                 # its shape for the screen: 48 peaks, 0..255
         env = [min(255, int(round(255 * float(g.max()) / 32767))) for g in seg]
         cen = float((fr * spec).sum() / (spec.sum() + 1e-20))   # its brightness: where its energy sits
-        entries.append(dict(num=num, name=name, kind=kind, root=root, cents=cents, sr=sr, blocks=blocks, cen=cen,
-                            l0=l0 if loop else 0, l1=l1 if loop else blocks, loop=loop, ls=ls, data=data, env=env))
-        rows.append(f"| {num:02d} | {name} | {kind} | {root} | {cents:+d} | {sr} | {blocks * 28 / sr:.2f} s | "
-                    f"{f'{(l1 - l0) * 28 / sr:.2f} s' if loop else 'one-shot'} | {snr:.1f} dB | {len(data)} B |")
-        nn = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][root % 12] + str(root // 12 - 1)
-        print(f"{num:02d} {name:12s} {kind:5s} {nn:>3s}{cents:+3d}c {sr:5d} Hz {blocks * 28 / sr:4.2f} s "
-              f"{'loop' if loop else 'one '} SNR {snr:4.1f} dB {len(data):6d} B")
-        if a.wav:
-            pcm = dec.astype(float)
-            if loop:
-                body, lp = pcm[:l1 * 28], pcm[l0 * 28:l1 * 28]
-                while len(body) < 3 * sr:
-                    body = np.concatenate([body, lp])
-                pcm = body[:3 * sr]
-            write_wav(Path(a.wav) / f"{num:02d}_{name.replace(' ', '_')}.wav", pcm, sr)
+        entries.append(dict(num=num, kind=kind, root=root, cents=cents, sr=sr, blocks=blocks, cen=cen, snr=snr, dec=dec,
+                            l0=l0 if loop else 0, l1=l1 if loop else blocks, loop=loop, ls=ls, data=data, env=env,
+                            loop_s=(l1 - l0) * 28 / sr if loop else 0))
     # bank A first: the keys, plucks and basses, then the pads, to BANK_A; then the rest in their order
     # the landscapes: keys by the lake, plucks on the coast, basses at night; the pads by brightness, a third each to
     # the peaks (the brightest), the coast and the night (the darkest)
@@ -298,6 +282,29 @@ def main():
     for e in entries:
         if e["kind"] != "pad":
             e["scene"] = {"key": 1, "pluck": 2, "bass": 3}[e["kind"]]
+    used = {}                                           # the names, by scene and kind, in the recordings' order
+    for e in entries:
+        k = (e["scene"], e["kind"])
+        pool = NAMES[k]
+        e["name"] = pool[used.get(k, 0) % len(pool)]
+        used[k] = used.get(k, 0) + 1
+        assert len(e["name"]) <= 12, e["name"]
+    assert len({e["name"] for e in entries}) == len(entries), "a name given twice"
+    for e in entries:
+        num, name, kind, root, cents, sr, blocks = e["num"], e["name"], e["kind"], e["root"], e["cents"], e["sr"], e["blocks"]
+        rows.append(f"| {num:02d} | {name} | {kind} | {root} | {cents:+d} | {sr} | {blocks * 28 / sr:.2f} s | "
+                    f"{f'{e['loop_s']:.2f} s' if e['loop'] else 'one-shot'} | {e['snr']:.1f} dB | {len(e['data'])} B |")
+        nn = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][root % 12] + str(root // 12 - 1)
+        print(f"{num:02d} {name:12s} {kind:5s} {nn:>3s}{cents:+3d}c {sr:5d} Hz {blocks * 28 / sr:4.2f} s "
+              f"{'loop' if e['loop'] else 'one '} SNR {e['snr']:4.1f} dB {len(e['data']):6d} B")
+        if a.wav:
+            pcm = e["dec"].astype(float)
+            if e["loop"]:
+                body, lp = pcm[:e["l1"] * 28], pcm[e["l0"] * 28:e["l1"] * 28]
+                while len(body) < 3 * sr:
+                    body = np.concatenate([body, lp])
+                pcm = body[:3 * sr]
+            write_wav(Path(a.wav) / f"{num:02d}_{name}.wav", pcm, sr)
     order = sorted(entries, key=lambda e: (e["kind"] == "pad", e["num"]))
     bank_a = order[:BANK_A]
     rest = [e for e in entries if e not in bank_a]
@@ -341,7 +348,7 @@ def main():
     print(f"{OUT.relative_to(ROOT)}: {len(ordered)} sounds, {tot} B ({ta} B in bank A, the first {BANK_A})")
     DOC.parent.mkdir(parents=True, exist_ok=True)
     DOC.write_text("# The sample bank\n\nThe owner's own recordings (made with their pedals), each processed by "
-                   "`tools/gen_samples.py` (its docstring is the pipeline). The names are new and provisional; the "
+                   "`tools/gen_samples.py` (its docstring is the pipeline). Each is named after a plant of its landscape, its Latin name; the "
                    "originals are numbered as in the owner's folder. Bank A (the FM-1's app slot): "
                    + ", ".join(f"{e['num']:02d}" for e in bank_a) + ".\n\n"
                    "| # | Name | Kind | Root | Cents | Rate | Cut | Loop | SNR | Size |\n"
