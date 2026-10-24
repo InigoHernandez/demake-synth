@@ -4,7 +4,7 @@
  * and ink, the same five at night, and the thermal light for what is lit), a rigid grid.
  * One module, 48 px: the canvas is a grid of them, drawn faintly, and every box spans whole modules from line to line,
  * its edges on the lines (a box is n x 48 + 1 px, so its 1 px border sits on the lines at both ends). Sections are whole
- * rows tall. What is lit (the action, a hover, the playing tile, the page shown) is 8-bit as the screen draws it: the
+ * rows tall. What is lit (the action and what can be pressed, hovered; the playing tile; the page shown) is 8-bit as the screen draws it: the
  * thermal ramp from the edge in, dithered, its bits moving at random through six arrangements (app.js, the bits). */
 
 @font-face { font-family: "geist"; src: url("fonts/Geist.ttf") format("truetype"); font-weight: 100 900; }
@@ -71,9 +71,6 @@ kbd {
 .lit:active, .pill:active, .page:active { background: var(--t4); color: #f5f5f2; }
 .page:active span, .page:active kbd { color: #f5f5f2; }
 .heat { position: absolute; left: 0; top: 0; image-rendering: pixelated; }
-.hov { position: relative; }
-.hov:hover::after { content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3; border-image: var(--ring24) 24 / 24px repeat; }
-figure.hov:hover::after { border-image: var(--ring12) 12 / 12px repeat; }
 
 /* ---- the header: the D in its module, the index, the actions */
 .head { grid-template-rows: repeat(3, var(--m)); }
