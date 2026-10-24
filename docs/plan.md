@@ -875,9 +875,13 @@ presets of 4.2 with their modes and voicings (ALGORITHM on CHORD), the chords ch
 CLOSE, OPEN, WIDE, SHELL or QUARTAL, AUTO inversion by the least motion, SPREAD, STRUM, CHANGE ×½..×4, RHYTHM hold,
 pulse 4 and 8, arp up and down. FOLLOW per synth on SEQ held + ALGORITHM (the Roll's foot shows it): the pad PLAYS
 CHORDS, the piano follows the KEY (S′ of 4.6), the third the ROOT. On CHORD the keys play chords: a key, the mode's
-seventh on it; with REC, written into the synth's roll. The key LEDs show the chord sounding. Not yet: USER
-progressions and stepping your own (4.4), the qualities and bass on a held slot, PLAYS CHORDS shown as blocks in
-the roll, print to the roll. FILTER's type also on SEL held + ALGORITHM, as FX and GLO.
+seventh on it; with REC, written into the synth's roll. The key LEDs show the chord sounding. Stepping your own
+(4.4) on four USER progressions (after the presets on ALGORITHM): REC armed and stopped, a key writes its chord into
+the slot at the cursor (a preset's first edit copies it into the first empty USER one) and the cursor moves on; a
+written chord held, K1 moves it, K2 its quality, K3 its bars, K4 its bass (root or the pedal), OCT- takes it away,
+OCT+ copies it after itself; ARP held, K1 the cursor, OCT+ prints the progression into the synth's roll (it then
+plays FREE). REC armed is the switch because the owner wants the keys to play chords on CHORD. Not yet: PLAYS
+CHORDS shown as blocks in the roll, REC while playing writing into the slots (it records into the roll), saving. FILTER's type also on SEL held + ALGORITHM, as FX and GLO.
 
 **Phase 2: chords.**
 - KEY and MODE, the 16 presets, slots, VOICING, INVERSION (AUTO), SPREAD, STRUM, RHYTHM, CHANGE, BASS; step your own;

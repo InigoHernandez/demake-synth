@@ -225,6 +225,21 @@ static void selftest(void)
         if (ch_shown == slot0) { fails++; printf("selftest: the progression does not move on\n"); }
         for (int v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == 1 && !(pc_bent() >> (vc[v].note % 12) & 1u)) { fails++; printf("selftest: a note following the key is off it\n"); break; }
         tap(B_PLAY);
+        /* writing your own: REC armed, stopped, keys into a USER progression's slots; OCT- with one held takes it away;
+         * ARP held + OCT+ prints it into the synth's roll */
+        tap(B_REC);
+        dmk_key(4, 1); wait_ms(60); dmk_key(4, 0); wait_ms(60);
+        dmk_key(0, 1); wait_ms(60); dmk_key(0, 0); wait_ms(60);
+        if (ch.prog < 16 || cur_prog()->n < 2 || ch_cur != 2) { fails++; printf("selftest: keys with REC do not write slots (%d, %d)\n", cur_prog()->n, ch_cur); }
+        {   /* the preset was copied in (four slots), the keys wrote over the first two; one more, then OCT- takes it */
+            int nb = cur_prog()->n;
+            dmk_key(2, 1); wait_ms(60); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_key(2, 0); wait_ms(60);
+            if (cur_prog()->n != nb - 1) { fails++; printf("selftest: OCT- with a written chord held does not take it away\n"); }
+        }
+        tap(B_REC);
+        dmk_button(B_ARP, 1); wait_ms(30); dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0); dmk_button(B_ARP, 0); wait_ms(60);
+        if (!sq[ui.synth].count || ch.follow[ui.synth] != FW_FREE) { fails++; printf("selftest: ARP + OCT+ does not print to the roll\n"); }
+        if (ui.page != PG_CHORD) { fails++; printf("selftest: printing left the page\n"); }
         tap(B_FX);
     }
     /* a modifier that was used does nothing on release */
@@ -364,7 +379,7 @@ static void chord_demo(const char *dir)
     char path[512];
     for (p = 0; p < 16; p++) {
         dmk_init(1);
-        ui.val[0][PG_CHORD][0][4] = (uint8_t)(p * 8 + 4);
+        ui.val[0][PG_CHORD][0][4] = choice_val(p, PROG_N);
         ui.val[0][PG_CHORD][1][1] = (uint8_t)(PROG[p].mode * 128 / 6 + 10);
         ui.val[0][PG_CHORD][0][0] = (uint8_t)(PROG[p].voicing * 128 / 5 + 12);
         sp_sync();

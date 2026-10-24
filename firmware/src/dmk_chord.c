@@ -23,7 +23,8 @@ enum { RH_HOLD, RH_PULSE4, RH_PULSE8, RH_ARPUP, RH_ARPDN, RH_COUNT };
 /* the presets (plan 4.2): a chord a slot, its root in semitones above the key, its quality, its length in half-bars,
  * a pedal (the key's tonic under it) */
 typedef struct { uint8_t root, q, half, pedal; } cslot_t;
-typedef struct { const char *name; uint8_t mode, voicing, n; cslot_t s[5]; } prog_t;
+#define PROG_SLOTS 8
+typedef struct { const char *name; uint8_t mode, voicing, n; cslot_t s[PROG_SLOTS]; } prog_t;
 static const prog_t PROG[16] = {
     {"First snow", MO_AEOL, VO_WIDE, 4, {{0, Q_MADD9, 2, 0}, {8, Q_MAJ7, 2, 0}, {3, Q_MAJ7, 2, 0}, {10, Q_SUS2, 2, 0}}},
     {"Last train", MO_AEOL, VO_OPEN, 4, {{0, Q_M9, 2, 0}, {5, Q_M9, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_M7, 2, 0}}},
@@ -42,6 +43,12 @@ static const prog_t PROG[16] = {
     {"Mixtape", MO_ION, VO_OPEN, 4, {{0, Q_MAJ9, 2, 0}, {4, Q_M7, 2, 0}, {5, Q_MAJ7, 2, 0}, {5, Q_M6, 2, 0}}},
     {"Night drive", MO_AEOL, VO_WIDE, 5, {{0, Q_MADD9, 2, 0}, {10, Q_6, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_7SUS4, 1, 0}, {7, Q_7, 1, 0}}}};
 
+/* the four USER progressions (plan 4.4): written from the keys on CHORD, stopped, with REC armed; a preset's first
+ * edit copies it into the first empty one */
+static prog_t uprog[4] = {{"User 1", MO_AEOL, VO_WIDE, 0, {{0}}}, {"User 2", MO_AEOL, VO_WIDE, 0, {{0}}},
+                          {"User 3", MO_AEOL, VO_WIDE, 0, {{0}}}, {"User 4", MO_AEOL, VO_WIDE, 0, {{0}}}};
+#define PROG_N 20                                       /* the sixteen presets, then the four of the user's */
+
 /* the song's harmony, set from the CHORD page (sp_sync) */
 static struct {
     uint8_t prog, voicing, invert, spread, change, rhythm;   /* invert: 0 AUTO, then 1..4 the inversions 0..3 */
@@ -51,6 +58,7 @@ static struct {
 
 /* what sounds: the slot, its notes as voiced (the last ones too, for AUTO), its tones as a mask */
 static uint8_t ch_slot, ch_notes[7], ch_n, ch_prev[7], ch_pn, ch_arp, ch_play[7], ch_np;
+static uint8_t ch_cur, ch_len = 2;                     /* writing: the slot cursor, the last length (half-bars) */
 static uint16_t ch_left, ch_cmask = 0, ch_root;
 static int ch_shown = -1;                               /* the chord on the page: a slot, or -2 a key's */
 static char ch_name[16];
@@ -107,6 +115,7 @@ static int snap_set(int p, uint16_t set, uint16_t pref)  /* the nearest pitch in
 }
 
 static int plays_chords(int s) { return ch.follow[s] == FW_PLAYS; }
+static const prog_t *cur_prog(void) { return ch.prog < 16 ? &PROG[ch.prog] : &uprog[ch.prog - 16]; }
 
 /* a synth's note as it plays, by its FOLLOW */
 static int follow_note(int s, int n)
@@ -115,7 +124,7 @@ static int follow_note(int s, int n)
     case FW_KEY: return snap_set(n, pc_bent(), ch_cmask);
     case FW_CHORD: return snap_set(n, ch_cmask ? ch_cmask : pc_scale(), ch_cmask);
     case FW_ROOT: {
-        int first = seq_key + PROG[ch.prog].s[0].root, d = degree_of(snap(48 + ch_root % 12)) - degree_of(snap(48 + first % 12));
+        int first = seq_key + cur_prog()->s[0].root, d = degree_of(snap(48 + ch_root % 12)) - degree_of(snap(48 + first % 12));
         return snap_set(note_of(degree_of(snap(n)) + d), pc_bent(), ch_cmask);
     }
     default: return n;
@@ -244,8 +253,9 @@ static void chord_init(void)                            /* the first song's: the
 /* each step of the sequences' clock: a new slot when the last has had its length; the rhythm in between */
 static void chord_step(void)
 {
-    const prog_t *pr = &PROG[ch.prog];
+    const prog_t *pr = cur_prog();
     int s, i, newslot = !ch_left;
+    if (!pr->n) { if (ch_np) chord_quiet(); ch_cmask = 0; return; }   /* an empty one: silence */
     if (newslot) {
         const cslot_t *c = &pr->s[ch_slot % pr->n];
         int root = 48 + (seq_key + c->root) % 12, len = c->half * 8;
@@ -299,4 +309,78 @@ static int chord_key(int n, uint8_t *notes)
     ch_cmask = 0;
     for (i = 0; i < c; i++) ch_cmask |= (uint16_t)(1u << (notes[i] % 12));
     return c;
+}
+
+/* ---- writing your own (plan 4.4): a USER progression to write in, the preset copied into it the first time */
+static prog_t *edit_prog(void)
+{
+    int i;
+    if (ch.prog >= 16) return &uprog[ch.prog - 16];
+    for (i = 0; i < 4 && uprog[i].n; i++) {}
+    if (i == 4) i = 0;
+    {
+        const char *nm = uprog[i].name;
+        uprog[i] = PROG[ch.prog];
+        uprog[i].name = nm;
+    }
+    ch.prog = (uint8_t)(16 + i);
+    return &uprog[i];
+}
+
+/* a key's chord into the slot at the cursor (a new one at the end); its slot back */
+static int slot_write(int n)
+{
+    prog_t *p = edit_prog();
+    int8_t iv[6];
+    int q = diatonic(n, iv), r = note_of(degree_of(snap(n))), at = ch_cur;
+    if (at > p->n) at = p->n;
+    if (at >= PROG_SLOTS) at = PROG_SLOTS - 1;
+    if (at == p->n) p->n++;
+    p->s[at].root = (uint8_t)(((r - seq_key) % 12 + 12) % 12);
+    p->s[at].q = (uint8_t)q;
+    p->s[at].half = ch_len;
+    p->s[at].pedal = 0;
+    p->mode = seq_mode;
+    p->voicing = ch.voicing;
+    return at;
+}
+static void slot_delete(int at)
+{
+    prog_t *p = edit_prog();
+    int i;
+    if (at >= p->n) return;
+    for (i = at; i < p->n - 1; i++) p->s[i] = p->s[i + 1];
+    p->n--;
+    if (ch_cur > p->n) ch_cur = p->n;
+}
+static int slot_copy(int at)                            /* a copy right after itself */
+{
+    prog_t *p = edit_prog();
+    int i;
+    if (at >= p->n || p->n >= PROG_SLOTS) return at;
+    for (i = p->n; i > at + 1; i--) p->s[i] = p->s[i - 1];
+    p->s[at + 1] = p->s[at];
+    p->n++;
+    return at + 1;
+}
+
+/* ARP held + OCT+: the progression into a synth's roll as notes, voiced, to edit by hand; it then plays them */
+static void print_to_roll(int s)
+{
+    const prog_t *pr = cur_prog();
+    uint8_t notes[7];
+    int i, k, at = 0, total = 0, pn = ch_pn;
+    for (i = 0; i < pr->n; i++) total += pr->s[i].half * 8;
+    if (!pr->n) return;
+    sq[s].count = 0;
+    sq[s].steps = (uint8_t)(total > SEQ_STEPS ? SEQ_STEPS : total);
+    ch_pn = 0;
+    for (i = 0; i < pr->n && at < SEQ_STEPS; i++) {
+        int c = voice(48 + (seq_key + pr->s[i].root) % 12, QI[pr->s[i].q], pr->s[i].pedal, notes), len = pr->s[i].half * 8;
+        if (at + len > SEQ_STEPS) len = SEQ_STEPS - at;
+        for (k = 0; k < c; k++) seq_add(s, at, len, notes[k], 100);
+        at += pr->s[i].half * 8;
+    }
+    ch_pn = (uint8_t)pn;
+    ch.follow[s] = FW_FREE;
 }
