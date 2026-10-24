@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.2.fwsc",
-  "version": "0.2",
+  "file": "demake-0.3.fwsc",
+  "version": "0.3",
   "date": "2026-10-24",
-  "product": "FM-1_967",
-  "sha256": "1e05fee56b0852f54af60878c2210d88e85ee2663ab52c534160b3eb37a824bd",
-  "note": "No clicks; saving songs and sounds; eight patterns a song; chord keys on every page, new chord types; the landscape at start."
+  "product": "FM-1_968",
+  "sha256": "7794d28d2fd6df768a618aadad10420d8666b237cce27e0d0debf1f57b0cd3df",
+  "note": "Scenes and a song of them; eight patterns a synth; harmony between the synths; MIDI in and out; two new landscapes, full screen on OCT- and OCT+; plant names."
 }

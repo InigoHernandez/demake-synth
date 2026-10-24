@@ -12,7 +12,7 @@ dithered, for what is lit.
   Chrome.
 - **Read the manual:** [the manual](https://inigohernandez.github.io/demake-synth/manual.html).
 
-**Status: Demake 0.2** (FM-1_967), on the install page.
+**Status: Demake 0.3** (FM-1_968), on the install page.
 
 ## What it does
 
