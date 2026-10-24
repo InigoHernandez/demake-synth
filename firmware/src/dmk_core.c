@@ -7,6 +7,8 @@
 
 int (*dmk_par_begin)(void (*job)(void));
 void (*dmk_par_end)(void);
+void (*dmk_yield)(void);
+static void ui_yield(void) { if (dmk_yield) dmk_yield(); }
 
 #include "dmk_gfx.c"
 #include "dmk_dsp.c"

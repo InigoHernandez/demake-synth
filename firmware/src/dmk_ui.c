@@ -563,7 +563,12 @@ static void foot(void)
  * windows, or three lights in each scene, are the synths, lit while each sounds. Drawn every 140 ms, held between */
 #define SC_W SW
 #define SC_H SH
-static uint8_t sc_fg[SC_W * SC_H] POOL;                 /* the still parts, 0xFF where the sky shows */
+/* the still parts are built a pixel a byte (0xFF where the sky shows) in the light's scratch, which nothing lit
+ * needs meanwhile, then packed as the screen with a mask: a frame of the scene lays them over the sky by the byte */
+#define sc_fg th_d
+typedef char sc_fits[SC_W * SC_H <= TH_MAX ? 1 : -1];
+static uint8_t sc_fgp[SC_W / 2 * SC_H] POOL;            /* the still parts, packed; 0 where the sky shows */
+static uint8_t sc_fgm[SC_W / 2 * SC_H] POOL;            /* their mask: 0xF where a pixel is theirs */
 static uint8_t sc_out[SC_W / 2 * SC_H] POOL;            /* the scene as last drawn, packed as the screen */
 static uint8_t sc_key = 0xFF;                           /* the theme and the scene it was built for */
 static uint32_t sc_tick = 0xFFFFFFFFu;
@@ -682,11 +687,24 @@ static void stage_home(void)
     int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, i;
     int sc = DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3;
     uint32_t tick = ui.now / 140u;
-    if (sc_key != (uint8_t)(theme * 4 + sc)) { scene_build(sc, dk, lt); sc_key = (uint8_t)(theme * 4 + sc); sc_tick = 0xFFFFFFFFu; }
+    if (sc_key != (uint8_t)(theme * 4 + sc)) {
+        ui_yield();
+        scene_build(sc, dk, lt);
+        ui_yield();
+        for (i = 0; i < SC_W / 2 * SC_H; i++) {
+            int a = sc_fg[i * 2], b = sc_fg[i * 2 + 1];
+            sc_fgp[i] = (uint8_t)((a != 0xFF ? a << 4 : 0) | (b != 0xFF ? b : 0));
+            sc_fgm[i] = (uint8_t)((a != 0xFF ? 0xF0 : 0) | (b != 0xFF ? 0x0F : 0));
+        }
+        sc_key = (uint8_t)(theme * 4 + sc); sc_tick = 0xFFFFFFFFu;
+    }
     if (tick != sc_tick) {                              /* a new frame of the scene: drawn, then held */
         sc_tick = tick;
-        for (y = 0; y < SC_H; y++)
-            for (x = 0; x < SC_W; x++) if (sc_fg[y * SC_W + x] == 0xFF) px_put(SX + x, SY + y, sky_at(sc, x, y, dk));
+        for (y = 0; y < SC_H; y++) {                    /* the sky: a row is two bytes over and over (its dither's period) */
+            uint8_t *b = &fb[((SY + y) * DMK_W + SX) >> 1];
+            uint8_t p0 = (uint8_t)(sky_at(sc, 0, y, dk) << 4 | sky_at(sc, 1, y, dk)), p1 = (uint8_t)(sky_at(sc, 2, y, dk) << 4 | sky_at(sc, 3, y, dk));
+            for (x = 0; x < SC_W / 2; x += 2) { b[x] = p0; b[x + 1] = p1; }
+        }
         for (i = 0; i < (sc == 3 ? 34 : 14); i++) {     /* the stars, twinkling (the night has many) */
             uint32_t h = hsh((uint32_t)i * 7919u + (uint32_t)sc);
             if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 ? 54u : 22u)), lt);
@@ -701,8 +719,11 @@ static void stage_home(void)
             if (sc == 3) cy = 60;
             cloud(cx, cy, w, lt);
         }
-        for (y = 0; y < SC_H; y++)                      /* the still world over the sky */
-            for (x = 0; x < SC_W; x++) if (sc_fg[y * SC_W + x] != 0xFF) px_put(SX + x, SY + y, sc_fg[y * SC_W + x]);
+        ui_yield();
+        for (y = 0, i = 0; y < SC_H; y++) {             /* the still world over the sky */
+            uint8_t *b = &fb[((SY + y) * DMK_W + SX) >> 1];
+            for (x = 0; x < SC_W / 2; x++, i++) if (sc_fgm[i]) b[x] = (uint8_t)((b[x] & ~sc_fgm[i]) | sc_fgp[i]);
+        }
         if (sc == 1 || sc == 2) {                       /* the sun on the water: glints that move */
             int sea = sc == 1 ? 84 : 74, cx = sc == 1 ? 151 : 143;
             for (y = sea; y < SC_H; y += 2) {
@@ -797,8 +818,18 @@ static void stage_roll(void)
  * line goes over it */
 static void lit_band(int x0, int w, const int16_t *ya, const int16_t *yb)
 {
-    int i;
-    for (i = 0; i < w; i++) if (yb[i] > ya[i]) vline(x0 + i, ya[i], yb[i] - ya[i], HOLO);
+    int i, y;
+    for (i = 0; i < w; i++) {                           /* the marks, a column at a time (a graph is 13 000 of them) */
+        int x = x0 + i, y0 = ya[i] < cy0 ? cy0 : ya[i], y1 = yb[i] > cy1 ? cy1 : yb[i];
+        uint8_t *b = &fb[(y0 * DMK_W + x) >> 1];
+        if (x < cx0 || x >= cx1 || y1 <= y0) continue;
+        if (x < hx0) hx0 = x;
+        if (x > hx1) hx1 = x;
+        if (y0 < hy0) hy0 = y0;
+        if (y1 - 1 > hy1) hy1 = y1 - 1;
+        for (y = y0; y < y1; y++, b += DMK_W / 2) *b = x & 1 ? (uint8_t)((*b & 0xF0) | C_HMARK) : (uint8_t)((*b & 0x0F) | C_HMARK << 4);
+    }
+    ui_yield();
     holo_done();
 }
 
@@ -1094,7 +1125,9 @@ static const uint8_t *ui_frame(uint32_t ms)
     }
     fill(0, 0, DMK_W, DMK_H, C_PAPER);
     head();
+    ui_yield();
     fields_band();
+    ui_yield();
     if (ui.btn_held >> B_HOME & 1u && ui.now - ui.btn_down_at[B_HOME] > 350u) stage_patterns();
     else switch (ui.page) {
     case PG_HOME: stage_home(); break;
@@ -1108,6 +1141,7 @@ static const uint8_t *ui_frame(uint32_t ms)
     case PG_LFO: stage_lfo(); break;
     default: stage_songs(); break;
     }
+    ui_yield();
     foot();
     overlays();
     if (!ui.boot_done) boot_leave(ms);

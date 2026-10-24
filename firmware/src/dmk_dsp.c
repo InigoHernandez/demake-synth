@@ -61,6 +61,9 @@ static synth_t syn[DMK_SYNTHS];
 
 /* the shared buses' controls */
 static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex; uint32_t vrate; uint8_t vtype, etype; } gp;
+/* the VERB's and ECHO's types as they run: a new one is taken once the return has faded out (5.8 ms), then faded in */
+static uint8_t v_cur, e_cur;
+static int32_t v_g = 32768, e_g = 32768;
 
 /* ---- the voices */
 typedef struct {
@@ -175,21 +178,22 @@ static int16_t tp_buf[DMK_SYNTHS][TP_LEN] POOL;
 static int16_t ch_buf[DMK_SYNTHS][CH_LEN] POOL;
 static struct {
     uint32_t tw, wow, flut, rng, wdrift, warb, tick, cw, clfo, hold_ph, vib;
-    int32_t hl, lp1, lp2, hp, fol, drop, drop_g, track, track_g, wd;     /* MEDIA */
-    int32_t clp, hold, sl, band[2], peak[3], step[3], frame, crk, nfol, nlp, hum, sdc;   /* COLOUR */
+    int32_t hl, lp1, lp2, hp, fol, drop, drop_g, track, track_g, wd, dd, toff, tdk, tkp, jit, nb;   /* MEDIA */
+    int32_t clp, hold, sl, band[2], peak[3], step[3], frame, crk, nfol, nlp, hum, sdc, lg[3];   /* COLOUR */
     int32_t chlp[2];                                    /* MOTION */
-    uint8_t gate;
+    int32_t xg[3];                                      /* each row's share while its type changes, Q15 */
+    uint8_t gate, cur[3];                               /* the holes; the type each row runs now */
 } fx[DMK_SYNTHS];
 
 /* COLOUR: SATURATE (drive into the tape's curve, a bias for even harmonics, a tone after), CRUSH (bits, a rate held
  * by a jittered clock, a low-pass before), LOSSY (three bands, each quantized by its last frame's peak, the weak and
  * random ones dropped: a codec's smear and holes), NOISE (hiss, crackle and hum riding the sound) */
-static void colour_block(int sy, int32_t *x)
+static void colour_block(int sy, int32_t *x, int type)
 {
     const synth_t *p = &syn[sy];
     int i, k0 = p->ck[0], k1 = p->ck[1], k2 = p->ck[2], k3 = p->ck[3];
     int32_t tone = T_OP[64 + k1 / 2];
-    if (p->colour == FC_SAT) {
+    if (type == FC_SAT) {
         int32_t drive = 256 + k0 * 14, bias = k2 * 60, base = curve(T_SAT, (bias * drive) >> 8), mix = k3 * 258;
         for (i = 0; i < DMK_SUB; i++) {
             int32_t y = curve(T_SAT, ((x[i] + bias) * drive) >> 8) - base;
@@ -199,9 +203,10 @@ static void colour_block(int sy, int32_t *x)
             fx[sy].clp += ((y - fx[sy].clp) * tone) >> 15;
             x[i] += ((fx[sy].clp - x[i]) * mix) >> 15;
         }
-    } else if (p->colour == FC_CRUSH) {
+    } else if (type == FC_CRUSH) {
         int sh = k0 * 13 / 127, k = 127 - k2;
         uint32_t step = 600u + (uint32_t)(k * k) * 4u;
+        int32_t post = step * 5u / 4u > 32767u ? 32767 : (int32_t)(step * 5u / 4u);   /* ~0.4 of the held rate */
         for (i = 0; i < DMK_SUB; i++) {
             fx[sy].clp += ((x[i] - fx[sy].clp) * tone) >> 15;
             fx[sy].hold_ph += step + (k3 ? (xs32(&fx[sy].rng) >> 20) * (uint32_t)k3 / 8u : 0u);
@@ -209,11 +214,12 @@ static void colour_block(int sy, int32_t *x)
                 fx[sy].hold_ph &= 65535u;
                 fx[sy].hold = sh ? ((fx[sy].clp + (1 << (sh - 1))) >> sh) << sh : fx[sy].clp;
             }
-            x[i] = fx[sy].hold;
+            fx[sy].sl += ((fx[sy].hold - fx[sy].sl) * post) >> 15;   /* the stairs' edges: no clicks of their own */
+            x[i] = fx[sy].sl;
         }
-    } else if (p->colour == FC_LOSSY) {
+    } else if (type == FC_LOSSY) {
         int frame = 64 << (k2 * 3 / 128), bits[3];
-        bits[0] = 9 - k0 * 6 / 127; bits[1] = 8 - k0 * 6 / 127; bits[2] = 7 - k0 * 6 / 127;
+        bits[0] = 9 - k0 * 5 / 127; bits[1] = 8 - k0 * 5 / 127; bits[2] = 7 - k0 * 5 / 127;   /* the top never a sign alone */
         for (i = 0; i < DMK_SUB; i++) {
             int32_t b[3], y = 0;
             int j;
@@ -223,8 +229,12 @@ static void colour_block(int sy, int32_t *x)
             for (j = 0; j < 3; j++) {
                 int32_t a = b[j] < 0 ? -b[j] : b[j], st = fx[sy].step[j];
                 if (a > fx[sy].peak[j]) fx[sy].peak[j] = a;
-                if (fx[sy].gate >> j & 1u) continue;    /* a hole: this band dropped this frame */
-                y += st > 1 ? (b[j] + (b[j] < 0 ? -st / 2 : st / 2)) / st * st : b[j];
+                /* a hole: this band dropped this frame, faded out and back in 1.5 ms (a cut would click) */
+                a = st > 1 ? (b[j] + (b[j] < 0 ? -st / 2 : st / 2)) / st * st : b[j];
+                if (fx[sy].lg[j] == 32768 && !(fx[sy].gate >> j & 1u)) { y += a; continue; }
+                if (fx[sy].gate >> j & 1u) { if (fx[sy].lg[j] > 0) fx[sy].lg[j] -= 512; }
+                else fx[sy].lg[j] += 512;
+                y += (a * (fx[sy].lg[j] >> 1)) >> 14;
             }
             fx[sy].clp += ((y - fx[sy].clp) * tone) >> 15;
             x[i] = fx[sy].clp;
@@ -241,7 +251,7 @@ static void colour_block(int sy, int32_t *x)
                 }
             }
         }
-    } else if (p->colour == FC_NOISE) {
+    } else if (type == FC_NOISE) {
         for (i = 0; i < DMK_SUB; i++) {
             int32_t a = x[i] < 0 ? -x[i] : x[i], g, n;
             if (a > fx[sy].nfol) fx[sy].nfol += (a - fx[sy].nfol) >> 4;   /* rides the sound, its tail too */
@@ -249,9 +259,9 @@ static void colour_block(int sy, int32_t *x)
             g = fx[sy].nfol > 4096 ? 32768 : fx[sy].nfol * 8;
             fx[sy].nlp += ((((int32_t)xs32(&fx[sy].rng) >> 16) - fx[sy].nlp) * tone) >> 15;
             n = fx[sy].nlp * k0 / 5200;                 /* the hiss: at most ~-26 dB of the sound's full scale */
-            if ((xs32(&fx[sy].rng) >> 20) < (uint32_t)(k2 * k2) / 64u) {   /* a crackle: a click of either sign */
+            if ((xs32(&fx[sy].rng) >> 12) < (uint32_t)(k2 * k2 * k2) >> 10) {   /* a crackle: a pop of either sign */
                 uint32_t r = xs32(&fx[sy].rng);
-                fx[sy].crk = (int32_t)(1000u + (r & 0xFFFu)) * (r >> 31 ? -1 : 1);
+                fx[sy].crk = (int32_t)(300u + (r & 0x3FFu)) * (r >> 31 ? -1 : 1);
             }
             n += fx[sy].crk; fx[sy].crk = fx[sy].crk * 5 / 8;
             fx[sy].hum += 4870390;                      /* 50 Hz */
@@ -264,15 +274,15 @@ static void colour_block(int sy, int32_t *x)
 /* MEDIA: TAPE (wow drifting in rate, flutter, head loss, saturation), CASSETTE (a faster warble, the top closing as
  * it gets loud, dropouts), VHS (band-limited, a slow deep wobble with jitter, the head-switch tick, tracking events:
  * a dip in pitch, a duck and a noise burst) */
-static void media_block(int sy, int32_t *x)
+static void media_block(int sy, int32_t *x, int t)
 {
     const synth_t *p = &syn[sy];
-    int i, k0 = p->mk[0], k1 = p->mk[1], k2 = p->mk[2], k3 = p->mk[3], t = p->media;
+    int i, k0 = p->mk[0], k1 = p->mk[1], k2 = p->mk[2], k3 = p->mk[3];
     int32_t tone = T_OP[64 + k1 / 2];
     fx[sy].wd += ((int32_t)(xs32(&fx[sy].rng) >> 22) - 512 - fx[sy].wd) >> 6;   /* the wow's rate wanders */
     if (t == FM_CASS && !fx[sy].drop && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 10u)  /* a dropout begins */
         { fx[sy].drop = 450 + (int32_t)(fx[sy].rng % 5000u); fx[sy].drop_g = 16000 + (int32_t)(fx[sy].rng % 12000u); }
-    if (t == FM_VHS && !fx[sy].track && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 12u) /* a tracking event */
+    if (t == FM_VHS && !fx[sy].track && (xs32(&fx[sy].rng) >> 16) < (uint32_t)(k3 * k3) >> 9)   /* a tracking event: ~1 s apart at full */
         fx[sy].track = 900 + (int32_t)(fx[sy].rng % 8000u);
     for (i = 0; i < DMK_SUB; i++) {
         int32_t m, d, pos, f, y, a, c;
@@ -282,9 +292,16 @@ static void media_block(int sy, int32_t *x)
         fx[sy].wow += rate + (uint32_t)(fx[sy].wd * 30);
         fx[sy].flut += p->tflut;
         m = (sinp(fx[sy].wow) * 48 + sinp(fx[sy].flut)) >> 6;
-        if (t == FM_VHS) m += (int32_t)(xs32(&fx[sy].rng) >> 23) - 256;    /* the jitter, slight */
+        if (t == FM_VHS) {                              /* the jitter: the time base wandering, not a new place each sample */
+            fx[sy].jit += ((int32_t)(xs32(&fx[sy].rng) >> 20) - 2048 - fx[sy].jit) >> 6;
+            m += fx[sy].jit / 4;
+        }
         d = (t == FM_CASS ? 300 : 400) * 256 + (int32_t)(((int64_t)m * (t == FM_TAPE ? p->tdepth : 100 + k0 * (t == FM_VHS ? 300 : 220))) >> 15);
-        if (fx[sy].track) d += 30000 - (fx[sy].track & 4095) * 4;   /* tracking: the pitch dips */
+        /* tracking: the pitch dips, glided (a jump in the line's read would click) */
+        if (fx[sy].track || fx[sy].toff) {
+            fx[sy].toff += ((fx[sy].track ? 30000 - (fx[sy].track & 4095) * 4 : 0) - fx[sy].toff) >> 9;
+            d += fx[sy].toff;
+        }
         pos = (int32_t)(fx[sy].tw << 8) - d;
         j = (uint32_t)(pos >> 8); f = pos & 255;
         y = (tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8;
@@ -296,7 +313,10 @@ static void media_block(int sy, int32_t *x)
             a = y < 0 ? -y : y;
             fx[sy].fol += (a - fx[sy].fol) >> 8;
             c = tone - (fx[sy].fol >> 3);               /* loud: the top closes */
-            if (fx[sy].drop) { fx[sy].drop--; c -= 3000; y = (y * fx[sy].drop_g) >> 15; }
+            if (fx[sy].drop) fx[sy].drop--;             /* a dropout: in and out over 3 ms, as the tape lifts */
+            fx[sy].dd += ((fx[sy].drop ? 32768 : 0) - fx[sy].dd) >> 7;
+            c -= (3000 * fx[sy].dd) >> 15;
+            y = (y * (32768 - (((32768 - fx[sy].drop_g) * fx[sy].dd) >> 15))) >> 15;
             if (c < 1500) c = 1500;
             fx[sy].lp1 += ((y - fx[sy].lp1) * c) >> 15;
             fx[sy].lp2 += ((fx[sy].lp1 - fx[sy].lp2) * c) >> 15;
@@ -310,10 +330,19 @@ static void media_block(int sy, int32_t *x)
             a = y < 0 ? -y : y;                         /* the machine's noises ride the sound, as the tape's hiss */
             if (a > fx[sy].fol) fx[sy].fol += (a - fx[sy].fol) >> 4; else fx[sy].fol -= (fx[sy].fol >> 13) + (fx[sy].fol > 0);
             c = fx[sy].fol > 2048 ? 32768 : fx[sy].fol * 16;
-            if (++fx[sy].tick >= 1471u) { fx[sy].tick = 0; y += (k3 * 4 * c) >> 15; }   /* the head switch, 29.97 Hz */
-            if (fx[sy].track) {
-                fx[sy].track--;
-                y = (y * 24000 >> 15) + (((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 8) * c) >> 15);
+            if (fx[sy].tkp) { y += fx[sy].tkp; fx[sy].tkp = 0; }
+            if (++fx[sy].tick >= 1471u) {               /* the head switch, 29.97 Hz: a faint up and down, no thump */
+                fx[sy].tick = 0;
+                fx[sy].tkp = -((k3 * 2 * c) >> 15);
+                y -= fx[sy].tkp;
+            }
+            if (fx[sy].track || fx[sy].tdk < 32768) {   /* tracking: the sound ducks, a noise rises, both glided */
+                if (fx[sy].track) fx[sy].track--;
+                fx[sy].tdk += ((fx[sy].track ? 24000 : 32768) - fx[sy].tdk) >> 7;
+                if (!fx[sy].track && fx[sy].tdk > 32640) fx[sy].tdk = 32768;   /* home, not a 128th short of it */
+                /* its noise: the band's, not white */
+                fx[sy].nb += ((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 7) - fx[sy].nb) >> 2;
+                y = (y * fx[sy].tdk >> 15) + ((((fx[sy].nb * c) >> 15) * (32768 - fx[sy].tdk)) / 8768);
             }
             y = curve(T_LIM, y);
         }
@@ -416,8 +445,8 @@ static void room_step(int32_t vin)
  * lines, stored at 8 bits, two lines wowing deep */
 static void fdn_step(int32_t vin)
 {
-    int k, h, j, nmod = gp.vtype == VB_HAZE || gp.vtype == VB_SPACE ? 8 : gp.vtype == VB_LOFI ? 2 : 4;
-    int32_t x = vin / 2, y[FD_N], ol, orr, damp = gp.vtype == VB_HAZE ? gp.vdamp * 3 / 4 : gp.vtype == VB_LOFI ? gp.vdamp / 2 : gp.vdamp;
+    int k, h, j, nmod = v_cur == VB_HAZE || v_cur == VB_SPACE ? 8 : v_cur == VB_LOFI ? 2 : 4;
+    int32_t x = vin / 2, y[FD_N], ol, orr, damp = v_cur == VB_HAZE ? gp.vdamp * 3 / 4 : v_cur == VB_LOFI ? gp.vdamp / 2 : gp.vdamp;
     fd.dci += (x * 256 - fd.dci) >> 9;                  /* no DC in: a loop this long would hold it a hundredfold */
     x -= fd.dci >> 8;
     if (!(fd.step++ & 3)) {                             /* the sweep, every fourth step: four sines, the lines take turns */
@@ -427,7 +456,7 @@ static void fdn_step(int32_t vin)
         fd.lfo[0] += gp.vrate * 4u;
         fd.lfo[1] += (gp.vrate + (gp.vrate >> 2)) * 4u;
     }
-    if (gp.vtype == VB_BLOOM) {                         /* the swell: slow over fast, 0..1 */
+    if (v_cur == VB_BLOOM) {                         /* the swell: slow over fast, 0..1 */
         int32_t a = (x < 0 ? -x : x) << 8, g, sn;
         fd.fast += a > fd.fast ? (a - fd.fast) >> 4 : -(fd.fast >> 12) - (fd.fast > 0);
         fd.slow += a > fd.slow ? (a - fd.slow) >> 14 : -(fd.slow >> 16) - (fd.slow > 0);
@@ -435,7 +464,7 @@ static void fdn_step(int32_t vin)
         g = (fd.fast >> 8) > 0 ? (sn << 15) / ((fd.fast >> 8) + 1) : 32768;
         x = (x * (g > 32768 ? 32768 : g)) >> 15;
     }
-    if (gp.vtype == VB_LOFI) { if ((fd.half ^= 1)) fd.hold = x; x = fd.hold; }
+    if (v_cur == VB_LOFI) { if ((fd.half ^= 1)) fd.hold = x; x = fd.hold; }
     for (k = 0; k < 4; k++) {                           /* diffusion: four all-passes, 0.62 */
         int16_t *b = &df_buf[DF_OFF[k]];
         int32_t d = b[fd.dpos[k]], v = x + ((d * 20316) >> 15);
@@ -468,7 +497,7 @@ static void fdn_step(int32_t vin)
             for (j = k; j < k + h; j++) { int32_t a = y[j], b = y[j + h]; y[j] = a + b; y[j + h] = a - b; }
     for (k = 0; k < FD_N; k++) {
         int32_t w = (k & 1 ? -x : x) + ((y[k] * gp.vfbq + 16384) >> 15);
-        if (gp.vtype == VB_LOFI) w = (w + 128) & ~255;  /* eight bits */
+        if (v_cur == VB_LOFI) w = (w + 128) & ~255;  /* eight bits */
         METER(dmeter.sat_fd += w > 32767 || w < -32768);
         fd_buf[FD_OFF[k] + fd.pos[k]] = (int16_t)sat16(w);
         if (++fd.pos[k] >= FD_LEN[k]) fd.pos[k] = 0;
@@ -545,8 +574,8 @@ static void grains_step(int32_t ein)
 static void bus_step(int32_t vin, int32_t ein)
 {
     int32_t l, r;
-    if (gp.vtype == VB_ROOM) room_step(vin);
-    if (gp.etype == ET_GRAINS) { grains_step(ein); return; }
+    if (v_cur == VB_ROOM) room_step(vin);
+    if (e_cur == ET_GRAINS) { grains_step(ein); return; }
     /* ECHO: the left read at the time, the right a little later; the loop through a low-pass and a soft clip */
     l = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime) & (EL_LEN - 1)]];
     r = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime - (uint32_t)(gp.etime >> 4)) & (EL_LEN - 1)]];
@@ -574,6 +603,54 @@ static void bench_block(int n)
 }
 #endif
 
+/* a synth's three rows. A row whose type changes fades its effect out (5.8 ms), takes the new type and fades it in:
+ * a type swapped in place clicks. MEDIA's line and the chorus's are written while their row is off, so a type
+ * coming in reads the sound as it is, not what was there when it last ran */
+#define XG_STEP (32768 / 16)                            /* a block's step of the share: 16 blocks, 256 samples */
+static int xg_next(int sy, int row, int want)           /* the row's share at the block's end; its type taken when out */
+{
+    int32_t g;
+    if (want != fx[sy].cur[row] && !fx[sy].cur[row]) { fx[sy].cur[row] = (uint8_t)want; fx[sy].xg[row] = 0; }   /* from off: in */
+    g = fx[sy].xg[row];
+    g += want != fx[sy].cur[row] ? -XG_STEP : XG_STEP;
+    return g < 0 ? 0 : g > 32768 ? 32768 : g;
+}
+static void xg_mix(int32_t *y, const int32_t *dry, int32_t g0, int32_t g1)
+{
+    int i;
+    for (i = 0; i < DMK_SUB; i++) y[i] = dry[i] + (int32_t)(((int64_t)(y[i] - dry[i]) * (g0 + (g1 - g0) * i / DMK_SUB)) >> 15);
+}
+static void rows_run(int s, int32_t *x, int32_t *l, int32_t *r)
+{
+    const synth_t *p = &syn[s];
+    int row, i;
+    int32_t dry[DMK_SUB];
+    for (row = 0; row < 2; row++) {                     /* COLOUR, MEDIA */
+        int want = row ? p->media : p->colour;
+        int32_t g1 = xg_next(s, row, want), g0 = fx[s].xg[row];
+        if (fx[s].cur[row]) {
+            int fading = g0 < 32768 || g1 < 32768;
+            if (fading) for (i = 0; i < DMK_SUB; i++) dry[i] = x[i];
+            if (row) media_block(s, x, fx[s].cur[row]); else colour_block(s, x, fx[s].cur[row]);
+            if (fading) xg_mix(x, dry, g0, g1);
+        } else if (row)
+            for (i = 0; i < DMK_SUB; i++) tp_buf[s][fx[s].tw++ & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
+        fx[s].xg[row] = g1;
+        if (want != fx[s].cur[row] && !g1) fx[s].cur[row] = (uint8_t)want;
+    }
+    {                                                   /* MOTION: the chorus here (vibrato and drift are the voices') */
+        int want = p->motion == FO_CHORUS;
+        int32_t g1 = xg_next(s, 2, want), g0 = fx[s].xg[2];
+        if (fx[s].cur[2]) {
+            chorus_block(s, x, l, r);
+            if (g0 < 32768 || g1 < 32768) { xg_mix(l, x, g0, g1); xg_mix(r, x, g0, g1); }
+        } else
+            for (i = 0; i < DMK_SUB; i++) { l[i] = r[i] = x[i]; ch_buf[s][fx[s].cw++ & (CH_LEN - 1)] = (int16_t)sat16(x[i]); }
+        fx[s].xg[2] = g1;
+        if (want != fx[s].cur[2] && !g1) fx[s].cur[2] = (uint8_t)want;
+    }
+}
+
 /* the screen reads these: what each synth sounds, now */
 static int32_t syn_peak[DMK_SYNTHS];
 static int32_t syn_dc[DMK_SYNTHS];                      /* each synth's DC blocker (a sample's loop can sit off zero) */
@@ -594,10 +671,12 @@ static void dsp_reset(void)
         uint32_t k;
         for (k = 0; k < sizeof fx[i]; k++) z[k] = 0;
         fx[i].rng = 0x9E3779B9u * (i + 1u);
+        fx[i].tdk = fx[i].lg[0] = fx[i].lg[1] = fx[i].lg[2] = 32768;
         syn_peak[i] = 0; syn_dc[i] = 0;
     }
     { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }
     vq_w = vq_r = wq_w = wq_r = 0;
+    v_cur = gp.vtype; e_cur = gp.etype; v_g = e_g = 32768;
     for (i = 0; i < GR_N; i++) gr[i].len = 0;
     gr_clock = 0;
     bus.vl = bus.vr = bus.el = bus.er = bus.elp = bus.ehp = bus.vacc = bus.eacc = 0;
@@ -622,7 +701,7 @@ static void voices_run(int half)
         voice_t *o = &vc[v];
         const synth_t *p = &syn[o->sy];
         for (b = 0; b < nb && o->stage; b++) {
-            int32_t e0 = o->env, e1, de, f, q, hp, idx, f2 = 0, c = 0, *out = &vbuf[half][o->sy][b * DMK_SUB];
+            int32_t e0 = o->env, e1, de, f, q, q1, open, hp, idx, f2 = 0, c = 0, *out = &vbuf[half][o->sy][b * DMK_SUB];
             if (o->stage == 1) { e1 = e0 + (int32_t)p->atk; if (e1 >= FULL) { e1 = FULL; o->stage = 2; } }
             else if (o->stage == 2) e1 = p->sus + (int32_t)(((int64_t)(e0 - p->sus) * p->dec) >> 16);
             else { e1 = (int32_t)(((int64_t)e0 * p->rel) >> 16); if (e1 < 256) { e1 = 0; o->stage = 0; } }
@@ -641,6 +720,8 @@ static void voices_run(int half)
             o->inc = c ? (uint32_t)(((uint64_t)o->inc0 * T_CENT[clampi(50 + c / 16, 0, 100)]) >> 16) : o->inc0;
             idx = clampi(p->cut + (int32_t)(((int64_t)p->fenv * e0) >> 24), 0, 255);
             f = T_SVF[idx]; q = p->resq;
+            q1 = q < 11469 ? 11469 : q;                 /* LP24: one stage resonates; two would square the peak */
+            open = (p->ftype == FT_LP24 || p->ftype == FT_LP12) && idx >= 240 ? idx - 239 : 0;   /* 1..16: to the sample */
             if (p->ftype == FT_VOWEL) {                 /* the cutoff picks the vowel: two band-passes at its formants */
                 int pos = idx * 4, a = pos >> 8, t = pos & 255, z = a < 4 ? a + 1 : 4;
                 f = T_SVF[(VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8];
@@ -652,7 +733,7 @@ static void voices_run(int half)
                 while (o->ph >= 65536u) { o->ph -= 65536u; o->a = o->b; o->b = smp_next(o); }
                 x = o->a + (((o->b - o->a) * (int32_t)(o->ph >> 1)) >> 15);
                 switch (p->ftype) {
-                case FT_LP24: y = svf_step(&o->lp2, &o->bp2, svf_step(&o->lp, &o->bp, x, f, q, &hp), f, q, &hp); break;
+                case FT_LP24: y = svf_step(&o->lp2, &o->bp2, svf_step(&o->lp, &o->bp, x, f, q1, &hp), f, q, &hp); break;
                 case FT_LP12: y = svf_step(&o->lp, &o->bp, x, f, q, &hp); break;
                 case FT_HP: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = hp; break;
                 case FT_BP: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = o->bp; break;
@@ -668,10 +749,11 @@ static void voices_run(int half)
                 }
                 default: y = x; break;
                 }
-                if ((p->ftype == FT_LP24 || p->ftype == FT_LP12) && idx >= 255) y = x;   /* open: the sample as it is */
+                if (open) y += ((x - y) * open) >> 4;   /* the top: the sample as it is, reached gradually (a switch clicks) */
                 METER(dmeter.clamp_v += y > 65536 || y < -65536);
                 METER(dmeter.voice_max = (y < 0 ? -y : y) > dmeter.voice_max ? (y < 0 ? -y : y) : dmeter.voice_max);
-                out[i] += (int32_t)(((int64_t)clampi(y, -65536, 65536) * ((e0 + de * i) >> 9)) >> 15);
+                if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;   /* a resonance past full: bent, not cut */
+                out[i] += (int32_t)(((int64_t)y * ((e0 + de * i) >> 9)) >> 15);
                 if (!o->stage) break;                   /* a one-shot ended */
             }
             if (o->stage) o->env = e1;
@@ -698,10 +780,12 @@ static void dsp_render(int16_t *lr, int frames)
         voices_run(0);
         if (par) dmk_par_end(); else voices_run(1);
         /* the network: the last run's input, on the second core while this run mixes; the mix takes what it made */
-        if (gp.vtype == VB_ROOM) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix: the queue stays empty */
+        if (v_cur != gp.vtype && !v_g) v_cur = gp.vtype;   /* faded out: the new type, from the next run */
+        if (e_cur != gp.etype && !e_g) e_cur = gp.etype;
+        if (v_cur == VB_ROOM) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix: the queue stays empty */
         vfill = wq_w - wq_r;
-        par = gp.vtype != VB_ROOM && dmk_par_begin && dmk_par_begin(verb_job);
-        if (gp.vtype != VB_ROOM && !par) verb_job();
+        par = v_cur != VB_ROOM && dmk_par_begin && dmk_par_begin(verb_job);
+        if (v_cur != VB_ROOM && !par) verb_job();
         for (b = 0; b < nb; b++) {
             int32_t sm[DMK_SYNTHS][DMK_SUB], L[DMK_SUB], R[DMK_SUB], vin[DMK_SUB], ein[DMK_SUB];
             for (s = 0; s < DMK_SYNTHS; s++) for (i = 0; i < DMK_SUB; i++) sm[s][i] = vbuf[0][s][b * DMK_SUB + i] + vbuf[1][s][b * DMK_SUB + i];
@@ -717,10 +801,7 @@ static void dsp_render(int16_t *lr, int frames)
 #ifdef DMK_METER
                 for (i = 0; i < DMK_SUB; i++) { int32_t a = sm[s][i] < 0 ? -sm[s][i] : sm[s][i]; if (a > dmeter.syn_max) dmeter.syn_max = a; }
 #endif
-                if (p->colour) colour_block(s, sm[s]);
-                if (p->media) media_block(s, sm[s]);
-                if (p->motion == FO_CHORUS) chorus_block(s, sm[s], sl, sr);
-                else for (i = 0; i < DMK_SUB; i++) sl[i] = sr[i] = sm[s][i];
+                rows_run(s, sm[s], sl, sr);
                 for (i = 0; i < DMK_SUB; i++) {
                     int32_t xl = (sl[i] * p->level) >> 14, xr = (sr[i] * p->level) >> 14, x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * p->gl) >> 15;
@@ -731,23 +812,30 @@ static void dsp_render(int16_t *lr, int frames)
                 }
                 syn_peak[s] = pk > syn_peak[s] ? pk : syn_peak[s] - (syn_peak[s] >> 6);
             }
-            /* the buses at half rate, held for the sample between; then the limiter */
+            /* the returns' fades, a step a block (16 blocks); the buses at half rate, held for the sample between; then
+             * the limiter */
+            v_g += gp.vtype != v_cur ? (v_g > 0 ? -2048 : 0) : (v_g < 32768 ? 2048 : 0);
+            e_g += gp.etype != e_cur ? (e_g > 0 ? -2048 : 0) : (e_g < 32768 ? 2048 : 0);
             for (i = 0; i < DMK_SUB; i++) {
                 int k = (at + b * DMK_SUB + i) * 2;
                 int32_t wl = bus.vl, wr = bus.vr;
                 if (!(bus.half ^= 1)) bus_step((bus.vacc + vin[i]) >> 1, (bus.eacc + ein[i]) >> 1);
                 else { bus.vacc = vin[i]; bus.eacc = ein[i]; }
-                if (gp.vtype != VB_ROOM) {              /* the network's: what it made of the last run, in order */
-                    vq[vq_w++ & (VQ_LEN - 1)] = vin[i] + (gp.etype == ET_GRAINS ? (bus.el + bus.er) / 2 : 0);   /* the grains, into the space */
+                int32_t el, er;
+                el = e_g < 32768 ? (bus.el * e_g) >> 15 : bus.el;
+                er = e_g < 32768 ? (bus.er * e_g) >> 15 : bus.er;
+                if (v_cur != VB_ROOM) {                 /* the network's: what it made of the last run, in order */
+                    vq[vq_w++ & (VQ_LEN - 1)] = vin[i] + (e_cur == ET_GRAINS ? (el + er) / 2 : 0);   /* the grains, into the space */
                     wl = wr = 0;
                     if (vfill) { wl = wq[0][wq_r & (VQ_LEN - 1)]; wr = wq[1][wq_r & (VQ_LEN - 1)]; wq_r++; vfill--; }
                 } else { wl = bus.vl; wr = bus.vr; }
+                if (v_g < 32768) { wl = (wl * v_g) >> 15; wr = (wr * v_g) >> 15; }
 #ifdef DMK_METER
-                { int32_t a = L[i] + wl + bus.el, c = R[i] + wr + bus.er; a = a < 0 ? -a : a; c = c < 0 ? -c : c; if (c > a) a = c;
+                { int32_t a = L[i] + wl + el, c = R[i] + wr + er; a = a < 0 ? -a : a; c = c < 0 ? -c : c; if (c > a) a = c;
                   if (a > dmeter.pre_max) dmeter.pre_max = a; dmeter.knee += a > 24575; }
 #endif
-                lr[k] = (int16_t)curve(T_LIM, L[i] + wl + bus.el);
-                lr[k + 1] = (int16_t)curve(T_LIM, R[i] + wr + bus.er);
+                lr[k] = (int16_t)curve(T_LIM, L[i] + wl + el);
+                lr[k + 1] = (int16_t)curve(T_LIM, R[i] + wr + er);
             }
 #ifdef DMK_BENCH
             bench_block(DMK_SUB);

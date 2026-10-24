@@ -3,7 +3,8 @@
  * lines, rectangles, rounded tiles, text in Geist (2-bit glyphs whose middle tones are looked up per pixel against what
  * is under it, T_AA), and the text audit's records (host builds, DMK_TEXT_AUDIT). Included by dmk_core.c. */
 
-static uint8_t fb[DMK_FB_BYTES] POOL;
+static union { uint32_t w[DMK_FB_BYTES / 4]; uint8_t b[DMK_FB_BYTES]; } fbu POOL;   /* by the word: a whole row's fill */
+#define fb fbu.b
 static uint8_t theme;                                   /* THEMES in dmk_tables.h */
 static int cx0, cy0, cx1 = DMK_W, cy1 = DMK_H;           /* the clip */
 
@@ -57,15 +58,31 @@ static inline void px_put(int x, int y, int c)
     *b = x & 1 ? (uint8_t)((*b & 0xF0) | c) : (uint8_t)((*b & 0x0F) | c << 4);
 }
 
-/* the marks to the ramp: depth by two chamfer passes over their box (outside it: unlit) */
+/* the marks to the ramp: depth by two chamfer passes over their box (outside it: unlit). A graph's body is a box of
+ * 13 000 pixels, so this is the screen's dearest step: the depths are read and written by the byte, the ramp is a
+ * table by depth, and a big box lets the sound render between its passes (ui_yield) */
+static uint8_t th_c[TH_MAX] POOL;                        /* the last big shape's depths: a graph is the same most frames */
+static struct { int x0, y0, w, h, dmax; } thc = {-1, -1, 0, 0, 1};
 static void holo_done(void)
 {
-    int w = hx1 - hx0 + 1, h = hy1 - hy0 + 1, x, y, i, dmax = 1, pmax;
+    int w = hx1 - hx0 + 1, h = hy1 - hy0 + 1, x, y, i, dmax = 1, pmax, d, big = w * h > 4000, same;
+    uint8_t pd[TH_DEEP + 1];
+    const uint8_t *dep = th_d;
     if (hx1 < 0 || holo_hold) return;
     if (w * h > TH_MAX) {                               /* too big a box: the body's tone, flat */
         for (y = hy0; y <= hy1; y++) for (x = hx0; x <= hx1; x++) if (px_get(x, y) == C_HMARK) px_put(x, y, C_HOLO4);
     } else {
-        for (y = 0, i = 0; y < h; y++) for (x = 0; x < w; x++, i++) th_d[i] = px_get(hx0 + x, hy0 + y) == C_HMARK ? TH_DEEP : 0;
+        same = big && thc.x0 == hx0 && thc.y0 == hy0 && thc.w == w && thc.h == h;
+        for (y = 0, i = 0; y < h; y++) {
+            const uint8_t *row = &fb[(hy0 + y) * (DMK_W / 2)];
+            for (x = hx0; x <= hx1; x++, i++) {
+                int m = (x & 1 ? row[x >> 1] & 15 : row[x >> 1] >> 4) == C_HMARK;
+                th_d[i] = m ? TH_DEEP : 0;
+                if (same && !m != !th_c[i]) same = 0;
+            }
+        }
+        if (big) ui_yield();
+        if (same) { dep = th_c; dmax = thc.dmax; goto lit; }   /* the same marks: the same depths */
         for (y = 0, i = 0; y < h; y++)
             for (x = 0; x < w; x++, i++) {
                 int m;
@@ -79,37 +96,54 @@ static void holo_done(void)
                 } else m = 0;
                 if (m + 1 < th_d[i]) th_d[i] = (uint8_t)(m + 1);
             }
+        if (big) ui_yield();
         for (y = h - 1, i = w * h - 1; y >= 0; y--)
             for (x = w - 1; x >= 0; x--, i--) {
                 int m;
                 if (!th_d[i]) continue;
                 m = x < w - 1 ? th_d[i + 1] : 0;
                 if (y < h - 1) {
-                    int d = th_d[i + w], dl = x ? th_d[i + w - 1] : 0, dr = x < w - 1 ? th_d[i + w + 1] : 0;
-                    if (d < m) m = d;
+                    int dd = th_d[i + w], dl = x ? th_d[i + w - 1] : 0, dr = x < w - 1 ? th_d[i + w + 1] : 0;
+                    if (dd < m) m = dd;
                     if (dl < m) m = dl;
                     if (dr < m) m = dr;
                 } else m = 0;
                 if (m + 1 < th_d[i]) th_d[i] = (uint8_t)(m + 1);
                 if (th_d[i] > dmax) dmax = th_d[i];
             }
+        if (big) {
+            for (i = 0; i < w * h; i++) th_c[i] = th_d[i];
+            thc.x0 = hx0; thc.y0 = hy0; thc.w = w; thc.h = h; thc.dmax = dmax;
+            ui_yield();
+        }
+    lit:
         /* the shape's own ramp: its rim blue, its deepest ring as far in as its size allows; a hairline is body */
         if (holo_flat && dmax > 2) holo_flat = 0;      /* a heavy face (the wordmark) keeps its rings */
         pmax = TH_PMAX[holo_flat ? 1 : dmax > 9 ? 9 : dmax];
-        for (y = 0, i = 0; y < h; y++)
+        for (d = 1; d <= TH_DEEP; d++) {
+            int p = dmax > 1 && !holo_flat ? (d - 1) * pmax / (dmax - 1) : pmax;
+            pd[d] = (uint8_t)(p > holo_heat ? holo_heat : p);
+        }
+        for (y = 0, i = 0; y < h; y++) {
+            int Y = hy0 + y;
+            uint8_t *row = &fb[Y * (DMK_W / 2)];
+            const uint8_t *bay = T_BAYER6[holo_pat] + (Y & 3) * 4;
             for (x = 0; x < w; x++, i++) {
-                int p, t, X = hx0 + x, Y = hy0 + y;
-                if (!th_d[i]) continue;
-                p = dmax > 1 && !holo_flat ? (th_d[i] - 1) * pmax / (dmax - 1) : pmax;
-                if (p > holo_heat) p = holo_heat;
+                int p, t, X = hx0 + x;
+                uint8_t *b;
+                if (!dep[i]) continue;
+                p = pd[dep[i]];
                 if (holo_veil < 256 && T_BAYER6[0][(Y & 3) * 4 + (X & 3)] * 9 + X * 115 / DMK_W >= holo_veil) {
                     px_put(X, Y, holo_bg);
                     continue;
                 }
                 t = p >> 4;
-                if (t < 7 && T_BAYER6[holo_pat][(Y & 3) * 4 + (X & 3)] < (p & 15)) t++;
-                px_put(X, Y, C_HOLO0 + t);
+                if (t < 7 && bay[X & 3] < (p & 15)) t++;
+                t += C_HOLO0;                           /* a mark is inside the clip: written as it is */
+                b = &row[X >> 1];
+                *b = X & 1 ? (uint8_t)((*b & 0xF0) | t) : (uint8_t)((*b & 0x0F) | t << 4);
             }
+        }
     }
     hx0 = DMK_W; hy0 = DMK_H; hx1 = hy1 = -1;
 }
@@ -180,10 +214,18 @@ static void fill(int x, int y, int w, int h, int c)
         holo_done();
         return;
     }
+    if (x1 <= x0) return;
+    if (x0 == 0 && x1 == DMK_W) {                       /* whole rows: four bytes a store */
+        uint32_t four = two * 0x01010101u;
+        for (i = y0 * (DMK_W / 8); i < y1 * (DMK_W / 8); i++) fbu.w[i] = four;
+        return;
+    }
     for (j = y0; j < y1; j++) {
+        uint8_t *b, *e;
         i = x0;
         if (i & 1 && i < x1) px_put(i++, j, c);
-        for (; i + 1 < x1; i += 2) fb[(j * DMK_W + i) >> 1] = two;
+        for (b = &fb[(j * DMK_W + i) >> 1], e = b + (x1 - i) / 2; b < e; b++) *b = two;
+        i += (x1 - i) & ~1;
         if (i < x1) px_put(i, j, c);
     }
 }
@@ -240,14 +282,53 @@ static void tile(int x, int y, int w, int h, int r, int c, int line)
 /* ---- Kiloy's shapes: rounded rectangles and pills, their edges anti-aliased like the text (four tones from T_AA;
  * the field takes no edge tones). The grid's rules stay straight; what sits in it is round */
 
-/* the share of pixel (i, j), 0..16, inside a w x h rectangle with corners of radius r: 4 x 4 samples in a corner */
+/* the share of pixel (i, j), 0..16, inside a w x h rectangle with corners of radius r: 4 x 4 samples in a corner.
+ * A corner's shares are the same in all four, mirrored, and for every shape of that radius: counted once a radius
+ * (up to CR_MAX) into a table, the first time it is drawn */
+#define CR_MAX 32
+static uint8_t cr_tab[CR_MAX * (CR_MAX + 1) * (2 * CR_MAX + 1) / 6] POOL;   /* radius r at (r - 1) r (2r - 1) / 6 */
+static uint8_t cr_sp[CR_MAX * (CR_MAX + 1) / 2][2];     /* a corner's row: its first pixel touched, its first whole */
+static uint32_t cr_made[2];
+static int rr_cov_at(int i, int j, int r);
+static const uint8_t *cr_get(int r)                     /* radius r's shares (1 <= r <= CR_MAX), counted once */
+{
+    uint8_t *t = &cr_tab[(r - 1) * r * (2 * r - 1) / 6];
+    if (!(cr_made[r >> 5] >> (r & 31) & 1u)) {
+        int x, y;
+        for (y = 0; y < r; y++) {                       /* towards the centre a row only fills: in, then whole */
+            uint8_t *sp = cr_sp[(r - 1) * r / 2 + y];
+            sp[0] = sp[1] = (uint8_t)r;
+            for (x = r - 1; x >= 0; x--) {
+                t[y * r + x] = (uint8_t)rr_cov_at(x, y, r);
+                if (t[y * r + x]) sp[0] = (uint8_t)x;
+                if (t[y * r + x] == 16) sp[1] = (uint8_t)x;
+            }
+        }
+        cr_made[r >> 5] |= 1u << (r & 31);
+    }
+    return t;
+}
 static int rr_cov(int i, int j, int w, int h, int r)
 {
-    int cx, cy, sx, sy, n = 0;
+    int a, b;
     if (i < 0 || j < 0 || i >= w || j >= h) return 0;
-    cx = i < r ? r : i >= w - r ? w - r : -1;
-    cy = j < r ? r : j >= h - r ? h - r : -1;
-    if (cx < 0 || cy < 0) return 16;
+    if ((i >= r && i < w - r) || (j >= r && j < h - r)) return 16;
+    a = i < r ? i : w - 1 - i;                          /* into the top left corner */
+    b = j < r ? j : h - 1 - j;
+    if (r > CR_MAX) return rr_cov_at(a, b, r);
+    return cr_get(r)[b * r + a];
+}
+/* the share of pixel (i, j) of a top left corner of radius r, sampled */
+static int rr_cov_at(int i, int j, int r)
+{
+    int cx = r, cy = r, sx, sy, n = 0;
+    {   /* the samples nearest the centre and farthest from it: a pixel wholly in or out needs no others (the centre
+         * is on a pixel's edge, so a pixel's samples all lie one side of it) */
+        int ax = 8 * i + 1 - 8 * cx, bx = ax + 6, ay = 8 * j + 1 - 8 * cy, by = ay + 6, R = 64 * r * r;
+        int nx = ax > 0 ? ax : -bx, fx = ax > 0 ? bx : -ax, ny = ay > 0 ? ay : -by, fy = ay > 0 ? by : -ay;
+        if (fx * fx + fy * fy <= R) return 16;
+        if (nx * nx + ny * ny > R) return 0;
+    }
     for (sy = 0; sy < 4; sy++)
         for (sx = 0; sx < 4; sx++) {
             int dx = 8 * i + 2 * sx + 1 - 8 * cx, dy = 8 * j + 2 * sy + 1 - 8 * cy;
@@ -282,13 +363,28 @@ static void round_fill(int x, int y, int w, int h, int r, int c)
     fill(x + r, y, w - 2 * r, h, c);
     fill(x, y + r, r, h - 2 * r, c);
     fill(x + w - r, y + r, r, h - 2 * r, c);
-    for (j = 0; j < r; j++)
-        for (i = 0; i < r; i++) {
-            px_cov(x + i, y + j, c, rr_cov(i, j, w, h, r));
-            px_cov(x + w - 1 - i, y + j, c, rr_cov(w - 1 - i, j, w, h, r));
-            px_cov(x + i, y + h - 1 - j, c, rr_cov(i, h - 1 - j, w, h, r));
-            px_cov(x + w - 1 - i, y + h - 1 - j, c, rr_cov(w - 1 - i, h - 1 - j, w, h, r));
+    if (r <= CR_MAX) {                                  /* a corner's row: its whole run filled, its edge shared */
+        const uint8_t *t = cr_get(r);
+        for (j = 0; j < r; j++) {
+            const uint8_t *sp = cr_sp[(r - 1) * r / 2 + j];
+            if (sp[1] < r) {
+                fill(x + sp[1], y + j, r - sp[1], 1, c); fill(x + w - r, y + j, r - sp[1], 1, c);
+                fill(x + sp[1], y + h - 1 - j, r - sp[1], 1, c); fill(x + w - r, y + h - 1 - j, r - sp[1], 1, c);
+            }
+            for (i = sp[0]; i < sp[1]; i++) {
+                int v = t[j * r + i];
+                px_cov(x + i, y + j, c, v); px_cov(x + w - 1 - i, y + j, c, v);
+                px_cov(x + i, y + h - 1 - j, c, v); px_cov(x + w - 1 - i, y + h - 1 - j, c, v);
+            }
         }
+    } else
+        for (j = 0; j < r; j++)
+            for (i = 0; i < r; i++) {
+                px_cov(x + i, y + j, c, rr_cov(i, j, w, h, r));
+                px_cov(x + w - 1 - i, y + j, c, rr_cov(w - 1 - i, j, w, h, r));
+                px_cov(x + i, y + h - 1 - j, c, rr_cov(i, h - 1 - j, w, h, r));
+                px_cov(x + w - 1 - i, y + h - 1 - j, c, rr_cov(w - 1 - i, h - 1 - j, w, h, r));
+            }
     holo_hold--;
     if (c < 0) holo_done();
 }
@@ -303,8 +399,19 @@ static void round_line(int x, int y, int w, int h, int r, int t, int c)
         hline(x + r, y + k, w - 2 * r, c); hline(x + r, y + h - 1 - k, w - 2 * r, c);
         vline(x + k, y + r, h - 2 * r, c); vline(x + w - 1 - k, y + r, h - 2 * r, c);
     }
-    for (j = 0; j < r; j++)
-        for (i = 0; i < r; i++) {
+    for (j = 0; j < r; j++) {
+        /* only from the first pixel the outline touches to where the inside is whole: past it, nothing shows */
+        int i0 = 0, i1 = r, ri = r - t > 0 ? r - t : 0;
+        if (r <= CR_MAX) {
+            cr_get(r);
+            i0 = cr_sp[(r - 1) * r / 2 + j][0];
+            if (j >= t) {
+                if (!ri) i1 = t;
+                else { cr_get(ri); i1 = t + cr_sp[(ri - 1) * ri / 2 + j - t][1]; }
+                if (i1 > r) i1 = r;
+            }
+        }
+        for (i = i0; i < i1; i++) {
             int q[4][2] = {{i, j}, {w - 1 - i, j}, {i, h - 1 - j}, {w - 1 - i, h - 1 - j}};
             for (k = 0; k < 4; k++) {
                 int a = rr_cov(q[k][0], q[k][1], w, h, r);
@@ -312,6 +419,7 @@ static void round_line(int x, int y, int w, int h, int r, int t, int c)
                 px_cov(x + q[k][0], y + q[k][1], c, a > b ? a - b : 0);
             }
         }
+    }
     if (c < 0) holo_done();
 }
 

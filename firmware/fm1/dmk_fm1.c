@@ -180,14 +180,26 @@ static uint16_t be16(uint16_t c) { return (uint16_t)((c >> 8) | (c << 8)); }
 
 static uint32_t frame_ms;
 
+/* a frame is several milliseconds of drawing (the lit graphs, the landscape): between its parts the core calls this,
+ * and the ring is topped up, so a long frame never lets it run dry (a click) */
+static uint32_t yield_ticks;
+static void frame_yield(void)
+{
+    uint32_t t0 = fm1_ticks();
+    render_ahead();
+    render_ahead();                             /* to the top: the frame goes on drawing after */
+    yield_ticks += fm1_ticks() - t0;
+}
+
 static void screen_frame(void)
 {
     uint32_t s, i, t0 = fm1_ticks();
     const uint16_t *pal;
     frame_ms = fm1_ms;
+    yield_ticks = 0;
     frame = dmk_frame(fm1_ms);
     pal = dmk_palette565();
-    frame_ticks += fm1_ticks() - t0;
+    frame_ticks += fm1_ticks() - t0 - yield_ticks;
     for (i = 0; i < 16u && pal[i] == pal_shown[i]; i++)
         ;
     if (i < 16u) {                              /* a new theme: every strip goes again */
@@ -267,6 +279,7 @@ static void ota_send(const uint8_t *f, uint32_t s0, uint32_t s1)
 
 static void app_ota_show(uint32_t step, int32_t code)
 {
+    dmk_yield = 0;                              /* no sound while the flash is written: a frame draws only */
     ota_step = step;
     ota_code = (uint32_t)code;
     ota_shown_ms = fm1_ms;
@@ -275,6 +288,7 @@ static void app_ota_show(uint32_t step, int32_t code)
 
 static void app_ota_idle(void)
 {
+    dmk_yield = 0;
     if (!ota_step || ota_step >= 5u || fm1_ms - ota_shown_ms < 200u) return;
     ota_shown_ms = fm1_ms;
     ota_send(dmk_update_frame(ota_step, (int32_t)ota_code), 3, 17);   /* rows 24..135: the word */
@@ -294,6 +308,7 @@ static void app_init(void)
 #if DINGHY_DUAL_CORE
     if (audio_worker_online) { dmk_par_begin = par_begin; dmk_par_end = par_end; }
 #endif
+    dmk_yield = frame_yield;
     dmk_init(fm1_ticks());
     lcd_fill(0, 0, 240, 240, 0x0000u);
     render_ahead();
@@ -302,6 +317,7 @@ static void app_init(void)
 
 static void app_loop(void)
 {
+    dmk_yield = frame_yield;                    /* again after an update that stopped */
     if (DMK_FM1_DIAG) diag_tick();
     render_ahead();
     take_panel();

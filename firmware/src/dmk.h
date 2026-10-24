@@ -47,5 +47,8 @@ uint32_t dmk_samples(void);                         /* samples rendered since in
  * dmk_par_begin(job) starts job on it (0: it could not, the core does it in place), dmk_par_end waits for it */
 extern int (*dmk_par_begin)(void (*job)(void));
 extern void (*dmk_par_end)(void);
+/* a frame is many milliseconds of drawing on the FM-1: the platform may set dmk_yield, which the frame calls between
+ * its parts, where nothing is half done, to render the sound ahead meanwhile (dmk_render from inside dmk_frame) */
+extern void (*dmk_yield)(void);
 
 #endif
