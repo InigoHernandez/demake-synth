@@ -129,6 +129,9 @@ def rms_env(x, sr, win=0.02):
     return np.sqrt(p)
 
 
+KINDS = ["pad", "key", "pluck", "bass"]
+
+
 def kind_of(x, sr, root):
     env = rms_env(x, sr)
     pk = env.max() + 1e-12
@@ -270,7 +273,8 @@ def main():
         ls = states[l0] if loop else (0, 0)
         seg = np.array_split(np.abs(dec), 48)                 # its shape for the screen: 48 peaks, 0..255
         env = [min(255, int(round(255 * float(g.max()) / 32767))) for g in seg]
-        entries.append(dict(num=num, name=name, kind=kind, root=root, cents=cents, sr=sr, blocks=blocks,
+        cen = float((fr * spec).sum() / (spec.sum() + 1e-20))   # its brightness: where its energy sits
+        entries.append(dict(num=num, name=name, kind=kind, root=root, cents=cents, sr=sr, blocks=blocks, cen=cen,
                             l0=l0 if loop else 0, l1=l1 if loop else blocks, loop=loop, ls=ls, data=data, env=env))
         rows.append(f"| {num:02d} | {name} | {kind} | {root} | {cents:+d} | {sr} | {blocks * 28 / sr:.2f} s | "
                     f"{f'{(l1 - l0) * 28 / sr:.2f} s' if loop else 'one-shot'} | {snr:.1f} dB | {len(data)} B |")
@@ -286,6 +290,14 @@ def main():
                 pcm = body[:3 * sr]
             write_wav(Path(a.wav) / f"{num:02d}_{name.replace(' ', '_')}.wav", pcm, sr)
     # bank A first: the keys, plucks and basses, then the pads, to BANK_A; then the rest in their order
+    # the landscapes: keys by the lake, plucks on the coast, basses at night; the pads by brightness, a third each to
+    # the peaks (the brightest), the coast and the night (the darkest)
+    pads = sorted((e for e in entries if e["kind"] == "pad"), key=lambda e: e["cen"])
+    for i, e in enumerate(pads):
+        e["scene"] = 3 if i < len(pads) // 3 else 2 if i < 2 * len(pads) // 3 else 0
+    for e in entries:
+        if e["kind"] != "pad":
+            e["scene"] = {"key": 1, "pluck": 2, "bass": 3}[e["kind"]]
     order = sorted(entries, key=lambda e: (e["kind"] == "pad", e["num"]))
     bank_a = order[:BANK_A]
     rest = [e for e in entries if e not in bank_a]
@@ -300,6 +312,9 @@ def main():
          "    uint8_t root;            /* the note it was played at, MIDI */",
          "    int8_t cents;            /* how far off it, -50..50 */",
          "    uint8_t loops;           /* 1: loops from loop0 to loop1, else one-shot */",
+         "    uint8_t kind;            /* 0 pad, 1 key, 2 pluck, 3 bass */",
+         "    uint8_t scene;           /* Home's landscape: 0 peaks (bright pads), 1 lake (keys), 2 coast (plucks, warm",
+         "                                pads), 3 night (basses, dark pads) */",
          "    uint32_t rate_q16;       /* its rate over 44.1 kHz, Q16 */",
          "    uint16_t blocks, loop0, loop1;",
          "    int16_t ls1, ls2;        /* the decoder's state entering loop0 */",
@@ -316,7 +331,7 @@ def main():
     for i, e in enumerate(ordered):
         rq = round(e["sr"] * 65536 / 44100)
         L.append(f"#if DMK_SAMPLES_N > {i}")
-        L.append(f"    {{\"{e['name']}\", {e['root']}, {e['cents']}, {int(e['loop'])}, {rq}u, {e['blocks']}, {e['l0']}, "
+        L.append(f"    {{\"{e['name']}\", {e['root']}, {e['cents']}, {int(e['loop'])}, {KINDS.index(e['kind'])}, {e['scene']}, {rq}u, {e['blocks']}, {e['l0']}, "
                  f"{e['l1']}, {e['ls'][0]}, {e['ls'][1]}, SMP{i:02d}, {{" + ",".join(map(str, e["env"])) + f"}}}},   /* {e['num']:02d}, {e['kind']} */")
         L.append("#endif")
     L.append("};")

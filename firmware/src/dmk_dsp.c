@@ -36,7 +36,8 @@ enum { FT_LP24, FT_LP12, FT_HP, FT_BP, FT_NOTCH, FT_PEAK, FT_VOWEL, FT_OFF };
 enum { FC_OFF, FC_SAT, FC_CRUSH, FC_LOSSY, FC_NOISE };          /* COLOUR */
 enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS };                       /* MEDIA */
 enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT };                    /* MOTION */
-enum { VB_ROOM, VB_HALL, VB_HAZE, VB_BLOOM, VB_LOFI };           /* the VERB's types */
+enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI };  /* the VERB's types */
+enum { ET_TAPE, ET_GRAINS };                                     /* the ECHO's */
 typedef struct {
     uint8_t smp, loops, ftype, tape;
     int16_t tune, cut, fenv;       /* semitones; the cutoff's index 0..255 (255: open); the envelope's reach in indexes */
@@ -53,7 +54,7 @@ typedef struct {
 static synth_t syn[DMK_SYNTHS];
 
 /* the shared buses' controls */
-static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod; uint32_t vrate; uint8_t vtype; } gp;
+static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex; uint32_t vrate; uint8_t vtype, etype; } gp;
 
 /* ---- the voices */
 typedef struct {
@@ -263,19 +264,19 @@ static void media_block(int sy, int32_t *x)
     int i, k0 = p->mk[0], k1 = p->mk[1], k2 = p->mk[2], k3 = p->mk[3], t = p->media;
     int32_t tone = T_OP[64 + k1 / 2];
     fx[sy].wd += ((int32_t)(xs32(&fx[sy].rng) >> 22) - 512 - fx[sy].wd) >> 6;   /* the wow's rate wanders */
-    if (t == FM_CASS && !fx[sy].drop && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 3u)   /* a dropout begins */
-        { fx[sy].drop = 450 + (int32_t)(fx[sy].rng % 6000u); fx[sy].drop_g = 6000 + (int32_t)(fx[sy].rng % 14000u); }
-    if (t == FM_VHS && !fx[sy].track && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 4u)  /* a tracking event */
+    if (t == FM_CASS && !fx[sy].drop && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 10u)  /* a dropout begins */
+        { fx[sy].drop = 450 + (int32_t)(fx[sy].rng % 5000u); fx[sy].drop_g = 16000 + (int32_t)(fx[sy].rng % 12000u); }
+    if (t == FM_VHS && !fx[sy].track && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 12u) /* a tracking event */
         fx[sy].track = 900 + (int32_t)(fx[sy].rng % 8000u);
     for (i = 0; i < DMK_SUB; i++) {
         int32_t m, d, pos, f, y, a, c;
-        uint32_t j, rate = t == FM_TAPE ? p->twow : t == FM_CASS ? p->twow * 3u + (uint32_t)k2 * 5000u : p->twow / 2u + (uint32_t)k2 * 1500u;
+        uint32_t j, rate = t == FM_TAPE ? p->twow : t == FM_CASS ? p->twow + (uint32_t)k2 * 1200u : p->twow / 2u + (uint32_t)k2 * 1000u;
         tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
         fx[sy].wow += rate + (uint32_t)(fx[sy].wd * 30);
         fx[sy].flut += p->tflut;
         m = (sinp(fx[sy].wow) * 48 + sinp(fx[sy].flut)) >> 6;
-        if (t == FM_VHS) m += (int32_t)(xs32(&fx[sy].rng) >> 21) - 1024;   /* the jitter */
-        d = (t == FM_CASS ? 300 : 400) * 256 + (int32_t)(((int64_t)m * (t == FM_TAPE ? p->tdepth : 200 + k0 * (t == FM_VHS ? 780 : 500))) >> 15);
+        if (t == FM_VHS) m += (int32_t)(xs32(&fx[sy].rng) >> 23) - 256;    /* the jitter, slight */
+        d = (t == FM_CASS ? 300 : 400) * 256 + (int32_t)(((int64_t)m * (t == FM_TAPE ? p->tdepth : 100 + k0 * (t == FM_VHS ? 300 : 220))) >> 15);
         if (fx[sy].track) d += 30000 - (fx[sy].track & 4095) * 4;   /* tracking: the pitch dips */
         pos = (int32_t)(fx[sy].tw << 8) - d;
         j = (uint32_t)(pos >> 8); f = pos & 255;
@@ -287,12 +288,12 @@ static void media_block(int sy, int32_t *x)
         } else if (t == FM_CASS) {
             a = y < 0 ? -y : y;
             fx[sy].fol += (a - fx[sy].fol) >> 8;
-            c = tone - (fx[sy].fol >> 2);               /* loud: the top closes */
-            if (fx[sy].drop) { fx[sy].drop--; c -= 6000; y = (y * fx[sy].drop_g) >> 15; }
+            c = tone - (fx[sy].fol >> 3);               /* loud: the top closes */
+            if (fx[sy].drop) { fx[sy].drop--; c -= 3000; y = (y * fx[sy].drop_g) >> 15; }
             if (c < 1500) c = 1500;
             fx[sy].lp1 += ((y - fx[sy].lp1) * c) >> 15;
             fx[sy].lp2 += ((fx[sy].lp1 - fx[sy].lp2) * c) >> 15;
-            y = curve(T_SAT, fx[sy].lp2 * 3 / 2);
+            y = curve(T_SAT, fx[sy].lp2 * 5 / 4);
         } else {
             fx[sy].hp += (y * 256 - fx[sy].hp) >> 9;    /* ~80 Hz out */
             y -= fx[sy].hp >> 8;
@@ -302,12 +303,12 @@ static void media_block(int sy, int32_t *x)
             a = y < 0 ? -y : y;                         /* the machine's noises ride the sound, as the tape's hiss */
             if (a > fx[sy].fol) fx[sy].fol += (a - fx[sy].fol) >> 4; else fx[sy].fol -= (fx[sy].fol >> 13) + (fx[sy].fol > 0);
             c = fx[sy].fol > 4096 ? 32768 : fx[sy].fol * 8;
-            if (++fx[sy].tick >= 1471u) { fx[sy].tick = 0; y += (k3 * 12 * c) >> 15; }   /* the head switch, 29.97 Hz */
+            if (++fx[sy].tick >= 1471u) { fx[sy].tick = 0; y += (k3 * 4 * c) >> 15; }   /* the head switch, 29.97 Hz */
             if (fx[sy].track) {
                 fx[sy].track--;
-                y = (y * 12000 >> 15) + (((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 6) * c) >> 15);
+                y = (y * 24000 >> 15) + (((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 8) * c) >> 15);
             }
-            y = curve(T_SAT, y * 5 / 4);
+            y = curve(T_SAT, y);
         }
         x[i] = y;
     }
@@ -350,7 +351,7 @@ static const uint16_t FD_LEN[FD_N] = {1153, 1327, 1559, 1699, 1877, 2069, 2297, 
 static const uint16_t DF_LEN[4] = {142, 107, 379, 277};
 static int16_t fd_buf[1153 + 1327 + 1559 + 1699 + 1877 + 2069 + 2297 + 2477] POOL;
 static int16_t df_buf[142 + 107 + 379 + 277] POOL;
-static struct { uint16_t pos[FD_N], dpos[4]; int32_t lp[FD_N], m[FD_N], fast, slow, hold, acc, ol, orr; uint32_t lfo[2]; uint8_t half, step, vhalf; } fd;
+static struct { uint16_t pos[FD_N], dpos[4]; int32_t lp[FD_N], m[FD_N], fast, slow, hold, acc, ol, orr, dci, dcl, dcr; uint32_t lfo[2]; uint8_t half, step, vhalf; } fd;
 static const uint16_t FD_OFF[FD_N] = {0, 1153, 2480, 4039, 5738, 7615, 9684, 11981};
 static const uint16_t DF_OFF[4] = {0, 142, 249, 628};
 #define EL_LEN 32768u                                   /* ECHO: 1.49 s of 8-bit mu-law at 22.05 kHz */
@@ -408,8 +409,10 @@ static void room_step(int32_t vin)
  * lines, stored at 8 bits, two lines wowing deep */
 static void fdn_step(int32_t vin)
 {
-    int k, h, j, nmod = gp.vtype == VB_HAZE ? 8 : gp.vtype == VB_LOFI ? 2 : 4;
+    int k, h, j, nmod = gp.vtype == VB_HAZE || gp.vtype == VB_SPACE ? 8 : gp.vtype == VB_LOFI ? 2 : 4;
     int32_t x = vin / 2, y[FD_N], ol, orr, damp = gp.vtype == VB_HAZE ? gp.vdamp * 3 / 4 : gp.vtype == VB_LOFI ? gp.vdamp / 2 : gp.vdamp;
+    fd.dci += (x * 256 - fd.dci) >> 9;                  /* no DC in: a loop this long would hold it a hundredfold */
+    x -= fd.dci >> 8;
     if (!(fd.step++ & 3)) {                             /* the sweep, every fourth step: four sines, the lines take turns */
         int32_t sv[4];
         sv[0] = sinp(fd.lfo[0]); sv[1] = sinp(fd.lfo[0] + 0x40000000u); sv[2] = sinp(fd.lfo[1]); sv[3] = sinp(fd.lfo[1] + 0x40000000u);
@@ -462,8 +465,10 @@ static void fdn_step(int32_t vin)
         fd_buf[FD_OFF[k] + fd.pos[k]] = (int16_t)sat16(w);
         if (++fd.pos[k] >= FD_LEN[k]) fd.pos[k] = 0;
     }
-    fd.ol = (ol * gp.vret) >> 16;
-    fd.orr = (orr * gp.vret) >> 16;
+    fd.dcl += (ol * 256 - fd.dcl) >> 10;                /* nor out: what the loop's rounding leaves */
+    fd.dcr += (orr * 256 - fd.dcr) >> 10;
+    fd.ol = ((ol - (fd.dcl >> 8)) * gp.vret) >> 16;
+    fd.orr = ((orr - (fd.dcr >> 8)) * gp.vret) >> 16;
 }
 
 /* the network's own pass, a run of the verb's input at a time, half rate, its output held for the sample between:
@@ -484,11 +489,56 @@ static void verb_job(void)
     }
 }
 
+/* GRAINS, the ECHO's other type: the same line, read by six grains at once, each from a random moment of the last
+ * 1.4 s, as long as SIZE, as often as DENSITY, some an octave or a fifth up as TEXTURE rises, each its own place
+ * across the stereo, shaped by a window; a cloud of what was played, into the verb too */
+#define GR_N 6
+static struct { uint32_t pos, inc, len, age; int16_t pl, pr; } gr[GR_N];
+static uint32_t gr_clock, gr_rng = 0x2545F491u;
+static void grains_step(int32_t ein)
+{
+    int k;
+    int32_t l = 0, r = 0;
+    el_buf[bus.ew & (EL_LEN - 1)] = mulaw_enc(curve(T_SAT, ein));
+    bus.ew++;
+    gr_clock += (uint32_t)gp.gdens;
+    if (gr_clock >= 65536u) {                           /* a grain begins, if one is free */
+        gr_clock -= 65536u;
+        for (k = 0; k < GR_N && gr[k].len; k++) {}
+        if (k < GR_N) {
+            uint32_t rn = xs32(&gr_rng), len = (uint32_t)gp.glen, inc = 256u, back;
+            if ((int32_t)((rn >> 8) & 127u) < gp.gtex) inc = rn & 1u ? 512u : 384u;   /* an octave, or a fifth, up */
+            else inc = 254u + (rn >> 30);               /* or as played, a hair off */
+            back = len * inc / 256u + 64u + (xs32(&gr_rng) % (EL_LEN - 2u * len - 128u));
+            gr[k].pos = (bus.ew - back) << 8; gr[k].inc = inc; gr[k].len = len; gr[k].age = 0;
+            gr[k].pl = (int16_t)T_PAN[127 - (rn >> 25)]; gr[k].pr = (int16_t)T_PAN[rn >> 25];
+        }
+    }
+    for (k = 0; k < GR_N; k++) {
+        uint32_t i, f;
+        int32_t a, b, x, t, w;
+        if (!gr[k].len) continue;
+        i = gr[k].pos >> 8; f = gr[k].pos & 255u;
+        a = T_MULAW[el_buf[i & (EL_LEN - 1)]]; b = T_MULAW[el_buf[(i + 1) & (EL_LEN - 1)]];
+        x = a + (((b - a) * (int32_t)f) >> 8);
+        t = (int32_t)(gr[k].age * 256u / gr[k].len);    /* the window: a parabola over the grain */
+        w = t * (255 - t) / 64;
+        x = (x * w) >> 8;
+        l += (x * gr[k].pl) >> 15;
+        r += (x * gr[k].pr) >> 15;
+        gr[k].pos += gr[k].inc;
+        if (++gr[k].age >= gr[k].len) gr[k].len = 0;
+    }
+    bus.el = (l * gp.eret) >> 16;
+    bus.er = (r * gp.eret) >> 16;
+}
+
 /* one half-rate step: the verb's and the echo's inputs in, their stereo outputs kept in bus.vl/vr, el/er */
 static void bus_step(int32_t vin, int32_t ein)
 {
     int32_t l, r;
     if (gp.vtype == VB_ROOM) room_step(vin);
+    if (gp.etype == ET_GRAINS) { grains_step(ein); return; }
     /* ECHO: the left read at the time, the right a little later; the loop through a low-pass and a soft clip */
     l = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime) & (EL_LEN - 1)]];
     r = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime - (uint32_t)(gp.etime >> 4)) & (EL_LEN - 1)]];
@@ -540,6 +590,8 @@ static void dsp_reset(void)
     }
     { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }
     vq_w = vq_r = wq_w = wq_r = 0;
+    for (i = 0; i < GR_N; i++) gr[i].len = 0;
+    gr_clock = 0;
     bus.vl = bus.vr = bus.el = bus.er = bus.elp = bus.ehp = bus.vacc = bus.eacc = 0;
     for (i = 0; i < 4; i++) bus.cb_lp[i] = 0;
 }
@@ -673,7 +725,7 @@ static void dsp_render(int16_t *lr, int frames)
                 if (!(bus.half ^= 1)) bus_step((bus.vacc + vin[i]) >> 1, (bus.eacc + ein[i]) >> 1);
                 else { bus.vacc = vin[i]; bus.eacc = ein[i]; }
                 if (gp.vtype != VB_ROOM) {              /* the network's: what it made of the last run, in order */
-                    vq[vq_w++ & (VQ_LEN - 1)] = vin[i];
+                    vq[vq_w++ & (VQ_LEN - 1)] = vin[i] + (gp.etype == ET_GRAINS ? (bus.el + bus.er) / 2 : 0);   /* the grains, into the space */
                     wl = wr = 0;
                     if (vfill) { wl = wq[0][wq_r & (VQ_LEN - 1)]; wr = wq[1][wq_r & (VQ_LEN - 1)]; wq_r++; vfill--; }
                 } else { wl = bus.vl; wr = bus.vr; }

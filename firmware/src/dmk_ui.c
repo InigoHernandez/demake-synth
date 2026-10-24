@@ -81,12 +81,12 @@ static const char *const OFF[] = {"Off"};
 static const char *const LFOS[] = {"Sine", "Triangle", "Ramp", "Square", "Random"};
 static const char *const TARGETS[] = {"Pitch", "Cutoff", "Level", "Pan"};
 static const char *const LOOPS[] = {"Off", "Full"};
-static const char *const VERBS[] = {"Room", "Hall", "Haze", "Bloom", "Lofi"};
-static const char *const ECHOS[] = {"Tape"};
+static const char *const VERBS[] = {"Room", "Hall", "Space", "Haze", "Bloom", "Lofi"};
+static const char *const ECHOS[] = {"Tape", "Grains"};
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, 5, COLOURS}, {PG_FX, 1, 4, 4, MEDIAS}, {PG_FX, 2, 4, 4, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
-    {PG_GLOBAL, 0, 4, 5, VERBS}, {PG_GLOBAL, 1, 4, 1, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
+    {PG_GLOBAL, 0, 4, 6, VERBS}, {PG_GLOBAL, 1, 4, 2, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
 };
 
 static struct {
@@ -176,10 +176,10 @@ static void sp_sync(void)
     }
     {   /* the VERB's type: its loop's gain from SIZE (Q15, a ninth of a dB a pass at the most for HAZE), its sweep's
          * depth at full MOD (Q8 samples) and its rate (0.3, 0.13, 0.2, 0.5 Hz at 22.05 kHz) */
-        static const uint16_t G0[5] = {0, 23000, 24500, 24000, 19000}, G1[5] = {0, 31300, 32100, 31800, 29500};
-        static const uint16_t MD[5] = {0, 4096, 12288, 3072, 15360};
-        static const uint32_t RT[5] = {0, 58435, 25322, 38957, 97392};
-        int t = VS(0, PG_GLOBAL, 0, 4) * 5 / 128, sz = VS(0, PG_GLOBAL, 0, 2);
+        static const uint16_t G0[6] = {0, 24000, 26000, 25000, 25000, 19000}, G1[6] = {0, 31900, 32600, 32450, 32300, 30500};
+        static const uint16_t MD[6] = {0, 4096, 8192, 12288, 3072, 15360};
+        static const uint32_t RT[6] = {0, 58435, 31165, 25322, 38957, 97392};
+        int t = VS(0, PG_GLOBAL, 0, 4) * 6 / 128, sz = VS(0, PG_GLOBAL, 0, 2);
         gp.vtype = (uint8_t)t;
         gp.vfbq = (G0[t] + (G1[t] - G0[t]) * sz / 127) * 11585 >> 15;   /* the Hadamard's sqrt(8) taken out */
         gp.vmod = MD[t] * VS(0, PG_GLOBAL, 0, 3) / 127;
@@ -192,6 +192,10 @@ static void sp_sync(void)
     gp.elp = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
     gp.etime = T_ETIME[VS(0, PG_GLOBAL, 1, 2)];
     gp.efb = VS(0, PG_GLOBAL, 1, 3) * 240;
+    gp.etype = (uint8_t)(VS(0, PG_GLOBAL, 1, 4) * 2 / 128);
+    gp.glen = 441 + VS(0, PG_GLOBAL, 1, 1) * 62;        /* GRAINS: 20..380 ms */
+    gp.gdens = 6 + VS(0, PG_GLOBAL, 1, 2) * 113 / 127;  /* 2..40 a second */
+    gp.gtex = VS(0, PG_GLOBAL, 1, 3);
     seq_bpm = VS(0, PG_HOME, 0, 4) < 20 ? 20 : VS(0, PG_HOME, 0, 4);
     cur_synth = ui.synth;
 }
@@ -238,7 +242,8 @@ static void ui_init(void)
     }
     ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
     ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the verb: a hall */
-    ui.val[0][PG_GLOBAL][0][4] = 37; ui.val[0][PG_GLOBAL][0][3] = 64;
+    ui.val[0][PG_GLOBAL][0][4] = 31; ui.val[0][PG_GLOBAL][0][3] = 64;
+    ui.val[0][PG_GLOBAL][1][4] = 0;                     /* the echo: tape */
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* each roll on its own pattern: its notes in view */
@@ -459,6 +464,7 @@ static void fields_band(void)
     for (k = 0; k < 4; k++) {
         const char *l = pg->k[r][k];
         if (ui.page == PG_FX && r < 3) l = FXK[r][choice_index(choice_of(PG_FX, r, 4), *vp(PG_FX, r, 4))][k];
+        if (ui.page == PG_GLOBAL && r == 1 && *vp(PG_GLOBAL, 1, 4) >= 64) { static const char *const GK[4] = {"Return", "Size", "Density", "Texture"}; l = GK[k]; }
         field(k, l, ui.page, r);
     }
 }
@@ -490,25 +496,196 @@ static void foot(void)
 #define SW (DMK_W - 2 * M)
 #define SH (Y_FOOT - Y_STAGE - 4)
 
-static void stage_home(void)                            /* the synths: a card each, its initial lit while it sounds */
+/* Home: a scene in the screen's own light (the owner's idea, 2026-10-24), one of four by the current synth's sound
+ * (its scene, tools/gen_samples.py): PEAKS for the bright pads (a snowy mountain in the last light, snow falling),
+ * LAKE for the keys (a cabin by a lake at dusk), COAST for the plucks and the warm pads (sea stacks under a low sun,
+ * the sea glittering), NIGHT for the basses and the dark pads (a forest under a big moon, fireflies). The cabin's three
+ * windows, or three lights in each scene, are the synths, lit while each sounds. Drawn every 140 ms, held between */
+#define SC_W SW
+#define SC_H SH
+static uint8_t sc_fg[SC_W * SC_H] POOL;                 /* the still parts, 0xFF where the sky shows */
+static uint8_t sc_out[SC_W / 2 * SC_H] POOL;            /* the scene as last drawn, packed as the screen */
+static uint8_t sc_key = 0xFF;                           /* the theme and the scene it was built for */
+static uint32_t sc_tick = 0xFFFFFFFFu;
+
+static int tri(int x, int p, int a) { int m = ((x % p) + p) % p; return a * (m * 2 > p ? 2 * p - m * 2 : m * 2) / p; }
+static uint32_t hsh(uint32_t a) { a ^= a >> 16; a *= 0x7FEB352Du; a ^= a >> 15; a *= 0x846CA68Bu; return a ^ (a >> 16); }
+static int bay(int x, int y) { return T_BAYER6[0][(y & 3) * 4 + (x & 3)]; }
+
+/* each scene's sky: colours from the top (-1 the dark), where each is whole, dithered between */
+static const struct { uint8_t n, at[8]; int8_t c[8]; } SKY[4] = {
+    {6, {0, 14, 30, 46, 64, 84}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO5, C_HOLO6}},
+    {8, {0, 12, 26, 38, 49, 58, 66, 80}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6}},
+    {7, {0, 10, 24, 38, 50, 60, 72}, {-1, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6, C_HOLO7}},
+    {4, {0, 40, 66, 76}, {-1, -1, C_HOLO0, C_HOLO1}}};
+static int sky_at(int sc, int x, int y, int dk)
 {
-    int i;
-    for (i = 0; i < DMK_SYNTHS; i++) {
-        int x = cell_x(SX, SW, DMK_SYNTHS, i), w = cell_w(SX, SW, DMK_SYNTHS, i), cx = x + w / 2;
-        int sounding = syn_peak[i] > 200 || i == ui.synth;   /* the one played lit, and any that sound */
-        char a[16], *b;
-        str_cat(a, DMK_SAMPLES[VS(i, PG_SOUND, 0, 0)].name);
-        for (b = a; *b && *b != ' '; b++) {}
-        if (*b) *b++ = 0;                               /* "Snow pad": what, which */
-        if (i == ui.synth) card(x, SY, w, SH, C_INK, 2);
-        else card(x, SY, w, SH, C_LINE, 1);
-        card_title(x, SY, w, a, "", !sounding);
-        {                                               /* its mark: the sound's initial in Kiloy, lit while it sounds */
-            char ini[2] = {(char)(a[0] | 0x20), 0};
-            text_c(cx, SY + 64 - FK.ascent + FK.cap / 2, ini, &FK, sounding ? HOLO : C_LINE);
-        }
-        text_fit(x + PAD + 1, SY + SH - 20, w - 2 * PAD, b, &FS, C_LABEL);   /* "pad", "piano": which */
+    int i = 0, t, a, b, n = SKY[sc].n;
+    while (i < n - 1 && y >= SKY[sc].at[i + 1]) i++;
+    if (i == n - 1) return SKY[sc].c[i] < 0 ? dk : SKY[sc].c[i];
+    t = (y - SKY[sc].at[i]) * 16 / (SKY[sc].at[i + 1] - SKY[sc].at[i]);
+    a = SKY[sc].c[i] < 0 ? dk : SKY[sc].c[i];
+    b = SKY[sc].c[i + 1] < 0 ? dk : SKY[sc].c[i + 1];
+    return bay(x, y) < t ? b : a;
+}
+
+static void fg_put(int x, int y, int c) { if (x >= 0 && x < SC_W && y >= 0 && y < SC_H) sc_fg[y * SC_W + x] = (uint8_t)c; }
+static void fg_pine(int x, int base, int h, int dk)     /* a pine: stepped, a row a step */
+{
+    int y, i;
+    for (y = 0; y < h; y++) {
+        int half = y / 3 + (y % 6 < 2 ? 0 : 1);
+        for (i = -half; i <= half; i++) fg_put(x + i, base - h + y, dk);
     }
+}
+static void fg_mirror(int sc, int sea, int dk)          /* water: what is above it, mirrored, darker, rippled */
+{
+    int x, y;
+    for (y = sea; y < SC_H; y++) {
+        int d = y - sea, sy = sea - 1 - d * 2, sh = d % 5 == 0 ? 2 : 0;
+        if (sy < 0) sy = 0;
+        for (x = 0; x < SC_W; x++) {
+            int sx = x + sh < SC_W ? x + sh : x, c = sc_fg[sy * SC_W + sx] != 0xFF ? sc_fg[sy * SC_W + sx] : sky_at(sc, sx, sy, dk);
+            sc_fg[y * SC_W + x] = (uint8_t)(bay(x, y) < 9 ? dk : c);
+        }
+    }
+}
+
+static void scene_build(int sc, int dk, int lt)
+{
+    int x, y, k;
+    for (k = 0; k < SC_W * SC_H; k++) sc_fg[k] = 0xFF;
+    if (sc == 0) {                                      /* PEAKS: the mountain, its snow in the last light */
+        for (x = 0; x < SC_W; x++) {
+            int peak = 14 + (x < 114 ? (114 - x) * 3 / 4 : (x - 114) * 2 / 3) + tri(x, 11, 3), lo = 62 + tri(x + 9, 40, 8);
+            for (y = peak; y < 96; y++) {
+                int lit = x > 114 - (y - peak) / 3, snow = y < 52 + tri(x * 3, 17, 10), c;
+                if (snow) c = lit ? (bay(x, y) < 10 ? C_HOLO6 : C_HOLO5) : (bay(x, y) < 6 ? lt : C_A_LABEL);
+                else c = lit ? (bay(x, y) < 8 ? C_HOLO1 : C_HOLO0) : (bay(x, y) < 10 ? dk : C_HOLO0);
+                fg_put(x, y, c);
+            }
+            for (y = lo; y < 96; y++) if (y > peak) fg_put(x, y, bay(x, y) < 12 ? dk : C_HOLO0);   /* the near ridge */
+        }
+        for (k = 0; k < 14; k++) fg_pine(k * 17 + (int)(hsh((uint32_t)k) % 9u), 104, 18 + (int)(hsh((uint32_t)k + 40u) % 16u), dk);
+        for (y = 96; y < SC_H; y++) for (x = 0; x < SC_W; x++) fg_put(x, y, y > 100 ? dk : (bay(x, y) < 10 ? dk : C_HOLO0));
+    } else if (sc == 1) {                               /* LAKE: violet hills, nearer ones, pines, the cabin, the lake */
+        static const struct { uint8_t x, h; } PINE[] = {{4, 34}, {13, 26}, {21, 40}, {62, 22}, {176, 30}, {186, 42}, {196, 28}, {207, 36}, {218, 30}, {226, 24}};
+        for (x = 0; x < SC_W; x++) {
+            int dv = x - 151 < 0 ? 151 - x : x - 151;
+            int yf = 72 - tri(x + 20, 96, 22) - tri(x + 5, 37, 7) - tri(x, 13, 2) + (dv < 26 ? (26 - dv) / 2 : 0), ym = 79 - tri(x + 50, 70, 9) - tri(x + 11, 29, 4);
+            for (y = yf; y < 80; y++) fg_put(x, y, y == yf && x > 110 && x < 190 ? C_HOLO5 : bay(x, y) < 8 ? C_HOLO1 : C_HOLO2);
+            for (y = ym; y < 80; y++) fg_put(x, y, bay(x, y) < 6 ? C_HOLO0 : dk);
+        }
+        for (k = 0; k < (int)(sizeof PINE / sizeof PINE[0]); k++) fg_pine(PINE[k].x, 82, PINE[k].h, dk);
+        for (y = 66; y < 82; y++) for (x = 34; x < 60; x++)
+            if ((y < 72 && x >= 34 + (72 - y) * 2 - 2 && x < 60 - (72 - y) * 2 + 2) || y >= 72) fg_put(x, y, dk);
+        for (y = 80; y < 83; y++) for (x = 0; x < SC_W; x++) fg_put(x, y, dk);
+        fg_mirror(1, 83, dk);
+    } else if (sc == 2) {                               /* COAST: the sea, two stacks, a cliff with grass */
+        for (y = 72; y < SC_H; y++) for (x = 0; x < SC_W; x++) {
+            int d = y - 72, c = d < 6 ? (bay(x, y) < 8 ? C_HOLO4 : C_HOLO3) : d < 16 ? (bay(x, y) < 6 ? C_HOLO3 : C_HOLO1) : (bay(x, y) < 5 ? C_HOLO1 : C_HOLO0);
+            fg_put(x, y, c);
+        }
+        for (k = 0; k < 2; k++) {                       /* the stacks, their sunward edges lit */
+            int cx = k ? 176 : 118, h = k ? 26 : 18, w = k ? 22 : 14;
+            for (y = 0; y < h; y++) {                   /* rounded on top, ragged on the sides */
+                int half = w / 2 * (y + 6) / (h + 6) - (y < 3 ? 3 - y : 0) + tri(y * 5 + k * 3, 9, 2), l = -half + tri(y * 3 + 4, 7, 2);
+                for (x = l; x <= half; x++) fg_put(cx + x, 78 - h + y, x <= l + 1 || y < 2 ? (bay(x, y) < 10 ? C_HOLO4 : C_HOLO3) : dk);
+            }
+        }
+        for (x = 0; x < 96; x++) {                      /* the cliff, the grass on it */
+            int top = 52 + x / 3 + tri(x, 23, 6) + (x > 70 ? (x - 70) * 2 : 0);
+            for (y = top; y < SC_H; y++) fg_put(x, y, y < top + 2 ? (bay(x, y) < 8 ? C_HOLO4 : C_HOLO2) : bay(x, y) < 13 ? dk : C_HOLO0);
+            if (!(x % 4)) for (y = 1; y < 4; y++) fg_put(x, top - y, dk);
+        }
+    } else {                                            /* NIGHT: hills, a forest, mist */
+        for (x = 0; x < SC_W; x++) {
+            int h1 = 66 - tri(x + 30, 110, 16) - tri(x, 31, 5), h2 = 82 - tri(x + 70, 64, 10) - tri(x + 3, 17, 3);
+            for (y = h1; y < SC_H; y++) fg_put(x, y, bay(x, y) < 5 ? C_HOLO0 : dk);
+            for (y = h2; y < SC_H; y++) fg_put(x, y, dk);
+        }
+        for (k = 0; k < 18; k++) fg_pine(k * 13 + (int)(hsh((uint32_t)k + 7u) % 7u), 108, 14 + (int)(hsh((uint32_t)k + 99u) % 22u), dk);
+    }
+}
+
+static void cloud(int x, int y, int w, int lt)          /* a cloud: puffs on a flat base, its underside lit pink */
+{
+    int k, n = 3 + w / 14;
+    for (k = 0; k <= n; k++) { int r = 4 + (int)(hsh((uint32_t)(w * 7 + k)) % 4u) + (k && k < n ? 3 : 0); round_fill(SX + x + k * w / n - r, SY + y - r * 2 + 2, r * 2, r * 2, r, C_HOLO6); }
+    round_fill(SX + x - 3, SY + y - 3, w + 6, 6, 3, C_HOLO6);
+    for (k = 0; k <= n; k++) { int r = 4 + (int)(hsh((uint32_t)(w * 7 + k)) % 4u) + (k && k < n ? 3 : 0); round_fill(SX + x + k * w / n - r, SY + y - r * 2, r * 2, r * 2 - 1, r, lt); }
+    round_fill(SX + x - 3, SY + y - 5, w + 6, 4, 2, lt);
+}
+
+static void stage_home(void)
+{
+    int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, i;
+    int sc = DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3;
+    uint32_t tick = ui.now / 140u;
+    if (sc_key != (uint8_t)(theme * 4 + sc)) { scene_build(sc, dk, lt); sc_key = (uint8_t)(theme * 4 + sc); sc_tick = 0xFFFFFFFFu; }
+    if (tick != sc_tick) {                              /* a new frame of the scene: drawn, then held */
+        sc_tick = tick;
+        for (y = 0; y < SC_H; y++)
+            for (x = 0; x < SC_W; x++) if (sc_fg[y * SC_W + x] == 0xFF) px_put(SX + x, SY + y, sky_at(sc, x, y, dk));
+        for (i = 0; i < (sc == 3 ? 34 : 14); i++) {     /* the stars, twinkling (the night has many) */
+            uint32_t h = hsh((uint32_t)i * 7919u + (uint32_t)sc);
+            if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 ? 54u : 22u)), lt);
+        }
+        if (sc == 0) { round_fill(SX + 22, SY + 18, 12, 12, 6, lt); }   /* the moon over the peaks, early */
+        if (sc == 1) round_fill(SX + 140, SY + 50, 22, 22, 11, HOLO);    /* the sun in the valley */
+        if (sc == 2) round_fill(SX + 128, SY + 56, 30, 30, 15, HOLO);    /* the sun, low on the sea */
+        if (sc == 3) { round_fill(SX + 150, SY + 14, 30, 30, 15, HOLO); round_fill(SX + 156, SY + 20, 18, 18, 9, lt); }   /* the moon, haloed */
+        for (i = 0; i < (sc == 3 ? 1 : 3); i++) {       /* clouds, drifting */
+            int w = i == 0 ? 36 : i == 1 ? 26 : 20, cy = i == 0 ? 46 : i == 1 ? 34 : 40;
+            int cx = (int)((i == 0 ? 30u : i == 1 ? 150u : 95u) + tick / (3u + (uint32_t)i)) % (SC_W + 80) - 40;
+            if (sc == 3) cy = 60;
+            cloud(cx, cy, w, lt);
+        }
+        for (y = 0; y < SC_H; y++)                      /* the still world over the sky */
+            for (x = 0; x < SC_W; x++) if (sc_fg[y * SC_W + x] != 0xFF) px_put(SX + x, SY + y, sc_fg[y * SC_W + x]);
+        if (sc == 1 || sc == 2) {                       /* the sun on the water: glints that move */
+            int sea = sc == 1 ? 84 : 74, cx = sc == 1 ? 151 : 143;
+            for (y = sea; y < SC_H; y += 2) {
+                int w = 4 + (y - sea) * (sc == 2 ? 2 : 1) / 2, n = 2 + (y - sea) / 6, k;
+                for (k = 0; k < n; k++) {
+                    uint32_t h = hsh((uint32_t)(y * 131 + k) + tick);
+                    px_put(SX + cx - w / 2 + (int)(h % (uint32_t)w), SY + y, h & 0x100u ? C_HOLO7 : C_HOLO6);
+                }
+            }
+        }
+        if (sc == 0)                                    /* snow, falling slow */
+            for (i = 0; i < 26; i++) {
+                uint32_t h = hsh((uint32_t)i * 2654435761u);
+                int fx0 = (int)(h % (uint32_t)SC_W) + tri((int)tick + i * 5, 24, 4), fy = (int)((h >> 10) % (uint32_t)SC_H + tick / 2u) % SC_H;
+                if (fx0 < SC_W) px_put(SX + fx0, SY + fy, lt);
+            }
+        for (i = 0; i < DMK_SYNTHS; i++) {              /* the synths: three lights, lit while each sounds */
+            int on = syn_peak[i] > 200 || i == ui.synth, lx, ly;
+            if (sc == 1) { lx = 39 + i * 6; ly = 74; fill(SX + lx, SY + ly, 3, 3, on ? C_HOLO6 : C_A_INK2);
+                if (on) for (y = 0; y < 8; y += 2) if (hsh((uint32_t)(i * 17 + y) + tick) & 1u) px_put(SX + lx + 1, SY + 89 + y, C_HOLO4); }
+            else if (sc == 3) {                         /* fireflies, wandering over the forest */
+                lx = 40 + i * 64 + tri((int)tick + i * 11, 40, 14); ly = 80 + tri((int)tick * 2 + i * 7, 26, 8);
+                if (on || (hsh(tick + (uint32_t)i) & 1u)) fill(SX + lx, SY + ly, 2, 2, on ? C_HOLO7 : C_HOLO4);
+            } else {                                    /* lanterns along the shore, or the treeline */
+                lx = sc == 0 ? 60 + i * 50 : 30 + i * 10; ly = sc == 0 ? 92 : 50 + i * 3 + 18 + (i * 7 % 5);
+                fill(SX + lx, SY + ly, 2, 3, on ? C_HOLO7 : C_A_INK2);
+            }
+        }
+        for (y = 0; y < R_CARD; y++)                    /* the card's corners: the paper outside them */
+            for (x = 0; x < R_CARD; x++) {
+                int dx = R_CARD - x, dy = R_CARD - y;
+                if (dx * dx + dy * dy > R_CARD * R_CARD) {
+                    px_put(SX + x, SY + y, C_PAPER); px_put(SX + SW - 1 - x, SY + y, C_PAPER);
+                    px_put(SX + x, SY + SH - 1 - y, C_PAPER); px_put(SX + SW - 1 - x, SY + SH - 1 - y, C_PAPER);
+                }
+            }
+        for (y = 0; y < SC_H; y++)                      /* held for the frames between */
+            for (x = 0; x < SC_W; x += 2) sc_out[y * (SC_W / 2) + x / 2] = fb[((SY + y) * DMK_W + SX + x) >> 1];
+    } else
+        for (y = 0; y < SC_H; y++)
+            for (x = 0; x < SC_W; x += 2) fb[((SY + y) * DMK_W + SX + x) >> 1] = sc_out[y * (SC_W / 2) + x / 2];
+    card(SX, SY, SW, SH, C_LINE, 1);
+    text(SX + PAD + 2, SY + 7, DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].name, &FS, lt);   /* the sound, on the dark */
 }
 
 static void stage_patterns(void)                        /* HOME held: the song's patterns, a card each */

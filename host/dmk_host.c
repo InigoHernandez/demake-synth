@@ -288,11 +288,12 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
     ui.val[0][PG_FX][3][0] = verb ? 100 : 30;           /* a little verb, or a lot for the verbs */
     ui.val[0][PG_FX][3][1] = 0;
     if (page >= 0) {
-        int nch = page == PG_GLOBAL ? 5 : page == PG_FILTER ? 8 : row == 0 ? 5 : 4;
+        int nch = page == PG_GLOBAL ? (row ? 2 : 6) : page == PG_FILTER ? 8 : row == 0 ? 5 : 4;
         ui.val[0][page][row][4] = (uint8_t)(type * 128 / nch + 128 / nch / 2);
         for (j = 0; j < 4; j++) if (k[j] != 255) ui.val[0][page][row][j] = k[j];
     }
-    if (page != PG_GLOBAL) ui.val[0][PG_GLOBAL][0][4] = 37;   /* the hall under the others */
+    if (page != PG_GLOBAL || row) ui.val[0][PG_GLOBAL][0][4] = 31;   /* the hall under the others */
+    if (page == PG_GLOBAL && row == 1) { ui.val[0][PG_FX][3][1] = 110; ui.val[0][PG_FX][3][0] = 70; }   /* grains: a lot sent */
     sp_sync();
     for (i = 0; i < n; i += DMK_SUB) {
         for (j = 0; j < np; j++) {
@@ -314,10 +315,12 @@ static void fx_demo(const char *dir)
     static const uint8_t LO[4] = {95, 80, 0, 70}, NO[4] = {60, 50, 70, 25}, TA[4] = {70, 70, 60, 64};
     static const uint8_t CA[4] = {80, 60, 60, 80}, VH[4] = {90, 50, 50, 90}, CH[4] = {90, 100, 40, 100};
     static const uint8_t VI[4] = {60, 255, 70, 40}, DR[4] = {110, 90, 40, 255}, FI[4] = {255, 100, 64, 255};
-    static const char *const VN[5] = {"verb_1_room", "verb_2_hall", "verb_3_haze", "verb_4_bloom", "verb_5_lofi"};
+    static const char *const VN[6] = {"verb_1_room", "verb_2_hall", "verb_3_space", "verb_4_haze", "verb_5_bloom", "verb_6_lofi"};
+    static const uint8_t VL[4] = {100, 60, 124, 100}, GR[4] = {110, 70, 70, 60};
     static const char *const FN[3] = {"filter_notch", "filter_peak", "filter_vowel"};
     int t;
-    for (t = 0; t < 5; t++) fx_one(dir, VN[t], t == 3 ? "Snow pad" : "Felt piano", PG_GLOBAL, 0, t, VB, 1, 0);
+    for (t = 0; t < 6; t++) fx_one(dir, VN[t], t == 4 ? "Snow pad" : "Felt piano", PG_GLOBAL, 0, t, t == 1 || t == 2 || t == 3 ? VL : VB, 1, 0);
+    fx_one(dir, "echo_grains", "Felt piano", PG_GLOBAL, 1, ET_GRAINS, GR, 1, 0);
     fx_one(dir, "colour_1_saturate", "Felt piano", PG_FX, 0, FC_SAT, SAT, 0, 0);
     fx_one(dir, "colour_2_crush", "Felt piano", PG_FX, 0, FC_CRUSH, CR, 0, 0);
     fx_one(dir, "colour_3_lossy", "Felt piano", PG_FX, 0, FC_LOSSY, LO, 0, 0);
@@ -383,7 +386,8 @@ static double cpu_case(int fx)
         else ui.val[s][PG_FX][1][4] = fx == 1 ? 48 : 127;   /* tape; or VHS */
         if (fx == 2) { ui.val[s][PG_FX][0][4] = 90; ui.val[s][PG_FX][2][4] = 40; }   /* lossy, chorus */
     }
-    ui.val[0][PG_GLOBAL][0][4] = fx == 2 ? 70 : 0;      /* the heaviest: haze; else the room */
+    ui.val[0][PG_GLOBAL][0][4] = fx == 2 ? 74 : 0;      /* the heaviest: haze; else the room */
+    ui.val[0][PG_GLOBAL][1][4] = fx == 2 ? 100 : 0;     /* and the grains */
     sp_sync();
     for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
     for (i = 0; i < 100; i++) dmk_render(b, 128);

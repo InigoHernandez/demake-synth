@@ -860,6 +860,16 @@ over the rows not built (shown as soon); a page's first visit says how to reach 
 light as the site's splash; the update's screen is Demake's (the platform's `APP_OTA_SHOW`); the loader that writes
 the firmware is the platform's, untouched (it draws nothing). Next: undo, SAVE, then phase 2.
 
+*Then (2026-10-24, the owner: "my samples with the fx are the core"): the lofi set, brought forward from phase 4.*
+Every FX row has its effects, ALGORITHM moving through the rows and FX held picking the type: COLOUR saturate,
+crush, lossy (a codec's smear and holes), noise; MEDIA tape, cassette, VHS (both made gentler on the owner's ear);
+MOTION chorus, vibrato, drift. The VERB: room, hall, space (nearly endless), haze, bloom (a new sound swells into
+it), lofi, on an eight-line swept Hadamard network on the second core; the ECHO: tape, or GRAINS (six grains from
+the last 1.4 s, octaves and fifths up as TEXTURE rises, into the verb). The filter has eight types (notch, peak and
+vowel added). All 64 sounds are in the FM-1 (340 KB). Home is a landscape in the screen's light, one of four by
+the sound's scene (peaks, lake, coast, night: catalogued by kind and brightness in `gen_samples.py`). Measured
+[M]: the heaviest song, 1477 and 802 host instructions a sample on the two cores.
+
 **Phase 2: chords.**
 - KEY and MODE, the 16 presets, slots, VOICING, INVERSION (AUTO), SPREAD, STRUM, RHYTHM, CHANGE, BASS; step your own;
   print to the roll.
