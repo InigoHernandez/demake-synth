@@ -64,6 +64,7 @@ kbd {
 .strip > * { grid-row: 1; padding-top: 12px; font-size: 24px; line-height: 24px; font-weight: 500; }
 .strip .no { grid-column: 1 / span 2; }
 .strip .lb { grid-column: 3 / span 8; color: var(--ink); }
+.strip.say .lb { grid-column: 3 / span 20; }             /* the installer's: the step itself, its only title */
 
 /* ---- the 8-bit light: a sprite of six frames (.bits) or a dithered ring round a pale core (.lit) */
 .bits { background: var(--src) 0 0 / 100% 600% no-repeat; image-rendering: pixelated; }
@@ -274,23 +275,23 @@ code { font: inherit; color: var(--ink); }
 .bar { grid-column: 17 / span 8; grid-row: 6; align-self: stretch; height: auto; cursor: default; box-shadow: inset 0 1px 0 var(--line); }
 .bar[hidden] { display: none; }
 /* a step: its sentence on one line, what it means under it, its actions at the right; a row of air at its end */
-.step { grid-template-rows: repeat(5, var(--m)); }
-.step.one { grid-template-rows: repeat(4, var(--m)); }
-.step.back { grid-template-rows: repeat(5, var(--m)); }
+.step { grid-template-rows: repeat(4, var(--m)); }
+.step.one { grid-template-rows: repeat(2, var(--m)); }
+.step.back { grid-template-rows: repeat(4, var(--m)); }
 .step .lede { grid-column: 1 / span 14; grid-row: 2; padding-top: 12px; font-size: 24px; line-height: 24px; font-weight: 500; }
-.step .body { grid-column: 1 / span 12; grid-row: 3 / span 2; padding-top: 12px; margin: 0; color: var(--label); }
+.step .body { grid-column: 1 / span 12; grid-row: 1; padding-top: 12px; margin: 0; color: var(--label); }
 .steps { list-style: none; padding: 0 !important; display: grid; grid-auto-rows: var(--m); }
 .steps li { display: grid; grid-template-columns: 36px 1fr; align-items: center; box-shadow: inset 0 1px 0 var(--line); }
 .act { position: relative; }
-.a1 { grid-column: 15 / span 4; grid-row: 2; }
-.a2 { grid-column: 15 / span 4; grid-row: 4; }
+.a1 { grid-column: 15 / span 4; grid-row: 1; }
+.a2 { grid-column: 15 / span 4; grid-row: 3; }
 .act input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .pill:focus-within { border: 0; background: var(--t7); border-image: var(--ring24) 24 / 24px repeat; }
 .lit:disabled, .lit:disabled:hover, .lit:disabled:active {
   background: none; border: 1px solid var(--line); border-image: none; color: var(--label); cursor: default;
 }
 .sub { grid-column: 19 / span 6; padding-left: 24px; display: flex; align-items: center; color: var(--label); }
-.b1 { grid-row: 2; } .b2 { grid-row: 4; }
+.b1 { grid-row: 1; } .b2 { grid-row: 3; }
 .stops { grid-template-rows: repeat(5, var(--m)); }
 .stops .rule { grid-row: 2 / span 3; }
 .wrote { grid-template-rows: repeat(7, var(--m)); }
@@ -392,10 +393,12 @@ code { font: inherit; color: var(--ink); }
   .kv div { grid-template-columns: calc(2 * var(--m)) 1fr; }
   .log { grid-column: 1 / span 10; }
   .bar { grid-column: 11 / span 6; }
-  .step, .step.back { grid-template-rows: repeat(10, var(--m)); }
-  .step.one { grid-template-rows: repeat(8, var(--m)); }
-  .a1 { grid-column: 1 / span 4; grid-row: 7; } .b1 { grid-column: 5 / span 12; grid-row: 7; }
-  .a2 { grid-column: 1 / span 4; grid-row: 9; } .b2 { grid-column: 5 / span 12; grid-row: 9; }
+  .strip.say .lb { grid-column: 3 / span 14; }
+  .step, .step.back { grid-template-rows: repeat(6, var(--m)); }
+  .step.one { grid-template-rows: repeat(4, var(--m)); }
+  .step .body { grid-column: 1 / span 14; grid-row: 1 / span 2; }
+  .a1 { grid-column: 1 / span 4; grid-row: 3; } .b1 { grid-column: 5 / span 12; grid-row: 3; }
+  .a2 { grid-column: 1 / span 4; grid-row: 5; } .b2 { grid-column: 5 / span 12; grid-row: 5; }
   .stops { grid-template-rows: repeat(9, var(--m)); }
   .mside { grid-column: 1 / span 4; }
   .mdoc { grid-column: 6 / span 11; }
@@ -472,17 +475,13 @@ code { font: inherit; color: var(--ink); }
   .st2 { grid-column: 1 / -1; grid-row: 7 / span 5; }
   .log { grid-column: 1 / -1; grid-row: 13 / span 2; }
   .bar { grid-column: 1 / -1; grid-row: 14; }   /* while writing, the line is one line */
-  .step { grid-template-rows: repeat(16, var(--m)); }
-  .step.list { grid-template-rows: repeat(12, var(--m)); }   /* its sentence, one line under it, its two actions */
-  .list .body { grid-row: 4 / span 2; } .list .a1 { grid-row: 7; } .list .b1 { grid-row: 8; }
-  .list .a2 { grid-row: 10; } .list .b2 { grid-row: 11; }
-  .step.one { grid-template-rows: repeat(9, var(--m)); }
-  .one .body { grid-row: 4 / span 2; } .one .a1 { grid-row: 7; } .one .b1 { grid-row: 8; }
-  .step.back { grid-template-rows: repeat(13, var(--m)); }
-  .back .body { grid-row: 4 / span 3; } .back .a1 { grid-row: 8; } .back .b1 { grid-row: 9; }
-  .back .a2 { grid-row: 11; } .back .b2 { grid-row: 12; }
-  .step .lede { grid-column: 1 / -1; grid-row: 2 / span 2; }
-  .step .body { grid-column: 1 / -1; grid-row: 4 / span 6; padding-top: 0; }
+  .strip.say { grid-template-rows: repeat(3, var(--m)); }   /* the step's sentence under its number, on two lines */
+  .strip.say .lb { grid-column: 1 / -1; grid-row: 2 / span 2; padding-top: 0; }
+  .step, .step.list, .step.back { grid-template-rows: repeat(8, var(--m)); }
+  .step.one { grid-template-rows: repeat(5, var(--m)); }
+  .step .body { grid-column: 1 / -1; grid-row: 1 / span 2; padding-top: 0; }
+  .a1 { grid-row: 3 !important; } .b1 { grid-row: 4 !important; }
+  .a2 { grid-row: 6 !important; } .b2 { grid-row: 7 !important; }
   .steps { grid-auto-rows: calc(2 * var(--m)); }
   .a1 { grid-column: 1 / span 4; grid-row: 11; } .b1 { grid-column: 1 / -1; grid-row: 12; padding-left: 0; }
   .a2 { grid-column: 1 / span 4; grid-row: 14; } .b2 { grid-column: 1 / -1; grid-row: 15; padding-left: 0; }

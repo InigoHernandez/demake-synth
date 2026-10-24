@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.1.fwsc",
-  "version": "0.4.1",
+  "file": "demake-0.4.2.fwsc",
+  "version": "0.4.2",
   "date": "2026-10-24",
   "product": "FM-1_969",
-  "sha256": "4f8d66befd2560d5061f340493503ca68543fb7eaca1410c34c72574167b0674",
-  "note": "0.4 and its fix: PLAY no longer waits for an outside clock that never comes (songs of 0.2 loaded the MIDI clock as outside), notes release, REC lights. A layer under each sound, glide, velocity, grit, drive; the LFO heard; Off for the reverb and the echo; chords written on the roll."
+  "sha256": "384992e8fc00bf1a5aafd42e6e719be6014105cb2ade8aacb68b23269c282519",
+  "note": "Fewer stalls (no crackle on SELECT or in full screen), the landscapes whole and taller in full screen, a load meter on GLO, quartal chord names."
 }
