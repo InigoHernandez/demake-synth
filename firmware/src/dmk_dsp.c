@@ -102,6 +102,7 @@ typedef struct {
     int32_t ltp, gl, vg;           /* the layer's tone; glide's way still to go (cents Q4); velocity's level (Q15) */
     int16_t drift, dgoal, det;     /* MOTION's drift, its goal, the note's own detune (cents Q4) */
     int16_t kcut;                  /* the cutoff's offset for this note: velocity and the key's tracking, indexes */
+    uint8_t lay;                   /* the note has a layer: blended to its end and past it (to silence, not cut) */
     uint16_t blocks;               /* blocks since the note began: vibrato's fade-in */
     uint8_t stage, note, sy, on, src, vel;   /* stage: 0 silent, 1 attack, 2 decay and sustain, 3 release */
 } voice_t;
@@ -163,10 +164,14 @@ static int32_t smp_next_m(voice_t *v)
 {
     strm_t *o = &v->m;
     if (o->bi >= 28) {
-        if (++o->blk >= o->end) {
-            if (!o->loop) { o->on = 0; v->stage = 0; v->env = 0; return 0; }
+        if (o->blk + 1u >= o->end) {
+            if (!o->loop) {                             /* a one-shot's end: the voice's, unless its layer still sounds */
+                o->on = 0; o->blk = o->end;
+                if (!(v->lay && v->l.on)) { v->stage = 0; v->env = 0; }
+                return 0;
+            }
             o->blk = o->s->loop0; o->s1 = o->s->ls1; o->s2 = o->s->ls2;
-        }
+        } else o->blk++;
         blk_decode(o);
         o->bi = 0;
     }
@@ -194,8 +199,12 @@ static void strm_start(strm_t *t, const dmk_sample_t *s, int n, int tune, int fi
 
 /* the LFO, a synth's: its phase, its random value, its smoothed output, blocks since the phrase began; and each
  * block's value with its depth and fade (lfo_c), and the depth alone (lfo_g), Q15, which both cores read */
-static struct { uint32_t ph, rng, sstep; int32_t hold, sm, fade, lv, pl, pr; } lfo[DMK_SYNTHS];
+static struct { uint32_t ph, rng, sstep, poff; int32_t hold, sm, gs, fade, lv, pl, pr, cut, pit; uint8_t rst; } lfo[DMK_SYNTHS];
 static int16_t lfo_c[DMK_SYNTHS][16], lfo_g[DMK_SYNTHS][16];   /* VB_MAX / DMK_SUB blocks a run */
+/* and what the voices take from it a block, slewed so a target changed glides: the cutoff's offset (indexes), the
+ * pitch's (cents Q4) */
+static int16_t lfo_cut[DMK_SYNTHS][16];
+static int32_t lfo_pit[DMK_SYNTHS][16];
 static uint8_t syn_last[DMK_SYNTHS];                    /* each synth's last note + 1, for the glide (0: none yet) */
 
 static void note_on_vel(int sy, int n, int src, int vel)
@@ -207,10 +216,11 @@ static void note_on_vel(int sy, int n, int src, int vel)
     voice_t *o;
     if (n < 0 || n > 127 || sy < 0 || sy >= DMK_SYNTHS) return;
     vel = clampi(vel, 1, 127);
-    for (i = 0; i < DMK_VOICES; i++) if (vc[i].on && vc[i].sy == sy) first = 0;
-    if (first) {                                        /* a phrase begins: the LFO's fade from nothing, its phase too */
+    for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == sy) first = 0;
+    if (first) {                                        /* a phrase begins (from silence): the LFO's fade from nothing,
+                                                           its phase too (synced: from here, lfo_sync) */
         lfo[sy].fade = 0;
-        if (p->lretrig) lfo[sy].ph = 0;
+        if (p->lretrig) { lfo[sy].ph = 0; lfo[sy].rst = 1; }
     }
     for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage == 0) { best = i; break; }   /* a silent voice */
     if (best < 0) {                                     /* else the quietest released one, else the oldest held */
@@ -220,13 +230,15 @@ static void note_on_vel(int sy, int n, int src, int vel)
     }
     o = &vc[best];
     st = p->start;
-    if (p->ltarget == LT_START && p->ldepth) {          /* the LFO moves where each note starts, around START */
+    if (p->ltarget == LT_START && p->ldepth) {          /* the LFO moves where each note starts, around START, faded */
         const dmk_sample_t *sm = &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0];
-        st = clampi(st + ((lfo[sy].sm * (p->ldepth >> 7) >> 8) * ((sm->loops ? sm->loop0 : sm->blocks) / 2) >> 15), 0, 65535);
+        int32_t v = (lfo[sy].sm * lfo[sy].gs) >> 15, end = sm->loops && p->loops ? sm->loop1 : sm->blocks;
+        st = clampi(st + ((v * ((sm->loops ? sm->loop0 : sm->blocks) / 2)) >> 15), 0, end - 2);
     }
     strm_start(&o->m, &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0], n, p->tune, p->fine, p->loops, st);
     o->l.on = 0;
-    if (p->lblend) strm_start(&o->l, &DMK_SAMPLES[p->lsmp < DMK_SAMPLES_N ? p->lsmp : 0], n, p->tune + p->ltune, p->fine, p->lloops, 0);
+    o->lay = (uint8_t)(p->lblend != 0);
+    if (o->lay) strm_start(&o->l, &DMK_SAMPLES[p->lsmp < DMK_SAMPLES_N ? p->lsmp : 0], n, p->tune + p->ltune, p->fine, p->lloops, 0);
     o->ltp = 0;
     o->rng = o->rng * 1664525u + 1013904223u + (uint32_t)n;
     o->det = p->motion == FO_DRIFT ? (int16_t)((int32_t)((o->rng >> 16) % 801u) - 400) * p->ok[1] / 127 : 0;
@@ -279,7 +291,8 @@ static int16_t ch_buf[DMK_SYNTHS][CH_LEN] POOL;
 static struct {
     uint32_t tw, wow, flut, rng, wdrift, warb, tick, cw, clfo, hold_ph, vib;
     int32_t hl, lp1, lp2, hp, fol, drop, drop_g, track, track_g, wd, dd, toff, tenv, jit, nb;   /* MEDIA */
-    int32_t clp, hold, sl, band[2], peak[3], step[3], frame, crk, nfol, nlp, hum, sdc, lg[3];   /* COLOUR */
+    int32_t clp, hold, sl, band[2], peak[3], step[3], frame, crk, nfol, nlp, sdc, lg[3];   /* COLOUR */
+    uint32_t hum;                                       /* (its phase: it wraps) */
     int32_t chlp[2];                                    /* MOTION */
     int32_t xg[3];                                      /* each row's share while its type changes, Q15 */
     uint8_t gate, cur[3];                               /* the holes; the type each row runs now */
@@ -794,8 +807,8 @@ static void dsp_reset(void)
     vq_w = vq_r = wq_w = wq_r = 0;
     for (i = 0; i < DMK_SYNTHS; i++) {
         vc_tail[i] = 0; syn_last[i] = 0;
-        lfo[i].ph = lfo[i].sm = lfo[i].hold = lfo[i].fade = 0;
-        lfo[i].rng = 0x2545F491u * (i + 3u); lfo[i].lv = 32768; lfo[i].pl = lfo[i].pr = 0;
+        lfo[i].ph = lfo[i].poff = 0; lfo[i].sm = lfo[i].gs = lfo[i].hold = lfo[i].fade = lfo[i].cut = lfo[i].pit = 0; lfo[i].rst = 0;
+        lfo[i].rng = 0x2545F491u * (i + 3u); lfo[i].lv = 32768; lfo[i].pl = lfo[i].pr = -1;
     }
     v_cur = gp.vtype; e_cur = gp.etype; v_g = e_g = 32768;
     for (i = 0; i < GR_N; i++) gr[i].len = 0;
@@ -884,14 +897,14 @@ static void voices_run(int half)
                     o->gl = a < 16 ? 0 : o->gl < 0 ? -a : a;
                 }
             }
-            if (p->ltarget == LT_PITCH) c += (((lfo_c[o->sy][b] * (p->ldepth >> 1)) >> 14) * 19200) >> 15;   /* to an octave either way, finer low (its depth squared) */
+            c += lfo_pit[o->sy][b];                     /* the LFO's pitch, when it is its target */
             if (o->blocks < 65535u) o->blocks++;
             o->m.inc = c ? inc_by(o->m.inc0, c) : o->m.inc0;
             if (o->l.on) o->l.inc = c ? inc_by(o->l.inc0, c) : o->l.inc0;
             inc = o->m.inc << p->grit;
             if (o->l.on) linc = o->l.inc << p->grit;
             idx = p->cut + (int32_t)(((int64_t)p->fenv * e0) >> 24) + o->kcut;
-            if (p->ltarget == LT_CUTOFF) idx += (lfo_c[o->sy][b] * 128) >> 15;   /* to 3.8 octaves either way: heard */
+            idx += lfo_cut[o->sy][b];                   /* and its cutoff */
             idx = clampi(idx, 0, 255);
             f = T_SVF[gi ? clampi(idx + gi, 0, 255) : idx]; q = p->resq;
             q1 = q < 11469 ? 11469 : q;                 /* LP24: one stage resonates; two would square the peak */
@@ -901,7 +914,7 @@ static void voices_run(int half)
                 f = T_SVF[clampi(((VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8) + gi, 0, 255)];
                 f2 = T_SVF[clampi(((VOW[a][1] * (256 - t) + VOW[z][1] * t) >> 8) + gi, 0, 255)];
             }
-            if (gs == 1 && !o->l.on && p->drive <= 256 && o->vg >= 32768) {   /* the plain voice: as it was, no cost */
+            if (gs == 1 && !o->lay && p->drive <= 256 && o->vg >= 32768) {   /* the plain voice: as it was, no cost */
                 for (i = 0; i < DMK_SUB; i++) {
                     int32_t x, y;
                     o->m.ph += inc;
@@ -925,13 +938,17 @@ static void voices_run(int half)
                     o->m.ph -= 65536u; o->m.a = o->m.b; o->m.b = smp_next_m(o);
                 }
                 x = o->m.a + (((o->m.b - o->m.a) * (int32_t)(o->m.ph >> 1)) >> 15);
-                if (o->l.on) {                          /* the LAYER: its own recording, its tone, blended in */
-                    int32_t xl;
-                    o->l.ph += linc;
-                    while (o->l.ph >= 65536u) { o->l.ph -= 65536u; o->l.a = o->l.b; o->l.b = smp_next(&o->l); }
-                    xl = o->l.a + (((o->l.b - o->l.a) * (int32_t)(o->l.ph >> 1)) >> 15);
+                if (o->lay) {                           /* the LAYER: its own recording, its tone, blended in; ended, silence
+                                                           glided in by its tone (a cut would click) */
+                    int32_t xl = 0;
+                    if (o->l.on) {
+                        o->l.ph += linc;
+                        while (o->l.ph >= 65536u) { o->l.ph -= 65536u; o->l.a = o->l.b; o->l.b = smp_next(&o->l); }
+                        xl = o->l.a + (((o->l.b - o->l.a) * (int32_t)(o->l.ph >> 1)) >> 15);
+                    }
                     o->ltp += ((xl - o->ltp) * p->ltone) >> 15;
                     x += ((o->ltp - x) * p->lblend) >> 15;
+                    if (!o->m.on && !o->l.on && o->ltp > -64 && o->ltp < 64) { o->stage = 0; o->env = 0; }   /* both through */
                 }
                 if (p->drive > 256) x = (curve(T_SAT, (x * p->drive) >> 8) * p->dcomp) >> 8;   /* DRIVE: into the filter */
                 y = vfilt(o, p->ftype, x, f, f2, q, q1);
@@ -957,25 +974,39 @@ static void lfo_run(int s, int nb)
 {
     const synth_t *p = &syn[s];
     int b;
-    if (!p->ldepth) { for (b = 0; b < nb; b++) lfo_c[s][b] = lfo_g[s][b] = 0; lfo[s].sm = 0; return; }
     for (b = 0; b < nb; b++) {
-        uint32_t was = lfo[s].ph, t;
-        int32_t v, g = p->ldepth;
-        lfo[s].ph += p->lsync ? lfo[s].sstep : p->lrate;
-        if (lfo[s].ph < was) lfo[s].hold = (int32_t)(xs32(&lfo[s].rng) >> 16) - 32768;   /* a new cycle */
-        t = lfo[s].ph >> 16;
-        switch (p->lshape) {
-        case 0: v = sinp(lfo[s].ph); break;
-        case 1: v = t < 32768u ? (int32_t)t * 2 - 32767 : 98303 - (int32_t)t * 2; break;   /* triangle */
-        case 2: v = 32767 - (int32_t)t; break;          /* ramp, falling */
-        case 3: v = t < 32768u ? 32767 : -32767; break; /* square */
-        default: v = lfo[s].hold; break;                /* random, held a cycle */
-        }
-        lfo[s].sm += (v - lfo[s].sm) >> 2;
-        if (lfo[s].fade < 65535) lfo[s].fade++;
-        if (p->lfade && lfo[s].fade < p->lfade) g = g * lfo[s].fade / p->lfade;
-        lfo_c[s][b] = (int16_t)clampi((lfo[s].sm * g) >> 15, -32767, 32767);
+        int32_t g = 0, c, tc, tp;
+        if (p->ldepth) {
+            uint32_t was = lfo[s].ph, t;
+            int32_t v;
+            lfo[s].ph += p->lsync ? lfo[s].sstep : p->lrate;
+            if (lfo[s].ph < was) lfo[s].hold = (int32_t)(xs32(&lfo[s].rng) >> 16) - 32768;   /* a new cycle */
+            t = lfo[s].ph >> 16;
+            switch (p->lshape) {
+            case 0: v = sinp(lfo[s].ph); break;
+            case 1: v = t < 32768u ? (int32_t)t * 2 - 32767 : 98303 - (int32_t)t * 2; break;   /* triangle */
+            case 2: v = 32767 - (int32_t)t; break;      /* ramp, falling */
+            case 3: v = t < 32768u ? 32767 : -32767; break;   /* square */
+            default: v = lfo[s].hold; break;            /* random, held a cycle */
+            }
+            lfo[s].sm += (v - lfo[s].sm) >> 2;
+            if (lfo[s].fade < 65535) lfo[s].fade++;
+            g = p->ldepth;
+            if (p->lfade && lfo[s].fade < p->lfade) g = g * lfo[s].fade / p->lfade;
+        } else lfo[s].sm = 0;
+        lfo[s].gs += (g - lfo[s].gs) >> 4;              /* the depth glided (~6 ms): a fade begun again, DEPTH turned */
+        g = lfo[s].gs;
+        c = clampi((lfo[s].sm * g) >> 15, -32767, 32767);
+        lfo_c[s][b] = (int16_t)c;
         lfo_g[s][b] = (int16_t)g;
+        /* the cutoff: to 3.8 octaves either way (the owner: it should be felt); the pitch: an octave, finer low (its
+         * depth squared); each slewed toward it, so leaving the target glides back */
+        tc = p->ltarget == LT_CUTOFF ? (c * 128) >> 15 : 0;
+        tp = p->ltarget == LT_PITCH ? (((c * (g >> 1)) >> 14) * 19200) >> 15 : 0;
+        lfo[s].cut += clampi(tc - lfo[s].cut, -8, 8);
+        lfo[s].pit += clampi(tp - lfo[s].pit, -1200, 1200);
+        lfo_cut[s][b] = (int16_t)lfo[s].cut;
+        lfo_pit[s][b] = lfo[s].pit;
     }
 }
 
@@ -1027,7 +1058,10 @@ static void dsp_render(int16_t *lr, int frames)
         if (par) dmk_par_end(); else voices_run(1);
         /* the chains, the last on the second core with the network (the last run's input: the mix takes what it
          * made), the rest here */
-        if (v_cur != gp.vtype && !v_g) { if (v_cur == VB_OFF) verb_clear(); v_cur = gp.vtype; }   /* faded out: the new
+        if (v_cur != gp.vtype && !v_g) {
+            if (v_cur == VB_OFF || (v_cur == VB_ROOM) != (gp.vtype == VB_ROOM)) verb_clear();
+            v_cur = gp.vtype;
+        }   /* faded out: the new
                                                            type, from the next run; out of off, from silence (not
                                                            what was held when it went off) */
         if (e_cur != gp.etype && !e_g) { if (e_cur == ET_OFF) echo_clear(); e_cur = gp.etype; }
@@ -1049,31 +1083,32 @@ static void dsp_render(int16_t *lr, int frames)
                 const synth_t *p = &syn[s];
                 const int32_t *sl = &vbuf[0][s][b * DMK_SUB], *sr = &vbuf[1][s][b * DMK_SUB];
                 int32_t pk = 0, lvl = mix_g < 32768 ? (p->level * mix_g) >> 15 : p->level;
-                int32_t gl0 = p->gl, gr0 = p->gr, gl1 = p->gl, gr1 = p->gr, lv0 = 32768, lv1 = 32768, mod = 0;
-                if (p->ldepth && p->ltarget == LT_LEVEL) {  /* the LFO's tremolo: down by its depth at its lowest */
-                    lv0 = lfo[s].lv; lv1 = lfo[s].lv = 32768 - ((lfo_g[s][b] - lfo_c[s][b]) >> 1); mod = 1;
-                }
-                if (p->ldepth && p->ltarget == LT_PAN) {    /* or the pan, swung either way around PAN */
+                int32_t gl1 = p->gl, gr1 = p->gr, lv1 = 32768, gl0, gr0, lv0, mod;
+                if (lfo[s].pl < 0) { lfo[s].pl = p->gl; lfo[s].pr = p->gr; }   /* the first block */
+                if (p->ltarget == LT_LEVEL) lv1 = 32768 - ((lfo_g[s][b] - lfo_c[s][b]) >> 1);   /* the tremolo: down by its depth */
+                if (p->ltarget == LT_PAN) {             /* or the pan, swung either way around PAN */
                     int pn = clampi(p->pan + ((lfo_c[s][b] * 64) >> 15), 0, 127);
-                    gl0 = lfo[s].pl; gr0 = lfo[s].pr; gl1 = lfo[s].pl = T_PAN[127 - pn]; gr1 = lfo[s].pr = T_PAN[pn]; mod = 1;
-                } else { lfo[s].pl = p->gl; lfo[s].pr = p->gr; }
-                if (!mod) lfo[s].lv = 32768;
-                if (mod) for (i = 0; i < DMK_SUB; i++) {   /* the LFO's level and pan, glided across the block */
-                    int32_t xl = (sl[i] * lvl) >> 14, xr = (sr[i] * lvl) >> 14, x;
+                    gl1 = T_PAN[127 - pn]; gr1 = T_PAN[pn];
+                }
+                lv0 = lfo[s].lv; gl0 = lfo[s].pl; gr0 = lfo[s].pr;   /* from where the last block left them: glided */
+                mod = lv0 != 32768 || lv1 != 32768 || gl0 != gl1 || gr0 != gr1;
+                lfo[s].lv = lv1; lfo[s].pl = gl1; lfo[s].pr = gr1;
+                if (mod) for (i = 0; i < DMK_SUB; i++) {   /* the level and the pan, glided across the block */
+                    int32_t xl = (int32_t)(((int64_t)sl[i] * lvl) >> 14), xr = (int32_t)(((int64_t)sr[i] * lvl) >> 14), x;
                     int32_t lv = lv0 + (lv1 - lv0) * i / DMK_SUB;
-                    xl = (xl * lv) >> 15; xr = (xr * lv) >> 15;
+                    xl = (int32_t)(((int64_t)xl * lv) >> 15); xr = (int32_t)(((int64_t)xr * lv) >> 15);
                     x = (xl + xr) / 2;
-                    L[i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
-                    R[i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
-                    vin[i] += (x * p->vsend) >> 15;
-                    ein[i] += (x * p->esend) >> 15;
+                    L[i] += (int32_t)(((int64_t)xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15);
+                    R[i] += (int32_t)(((int64_t)xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15);
+                    vin[i] += (int32_t)(((int64_t)x * p->vsend) >> 15);
+                    ein[i] += (int32_t)(((int64_t)x * p->esend) >> 15);
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
-                } else for (i = 0; i < DMK_SUB; i++) {
-                    int32_t xl = (sl[i] * lvl) >> 14, xr = (sr[i] * lvl) >> 14, x = (xl + xr) / 2;   /* back up */
-                    L[i] += (xl * p->gl) >> 15;
-                    R[i] += (xr * p->gr) >> 15;
-                    vin[i] += (x * p->vsend) >> 15;
-                    ein[i] += (x * p->esend) >> 15;
+                } else for (i = 0; i < DMK_SUB; i++) {   /* (64-bit products: a chain past full, times a gain, overflowed) */
+                    int32_t xl = (int32_t)(((int64_t)sl[i] * lvl) >> 14), xr = (int32_t)(((int64_t)sr[i] * lvl) >> 14), x = (xl + xr) / 2;   /* back up */
+                    L[i] += (int32_t)(((int64_t)xl * p->gl) >> 15);
+                    R[i] += (int32_t)(((int64_t)xr * p->gr) >> 15);
+                    vin[i] += (int32_t)(((int64_t)x * p->vsend) >> 15);
+                    ein[i] += (int32_t)(((int64_t)x * p->esend) >> 15);
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 }
                 syn_peak[s] = pk > syn_peak[s] ? pk : syn_peak[s] - (syn_peak[s] >> 6);

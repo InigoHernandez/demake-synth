@@ -121,11 +121,11 @@
     if (ctx) { ctx.resume(); return; }
     try {
       ctx = new AudioContext({ sampleRate: 44100 });
-      await ctx.audioWorklet.addModule("worklet.js?v=8");
+      await ctx.audioWorklet.addModule("worklet.js?v=9");
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=8")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=9")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       power.textContent = "On";
@@ -225,15 +225,19 @@
   };
   svg.addEventListener("pointerup", up);
   svg.addEventListener("pointercancel", up);
-  /* a wheel: a mouse's notch one step; a trackpad's run of small moves (and its glide after) one step every 40 px,
-     not one an event, which flew through the values */
-  const wacc = {};
+  /* a wheel: a notch (lines or pages, or a mouse's big pixel step) one step; a trackpad's run of small moves one step
+     every 50 px, at most one an event (its glide after flew through the values), from zero again when it turns back
+     or rests */
+  const wacc = {}, wlast = {};
   const wheelSteps = (e, ev) => {
-    const px = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaMode === 2 ? ev.deltaY * 400 : ev.deltaY;
-    if (Math.abs(px) >= 50) { wacc[e] = 0; return px < 0 ? 1 : -1; }
-    wacc[e] = (wacc[e] || 0) - px;
-    const n = Math.trunc(wacc[e] / 40);
-    wacc[e] -= n * 40;
+    if (ev.deltaMode) return ev.deltaY < 0 ? 1 : ev.deltaY > 0 ? -1 : 0;
+    const now = performance.now(), d = -ev.deltaY;
+    if (now - (wlast[e] || 0) > 300 || Math.sign(d) !== Math.sign(wacc[e] || 0)) wacc[e] = 0;
+    wlast[e] = now;
+    wacc[e] += d;
+    if (Math.abs(wacc[e]) < 50) return 0;
+    const n = Math.sign(wacc[e]);
+    wacc[e] = Math.max(-49, Math.min(49, wacc[e] - n * 50));
     return n;
   };
   svg.addEventListener("wheel", (ev) => {

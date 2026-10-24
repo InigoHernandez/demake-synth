@@ -310,17 +310,30 @@ static void seq_play(int on)
 }
 
 static uint32_t seq_now(void);
-/* the LFOs synced to the tempo: their step a block from it; playing on the own clock, their phase from where the
- * playing is, so a cycle starts on the bar */
+/* the LFOs synced to the tempo: their step a block from it; playing on the own clock, their phase drawn to where the
+ * playing is, so a cycle starts on the bar (or, restarted by a phrase's first note, where that note began). Far off,
+ * it jumps there (a new random value if that went round); near, it is drawn an eighth of the way a render, so the
+ * LFO still sees each cycle end */
 static void lfo_sync(void)
 {
     int s;
     for (s = 0; s < DMK_SYNTHS; s++) {
         uint32_t n = syn[s].lsync, blocks;
-        if (!n) continue;
+        if (!syn[s].lretrig) lfo[s].poff = 0;
+        if (!n) { lfo[s].rst = 0; continue; }
         blocks = 165375u * n / ((uint32_t)(seq_bpm > 0 ? seq_bpm : 120) * 4u);   /* 44100 * 60 / 16 / 4: a sixteenth's */
         lfo[s].sstep = 0xFFFFFFFFu / (blocks ? blocks : 1u);
-        if (seq_on && !clock_ext) { uint32_t len = n << 8; lfo[s].ph = seq_now() % len * (0xFFFFFFFFu / len); }
+        if (seq_on && !clock_ext) {
+            uint32_t len = n << 8, want = seq_now() % len * (0xFFFFFFFFu / len), d;
+            if (lfo[s].rst) lfo[s].poff = lfo[s].ph - want;   /* the restart: the cycle from where it was set going */
+            want += lfo[s].poff;
+            d = want - lfo[s].ph;
+            if ((int32_t)d > (1 << 26) || (int32_t)d < -(1 << 26)) {
+                if ((int32_t)d > 0 && want < lfo[s].ph) lfo[s].hold = (int32_t)(xs32(&lfo[s].rng) >> 16) - 32768;
+                lfo[s].ph = want;
+            } else lfo[s].ph += (uint32_t)((int32_t)d / 8);
+        }
+        lfo[s].rst = 0;
     }
 }
 

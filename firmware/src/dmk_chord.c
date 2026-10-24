@@ -71,7 +71,7 @@ static uint8_t ch_cur, ch_len = 2;                     /* writing: the slot curs
 static uint16_t ch_left, ch_cmask = 0, ch_root;
 static uint8_t ch_q;                                    /* the sounding chord's quality */
 static int ch_shown = -1;                               /* the chord on the page: a slot, or -2 a key's */
-static char ch_name[16];
+static char ch_name[24];                                /* (F#maj7#11/C#: 19 bytes) */
 
 /* ---- the strum's queue: notes to start a few ms from now, as the render runs */
 #define LATER_N 16
@@ -174,6 +174,7 @@ static void invert_up(uint8_t *t, int n, int k)        /* the lowest k notes an 
     sort_notes(t, n);
 }
 /* a chord voiced: lead set, it is the progression's and AUTO's next inversion is measured from it */
+static uint8_t ch_nosub;                                /* WIDE without its root an octave under (the keys, low) */
 static int voice_x(int root, const int8_t *iv, int pedal, uint8_t *out, int lead)
 {
     int n = 0, i, k;
@@ -199,7 +200,7 @@ static int voice_x(int root, const int8_t *iv, int pedal, uint8_t *out, int lead
         if (ch.voicing == VO_WIDE) {                    /* the root low, the fifth, the colours an octave up */
             uint8_t w[8];
             int m = 0;
-            w[m++] = (uint8_t)(root - 12);
+            w[m++] = (uint8_t)(ch_nosub ? root : root - 12);
             for (i = 1; i < n; i++) w[m++] = (uint8_t)(iv[i] % 12 == 7 ? root + 7 : root + 12 + iv[i] % 12);
             for (i = 0; i < m; i++) t[i] = w[i];
             n = m;
@@ -230,12 +231,13 @@ static int voice_x(int root, const int8_t *iv, int pedal, uint8_t *out, int lead
         if (ch.invert > 1) invert_up(t, n, ch.invert - 1);   /* an inversion asked (AUTO leaves these voicings as built) */
     }
     for (i = 1; i < n && ch.spread; i++) t[i] = (uint8_t)(t[i] + 12 * (ch.spread * i / (n > 1 ? n - 1 : 1)));   /* SPREAD */
+    sort_notes(t, n);
+    while (t[0] < 28) for (i = 0; i < n; i++) t[i] = (uint8_t)(t[i] + 12);   /* nothing under E1 (the keys' lowest
+                                                                                  bass, wide from F3: F1) */
     for (i = 0; i < n; i++) while (t[i] > 96) t[i] = (uint8_t)(t[i] - 12);   /* each note under C7, its own octave down */
     sort_notes(t, n);
     for (i = 1, k = 1; i < n; i++) if (t[i] != t[k - 1]) t[k++] = t[i];   /* folded onto another: once */
     n = k;
-    while (t[0] < 28) for (i = 0; i < n; i++) t[i] = (uint8_t)(t[i] + 12);   /* nothing under E1 (the keys' lowest
-                                                                                  bass, wide from F3: F1) */
     if (pedal && n < 7 && (36 + seq_key) % 12 != t[0] % 12) {   /* the tonic under it: the lowest, whatever the voicing */
         int pd = 36 + seq_key;
         while (pd >= t[0]) pd -= 12;
@@ -431,11 +433,25 @@ static void chord_step(void)
 static int chord_key(int n, int oct, uint8_t *notes)
 {
     int8_t iv[6];
-    int q = diatonic(n, iv), r = note_of(degree_of(snap(n))) - 12, c, i, pn = ch_pn;
-    (void)oct;                                          /* (n has the octave in it) */
+    int q = diatonic(n, iv), r = note_of(degree_of(snap(n))) - 12, c, i, pn = ch_pn, d, rel = 0;
+    int lo = note_of(degree_of(snap(53 + oct * 12))) - 12;   /* the keyboard's lowest key's root, at this octave */
+    /* the same for every key at an octave, so a higher key is never a lower chord (a chord lifted alone by the floor
+     * was): WIDE's root under only when the lowest key's is heard, and the whole keyboard an octave up while the
+     * deepest any of its chords reaches under its root (this type, this voicing) would be under E1 */
+    ch_nosub = (uint8_t)(lo - 12 < 28);
     ch_pn = 0;                                          /* as it is built: no inversion that moves least from the last */
+    for (d = 0; d < 7; d++) {
+        int8_t iv2[6];
+        uint8_t t2[8];
+        int nd = note_of(degree_of(snap(60)) + d), k, m;
+        diatonic(nd, iv2);
+        m = voice_x(nd, iv2, 0, t2, 0);
+        for (k = 0; k < m; k++) if (t2[k] - nd < rel) rel = t2[k] - nd;
+    }
+    while (lo + rel < 28) { lo += 12; r += 12; }
     c = voice_x(r, iv, 0, notes, 0);
     ch_pn = (uint8_t)pn;
+    ch_nosub = 0;
     if (!seq_on) {
         ch_name[0] = 0;
         chord_name(ch_name, r, q);

@@ -593,18 +593,46 @@ static void selftest(void)
     }
     /* the chord keys: a lower key never a higher chord, in every voicing (the owner heard B under C go up) */
     {
-        int vo, k, lo0 = 0;
-        for (vo = 0; vo < 5; vo++) {
-            ui.val[0][PG_CHORD][0][0] = choice_val(vo, 5); sp_sync();
-            for (k = 0; k < DMK_KEYS; k++) {
-                uint8_t nt[8];
-                int c = chord_key(53 + k, 0, nt), lo = 127, i;
-                for (i = 0; i < c; i++) if (nt[i] < lo) lo = nt[i];
-                if (k && lo < lo0) { fails++; printf("selftest: voicing %d, key %d's chord starts under key %d's (%d < %d)\n", vo, k, k - 1, lo, lo0); break; }
-                lo0 = lo;
+        int vo, k, lo0 = 0, oc;
+        for (oc = -2; oc <= 1; oc++)                    /* at every octave, so OCT- is a lower keyboard too (OCT +2's
+                                                           top folds under C7, as it always did) */
+            for (vo = 0; vo < 5; vo++) {
+                ui.val[0][PG_CHORD][0][0] = choice_val(vo, 5); sp_sync();
+                for (k = 0; k < DMK_KEYS; k++) {
+                    uint8_t nt[8];
+                    int c = chord_key(53 + k + oc * 12, oc, nt), lo = 127, i;
+                    for (i = 0; i < c; i++) if (nt[i] < lo) lo = nt[i];
+                    if (k && lo < lo0) { fails++; printf("selftest: OCT %d, voicing %d, key %d's chord starts under key %d's (%d < %d)\n", oc, vo, k, k - 1, lo, lo0); break; }
+                    lo0 = lo;
+                }
             }
+        {   /* and OCT- lowers them (the bottom octave's chords, at OCT 0 and -1) */
+            uint8_t a[8], b[8];
+            ui.val[0][PG_CHORD][0][0] = 2 * 128 / 5 + 12; sp_sync();
+            chord_key(64, 0, a); chord_key(64 - 12, -1, b);
+            if (b[1] >= a[1]) { fails++; printf("selftest: OCT- does not lower a chord key (%d, %d)\n", a[1], b[1]); }
         }
         ui.val[0][PG_CHORD][0][0] = 2 * 128 / 5 + 12; sp_sync();
+    }
+    /* the full screen comes half a second after both are held, even when the second press did something else; a
+     * harmony follower's roll written to is heard; a key held into Arrange lets go */
+    {
+        int on = 0, v;
+        dmk_init(26); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_SEQ); ui.roll_cur[0] = 2;
+        dmk_key(4, 1); wait_ms(30); dmk_button(B_OCTU, 1); wait_ms(30); dmk_button(B_OCTD, 1); wait_ms(40);
+        if (ui.full) { fails++; printf("selftest: the full screen came at once (the second OCT deleted a held note)\n"); }
+        dmk_button(B_OCTD, 0); dmk_button(B_OCTU, 0); dmk_key(4, 0); wait_ms(30);
+        ui.synth = 1; ch.follow[1] = FW_HARM1; ui.roll_cur[1] = 9;
+        dmk_key(6, 1); wait_ms(30); dmk_key(6, 0); wait_ms(30);
+        if (ch.follow[1] != FW_FREE) { fails++; printf("selftest: a harmony follower's roll written to is not heard\n"); }
+        tap(B_HOME);
+        dmk_key(9, 1); wait_ms(30);
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_button(B_SEQ, 1); dmk_button(B_SEQ, 0); dmk_button(B_HOME, 0); wait_ms(30);
+        dmk_key(9, 0); wait_ms(200);
+        for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on || ui.keys_down[9]) { fails++; printf("selftest: a key held into Arrange keeps sounding (%d)\n", on); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     /* PRESET on a page of types turns the row's type, not the sound */
     {

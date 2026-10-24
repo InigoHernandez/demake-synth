@@ -125,9 +125,19 @@ them, a song of scenes.
 - **Saved with the song** (record version 4, which converts older songs: a pattern of three rolls becomes a scene).
 - **Cost:** the sequencer's clock only, and the fade once a block.
 
-## 4. Stage 3: the sound itself
+## 4. Stage 3: the sound itself (built, 2026-10-24, but short loops)
 
-Everything here reads the same recordings; a sound gains depth, not new sources.
+Everything here reads the same recordings; a sound gains depth, not new sources. As built:
+- **SOUND** has three rows: Main; **Layer** (Blend, Tune in octaves and fifths, Loop, Tone; ALGORITHM the recording);
+  **Voice** (Glide, Velocity, Track, Grit at 22 or 11 kHz).
+- **FILTER**'s fourth knob is **Drive** (the unbuilt Drift gave way).
+- **LFO** has two rows: Wave (Rate 0.05-20 Hz, Depth, Shape, Fade; ALGORITHM the target: pitch, cutoff, level, pan,
+  start) and Sync (free or 4 bars to 1/16; restarted by a phrase's first note, or free). The owner asked for it to be
+  felt: its depth is straight, to 3.8 octaves either way on the cutoff; the pitch squares it.
+- Record version 5; older songs and sounds load with all of it off, so they sound as they did (bit for bit, measured).
+- Cost [M]: off, the heaviest case is CPU0 1522 (1504 before); with a layer under all twelve voices and the LFO on,
+  CPU0 1716, CPU1 1355.
+- Short loops wait: a loop at any block needs its decoder's state there, and a seam without a crossfade clicks.
 
 | Control | What it gives | Where | Cost |
 | --- | --- | --- | --- |

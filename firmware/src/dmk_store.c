@@ -119,6 +119,7 @@ static void sound_init(int s)
     int r, k;
     for (r = 0; r < SND_ROWS_N; r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = ui_first[s][r * 5 + k];
     ui.val[s][PG_SOUND][0][0] = keep;
+    ui.val[s][PG_SOUND][1][4] = keep;                   /* its layer starts as its own recording */
     sp_sync();
 }
 

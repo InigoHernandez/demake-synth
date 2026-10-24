@@ -145,7 +145,7 @@ static struct {
     uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
     uint8_t arr_cur, arr_bars;                          /* Arrange: the step cursor; the bars a key writes a step with */
     uint8_t copy_arm, copy_to;                          /* HOME held + OCT+: a pattern key next pastes into it */
-    uint8_t full, full_latch;                           /* the landscape full screen (OCT- and OCT+ held); held once */
+    uint8_t full, full_latch, both_on;                  /* the landscape full screen (OCT- and OCT+ held); held once */
     uint32_t both_at;
     uint32_t copy_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
@@ -166,13 +166,13 @@ static void notice(const char *s)
 /* the keys play chords here: on CHORD, or anywhere but Arrange (whose keys write its steps) when the Keys row says
  * All; there they light and play as on CHORD, and on the roll they write the chord (the owner's ask) */
 static int chords_here(void) { return ui.page == PG_CHORD || (ch.keys && ui.page != PG_ARR); }
-/* a roll written to: a synth that plays the chords leaves its roll, so what was written would not be heard; it plays
- * its roll from now (SEQ held + ALGORITHM puts it back) */
+/* a roll written to: a synth that plays the chords, or harmonizes another, leaves its roll, so what was written
+ * would not be heard; it plays its roll from now (SEQ held + ALGORITHM puts it back) */
 static void roll_heard(int s)
 {
     char t[24];
-    if (ch.follow[s] != FW_PLAYS) return;
-    chord_off(s);
+    if (ch.follow[s] != FW_PLAYS && harm_of(s) < 0) return;
+    if (ch.follow[s] == FW_PLAYS) chord_off(s);
     ch.follow[s] = FW_FREE;
     str_cat(fmt_int(str_cat(t, "Synth "), s + 1), " plays its roll");
     notice(t);
@@ -798,7 +798,7 @@ static void foot(void)
         {                                               /* the chord at the cursor (or where it plays), else how it follows */
             const seq_t *q = &sq[ui.synth];
             uint8_t nt[8];
-            char cn[20];
+            char cn[24];
             int t = seq_on ? seq_playing_step(ui.synth) : ui.roll_cur[ui.synth], c = 0, i;
             for (i = 0; i < q->count && c < 8; i++) if (q->n[i].step <= t && t < q->n[i].step + q->n[i].len) nt[c++] = q->n[i].note;
             cn[0] = 0;
@@ -1574,7 +1574,7 @@ static void stage_rows(int page, const char *const *names, int n, int open)
 static void stage_chord(void)                           /* the progression: its chords as pills, the one now lit, named */
 {
     const prog_t *pr = cur_prog();
-    char sub[32], nm[16];
+    char sub[32], nm[24];
     int i, y = SY + SH - 30, n = pr->n, writing = !seq_on && seq_rec, now = ch_shown >= 0 ? ch_shown : 0;
     int focus = writing ? ch_cur : now, cells = n + (writing && n < PROG_SLOTS), show = cells > 5 ? 4 : cells, first = 0, widest = 0, s, on_n = 0;
     char *o;
@@ -1894,11 +1894,12 @@ static const uint8_t *ui_frame(uint32_t ms)
         }
     }
     if (ui.btn_held >> B_OCTD & 1u && ui.btn_held >> B_OCTU & 1u) {   /* both held half a second: the landscape, or back */
+        if (!ui.both_on) { ui.both_on = 1; ui.both_at = ms; }   /* from when they both are, whatever took the second */
         if (!ui.full_latch && ms - ui.both_at > 500u) {
             ui.full = (uint8_t)!ui.full; ui.full_latch = 1;
             if (ui.full) notice("OCT\xE2\x88\x92 OCT+ held: back");
         }
-    } else ui.full_latch = 0;
+    } else ui.full_latch = ui.both_on = 0;
     if (ui.full) {                                      /* the landscape full screen, the current synth's, moving */
         land_full(scene_of(ui.synth), ms);
         ta_cover(0, 0, DMK_W, DMK_H);
@@ -2421,9 +2422,10 @@ static void ui_key(int k, int down)
         return;
     }
     if (!down && ui.key_home[k]) { ui.key_home[k] = 0; return; }   /* its release: nothing sounded */
-    if (ui.page == PG_ARR && (!ui.row[PG_ARR] || !seq_on)) {
+    if (ui.page == PG_ARR && (!ui.row[PG_ARR] || !seq_on) && (down || !ui.keys_down[k])) {
         /* Arrange: on the Scene row a white key 1-8 is the selected synth's pattern (at the bar, playing), a black key
-         * 1-3 mutes; on the Song row, stopped, a white key writes a step of that scene and moves on */
+         * 1-3 mutes; on the Song row, stopped, a white key writes a step of that scene and moves on (a key held from
+         * another page: its release below, as it began) */
         int t = white_of(k);
         if (!down) return;
         ui.key_home[k] = 1;
@@ -2458,7 +2460,7 @@ static void ui_key(int k, int down)
             ui.key_nch[k] = (uint8_t)chord_key(n, ui.octave, ui.key_ch[k]);
             if (ui.key_slot[k]) ch_shown = ui.key_slot[k] - 1;
             strike(s, ui.key_ch[k], ui.key_nch[k]);
-            ui.key_roll[k] = seq_on && seq_rec ? 2 : 0;
+            ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */
             ui.key_t0[k] = seq_now();
             if (ui.page == PG_ROLL && !seq_on) {        /* the roll, stopped: the chord written at the cursor */
                 int c = ui.roll_cur[s];
@@ -2493,7 +2495,8 @@ static void ui_key(int k, int down)
         if (ui.page == PG_ROLL && !seq_on) {
             int c = ui.roll_cur[s];
             n = snap(n);
-            if (seq_find(s, c, n) >= 0 || seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); }
+            if (seq_find(s, c, n) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }   /* held: to edit or delete */
+            else if (seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); }
         } else if (seq_on && seq_rec && !song_rec) {   /* a song's take records the switches, not the keys */
             n = snap(n);
             ui.key_roll[k] = 2;
@@ -2536,7 +2539,7 @@ static const uint8_t *ui_leds(void)
         leds[i] = ui.keys_down[i] ? 255 : 0;
         if (!ui.keys_down[i] && ui.page == PG_ROLL && !seq_on && seq_find(ui.synth, ui.roll_cur[ui.synth], n) >= 0)
             leds[i] = (ui.now / 250u) & 1u ? 255 : 0;
-        if (!ui.keys_down[i] && chords_here() && ch_cmask >> (n % 12) & 1u) leds[i] = 255;   /* the chord now */
+        if (!ui.keys_down[i] && chords_here() && ui.page != PG_ROLL && ch_cmask >> (n % 12) & 1u) leds[i] = 255;   /* the chord now */
     }
     if (ui.btn_held >> B_HOME & 1u) {                   /* HOME held: the scenes in use lit (the next blinking), the synths playing */
         for (i = 0; i < DMK_KEYS; i++) leds[i] = 0;
