@@ -7,7 +7,7 @@ copy, read from DMK_KILOY and never committed) for the wordmark alone.
   .venv/bin/python tools/gen_font.py [--sheet build/fonts.png]
 
 The scale is rigid: FS 12, FM 20, FH 24, FN 36 px Geist (labels and captions; values and names; a page's title; the
-one big thing in a card) and FL 40 px Kiloy (the wordmark; it has one case). Text is in sentence case. 2 bits a pixel
+one big thing in a card) and FL 40 px Kiloy (the wordmark; it has one case), and FK 56 px Kiloy, a sound's mark, its 26 letters only. Text is in sentence case. 2 bits a pixel
 (anti-aliased, four levels), so a glyph's middle tones come from the palette's ramps against what is under it.
 
 Glyphs: ASCII 32..126 and a few more the screens use (— – · … × ° ’ →). Characters the face lacks (♭ ♯) are drawn
@@ -31,6 +31,7 @@ FACES = [  # name, font, weight (a variable font's axis, or None), size in px (t
     ("FH", GEIST, 500, 24, 2),                       # a page's title (its row the grey half)
     ("FN", GEIST, 400, 36, 2),                       # the one big thing in a card: the chord now
     ("FL", KILOY, None, 40, 2),                      # the wordmark (the boot): Kiloy, used sparingly
+    ("FK", KILOY, None, 56, 2, "abcdefghijklmnopqrstuvwxyz"),   # a sound's mark: its initial, the letters only
 ]
 EXTRA = "—–·…×°’♭♯→−"
 CHARS = [chr(c) for c in range(32, 127)] + list(EXTRA)
@@ -92,7 +93,7 @@ def missing(font, ch, bits):
     return a.tobytes() == b.tobytes()
 
 
-def face_data(name, path, weight, size, bits):
+def face_data(name, path, weight, size, bits, only=None):
     font = ImageFont.truetype(str(path), size)
     if weight is not None:
         font.set_variation_by_axes([weight])
@@ -102,6 +103,9 @@ def face_data(name, path, weight, size, bits):
     stem = max(1, round((ibox[2] - ibox[0])))
     glyphs = []
     for ch in CHARS:
+        if only is not None and ch not in only:         # a face of a few letters: the rest empty, no data
+            glyphs.append((ch, 0, 0, 0, 0, 0, []))
+            continue
         own = ch in OWN or (ch in "→♭♯" and missing(font, ch, bits))
         if not own and ch not in " " and missing(font, ch, bits):
             ch_draw = "?"                                 # the face lacks it: a question mark in its place
@@ -131,6 +135,8 @@ def face_data(name, path, weight, size, bits):
         while not any(r[-1] for r in rows):
             rows = [r[:-1] for r in rows]; x1 -= 1
         glyphs.append((ch, adv, x0 - PAD, PAD * 2 - y0, x1 - x0, y1 - y0, rows))
+    if only is not None:                                # its lowercase letters only: H is not there
+        cap = max(g[3] for g in glyphs if g[5])
     ascent = max(g[3] for g in glyphs if g[5])
     descent = max(g[5] - g[3] for g in glyphs if g[5])
     return dict(name=name, size=size, bits=bits, cap=cap, ascent=ascent, descent=descent, glyphs=glyphs)
@@ -217,7 +223,7 @@ def main():
     a = ap.parse_args()
     if not KILOY.exists():
         raise SystemExit(f"no Kiloy at {KILOY} (DMK_KILOY)")
-    faces = [face_data(n, f, w, s, b) for n, f, w, s, b in FACES]
+    faces = [face_data(*face) for face in FACES]
     write(faces)
     if a.sheet:
         sheet(faces, a.sheet)

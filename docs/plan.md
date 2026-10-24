@@ -720,6 +720,7 @@ pixel (28,800 B in the pool); each changed strip goes to the LCD through a 16-en
 | FH, Geist 500 | 24 px | a page's title and its row (ink, then grey) |
 | FN, Geist 400 | 36 px | the one big thing in a card: the chord now |
 | FL, Kiloy | 40 px | the wordmark (the boot) |
+| FK, Kiloy | 56 px | a sound's mark: its initial (s, f, g), lit while it sounds; the 26 letters only |
 
 Rendered by `tools/gen_font.py` at 2 bits a pixel. Text is fitted with `text_fit`, never guessed. ♭ and ♯, which
 Geist lacks, are drawn by the generator to its x-height.
@@ -737,7 +738,8 @@ Geist lacks, are drawn by the generator to its x-height.
 
 ![The screens, rendered by the host from the firmware's code](img/phase0-screens.png)
 
-- **Home:** a card a synth: its name in two lines, a thermal blob while it sounds (a ring when muted), its engine.
+- **Home:** a card a synth: its name in two lines, its mark (the sound's initial in Kiloy) lit while it sounds and
+  grey when muted, its engine. The mark follows the sound: it sits in the corner of its Sound page.
   HOME held: the eight patterns as cards, the playing one lit, the next a magenta ring.
 - **Roll:** a card: note names, the beats as rules and the steps as dots, notes as pills, the cursor lit.
 - **Sound:** a card: the sample's name and engine, its envelope as a line, the loop's ends lit.

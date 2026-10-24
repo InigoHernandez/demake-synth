@@ -232,7 +232,7 @@ static void foot(void)
 #define SW (DMK_W - 2 * M)
 #define SH (Y_FOOT - Y_STAGE - 4)
 
-static void stage_home(void)                            /* the synths: a card each, lit while it sounds */
+static void stage_home(void)                            /* the synths: a card each, its initial lit while it sounds */
 {
     static const uint8_t ENGINE[DMK_SYNTHS] = {0, 1, 3};
     int i;
@@ -245,8 +245,10 @@ static void stage_home(void)                            /* the synths: a card ea
         if (i == ui.synth) card(x, SY, w, SH, C_INK, 2);
         else card(x, SY, w, SH, C_LINE, 1);
         card_title(x, SY, w, a, b, !sounding);
-        if (sounding) round_fill(cx - 16, SY + 46, 32, 32, 16, HOLO);
-        else round_line(cx - 16, SY + 46, 32, 32, 16, 1, C_LINE);
+        {                                               /* its mark: the sound's initial in Kiloy, lit while it sounds */
+            char ini[2] = {(char)(a[0] | 0x20), 0};
+            text_c(cx, SY + 64 - FK.ascent + FK.cap / 2, ini, &FK, sounding ? HOLO : C_LINE);
+        }
         text_fit(x + PAD + 1, SY + SH - 20, w - 2 * PAD, sounding ? ENGINES[ENGINE[i]] : "Muted", &FS, C_LABEL);
     }
 }
@@ -308,7 +310,11 @@ static void stage_sound(void)
     int i, mid = SY + 74, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2;
     card(SX, SY, SW, SH, C_LINE, 1);
     if (ui.row[PG_SOUND]) card_title(SX, SY, SW, "No layer", "Layer", 0);
-    else card_title(SX, SY, SW, SYNTH_SOUND[ui.synth], "Sample", 0);
+    else {                                              /* the sound's name, and its mark in the corner, lit */
+        char ini[2] = {(char)(SYNTH_SOUND[ui.synth][0] | 0x20), 0};
+        card_title(SX, SY, SW, SYNTH_SOUND[ui.synth], "Sample", 0);
+        text_r(SX + SW - PAD - 2, SY + 8, ini, &FK, HOLO);
+    }
     for (i = 0; i < w; i++) {                           /* the sample's envelope: its body lit, its edge in ink */
         int h = i < 8 ? i * 4 : 32 - i / 7;
         if (h < 1) h = 1;
@@ -316,8 +322,10 @@ static void stage_sound(void)
     }
     lit_band(x0, w, ya, yb);
     for (i = 0; i < w; i++) { px_put(x0 + i, ya[i], C_INK); px_put(x0 + i, yb[i] - 1, C_INK); }
-    round_fill(x0 + w * 3 / 5, mid - 38, 4, 76, 2, C_INK);   /* the loop's ends */
-    round_fill(x0 + w * 4 / 5, mid - 38, 4, 76, 2, C_INK);
+    for (i = 3; i <= 4; i++) {                          /* the loop's ends, as tall as the sample is there */
+        int lx = w * i / 5, lh = mid - ya[lx] + 8;
+        round_fill(x0 + lx - 2, mid - lh, 4, 2 * lh, 2, C_INK);
+    }
 }
 
 static void stage_curve(int amp)
