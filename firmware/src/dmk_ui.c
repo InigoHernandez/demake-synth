@@ -180,7 +180,9 @@ static void roll_heard(int s)
 
 /* the patterns' progression is the CHORD page's (dmk_seq.c keeps the rest) */
 static uint8_t pat_prog_get(void) { return ui.val[0][PG_CHORD][0][4]; }
-static void pat_prog_put(uint8_t v) { ui.val[0][PG_CHORD][0][4] = v; ch.prog = (uint8_t)(v * PROG_N / 128); }
+static void keys_unslot(void) { int k; for (k = 0; k < DMK_KEYS; k++) ui.key_slot[k] = 0; }   /* a progression changed:
+                                                           a held key's written slot was the last one's */
+static void pat_prog_put(uint8_t v) { ui.val[0][PG_CHORD][0][4] = v; ch.prog = (uint8_t)(v * PROG_N / 128); keys_unslot(); }
 static void sp_sync(void);
 static const choice_t *choice_of(int page, int row, int k);
 static int choice_index(const choice_t *c, int v);
@@ -192,6 +194,7 @@ static void prog_step(int d)
     if (p < 0 || p >= PROG_N) return;
     pr = p < 16 ? &PROG[p] : &uprog[p - 16];
     ui.val[0][PG_CHORD][0][4] = choice_val(p, PROG_N);
+    keys_unslot();
     if (pr->n) { ui.val[0][PG_CHORD][1][1] = choice_val(pr->mode, 6); ui.val[0][PG_CHORD][0][0] = choice_val(pr->voicing, 5); }
     ch_cur = 0;
     sp_sync();
@@ -227,6 +230,7 @@ static int roll_clear(int s)
 {
     int chords = ch.follow[s] == FW_PLAYS;
     seq_quiet(s);
+    seq_quiet_from(s);                                  /* and its harmonies on the others */
     sq[s].count = 0;
     if (chords) { chord_off(s); ch.follow[s] = FW_FREE; }
     return chords;
@@ -237,7 +241,8 @@ static void pat_mute_flip(int s)                        /* HOME held, a black ke
     int i;
     pat_mute ^= (uint8_t)(1u << s);
     (void)i;
-    if (pat_mute >> s & 1u) { seq_quiet(s); if (ch.follow[s] == FW_PLAYS) chord_off(s); }
+    if (pat_mute >> s & 1u) { seq_quiet(s); seq_quiet_from(s); if (ch.follow[s] == FW_PLAYS) chord_off(s); }
+    else chord_join(s);                                 /* back: the chord sounding now, not the next */
 }
 
 /* the store (dmk_store.c, after this file) */
@@ -316,6 +321,7 @@ static void sp_sync(void)
         p->esend = VS(s, PG_FX, 3, 1) * 258;
         v = VS(s, PG_FX, 3, 2);
         p->gl = T_PAN[127 - v]; p->gr = T_PAN[v]; p->pan = v;
+        p->width = VS(s, PG_FX, 3, 3) * 4;              /* 64: as it is */
         /* the LAYER: a second recording under the sound, through its filter and envelope */
         p->lsmp = (uint8_t)(VS(s, PG_SOUND, 1, 4) < DMK_SAMPLES_N ? VS(s, PG_SOUND, 1, 4) : 0);
         p->lblend = VS(s, PG_SOUND, 1, 0) * 258;
@@ -351,6 +357,7 @@ static void sp_sync(void)
         gp.vmod = MD[t] * VS(0, PG_GLOBAL, 0, 3) / 127;
         gp.vrate = RT[t];
     }
+    gp.width = VS(0, PG_HOME, 3, 3) * 4;                /* the whole mix's width: 64 as it is */
     gp.vret = VS(0, PG_GLOBAL, 0, 0) * 258;
     gp.vdamp = T_OPH[VS(0, PG_GLOBAL, 0, 1)];
     gp.vfb = 22938 + VS(0, PG_GLOBAL, 0, 2) * 72;
@@ -514,6 +521,7 @@ static void val_text(char *o, int page, int row, int k)
         fmt_int(o, v + 1);
         return;
     }
+    if (page == PG_HOME && k == 4) { fmt_int(o, seq_bpm); return; }   /* the tempo as it plays (at least 20; Ext: the clock's) */
     if (page == PG_SOUND && row == 1 && k == 4) { str_cat(o, DMK_SAMPLES[v < DMK_SAMPLES_N ? v : 0].name); return; }   /* the layer's */
     if (page == PG_SOUND && row == 1 && k == 0 && !v) { str_cat(o, "Off"); return; }
     if (page == PG_SOUND && row == 2 && k == 0) {       /* the glide: off, or its time in ms or s */
@@ -565,7 +573,7 @@ static int roll_at(void) { return seq_on ? seq_playing_step(ui.synth) : ui.roll_
 static int roll_held(void)                              /* a key holding a note on the roll, or -1 */
 {
     int k;
-    for (k = 0; k < DMK_KEYS; k++) if (ui.keys_down[k] && ui.key_roll[k] == 1) return k;
+    for (k = 0; k < DMK_KEYS; k++) if (ui.keys_down[k] && ui.key_roll[k] == 1 && ui.key_sy[k] == ui.synth) return k;   /* (SELECT since: not this roll's) */
     return -1;
 }
 static void note_name(char *o, int n)
@@ -2011,7 +2019,7 @@ static void roll_oct(int dup)                           /* OCT- deletes the held
     int s = ui.synth, k;
     for (k = 0; k < DMK_KEYS; k++) {
         int j;
-        if (!ui.keys_down[k] || ui.key_roll[k] != 1) continue;
+        if (!ui.keys_down[k] || ui.key_roll[k] != 1 || ui.key_sy[k] != s) continue;
         j = seq_find(s, ui.key_step[k], ui.key_note[k]);
         if (j < 0) continue;
         if (!dup) { seq_del(s, j); ui.key_roll[k] = 3; continue; }
@@ -2074,6 +2082,7 @@ static void ui_button(int b, int down)
             if (b == B_SEQ) { ui.page = PG_ARR; return; }
             if (b == B_PLAY) {
                 song_mode ^= 1u;
+                if (!song_mode) { mix_g = 32768; mix_dg = mix_next = 0; }   /* left while it faded: whole again */
                 if (song_mode && seq_on) song_start(0);    /* playing: the song from its first step, at the next bar */
                 notice(!song_mode ? "Scene mode" : song_n ? "Song mode" : "Song mode: an empty song");
                 return;
@@ -2297,10 +2306,13 @@ static void ui_encoder(int e, int d)
     if (k == 4 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, ALGORITHM: how this synth follows the chords */
         char t[32];
         int dir = d > 0 ? 1 : -1, f = ch.follow[ui.synth] + dir;
-        if (f == FW_HARM1 + ui.synth) f += dir;          /* not in harmony with itself */
+        /* not in harmony with itself, nor with a synth that follows another or plays the chords: it has no notes of
+         * its own to move (a chain was silent) */
+        while (f >= FW_HARM1 && f <= FW_HARM3 && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS)) f += dir;
         if (f < 0 || f >= FW_COUNT) return;
+        if (ch.follow[ui.synth] == FW_PLAYS) chord_off(ui.synth);
         ch.follow[ui.synth] = (uint8_t)f;
-        if (ch.follow[ui.synth] != FW_PLAYS) chord_off(ui.synth);
+        chord_join(ui.synth);                           /* set to play them: the chord sounding now */
         str_cat(t, FOLLOWS[ch.follow[ui.synth]]);
         notice(t);
         return;
@@ -2340,7 +2352,9 @@ static void ui_encoder(int e, int d)
         if (h < DMK_KEYS && k < 4) {                    /* a written chord held: K1 its slot, K2 quality, K3 length, K4 bass */
             prog_t *p = edit_prog();
             int at = ui.key_slot[h] - 1, dir = d > 0 ? 1 : -1;
-            cslot_t *c = &p->s[at];
+            cslot_t *c;
+            if (!p || at >= p->n) return;                /* (four full, or not this progression's) */
+            c = &p->s[at];
             if (k == 0 && at + dir >= 0 && at + dir < p->n) { cslot_t t = p->s[at + dir]; p->s[at + dir] = *c; *c = t; ui.key_slot[h] = (uint8_t)(at + dir + 1); }
             if (k == 1) c->q = (uint8_t)((c->q + Q_COUNT + dir) % Q_COUNT);
             if (k == 2) { int l = c->half + dir; c->half = (uint8_t)(l < 1 ? 1 : l > 16 ? 16 : l); ch_len = c->half; }
@@ -2416,7 +2430,8 @@ static void ui_key(int k, int down)
                 notice(m);
                 return;
             }
-            if (song_playing()) { song_mode = 0; notice("Scene mode"); }   /* a scene picked: the song left */
+            if (song_playing()) { song_mode = 0; mix_g = 32768; mix_dg = mix_next = 0; notice("Scene mode"); }   /* a scene picked: the song
+                                                           left, its fade too */
             scn_pick(t);
         } else if (k == 1 || k == 3 || k == 5) pat_mute_flip(k / 2);
         return;
@@ -2462,6 +2477,7 @@ static void ui_key(int k, int down)
             strike(s, ui.key_ch[k], ui.key_nch[k]);
             ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */
             ui.key_t0[k] = seq_now();
+            if (ui.key_roll[k] == 2) ui.key_step[k] = (uint8_t)seq_rec_step(s);   /* where on its own roll */
             if (ui.page == PG_ROLL && !seq_on) {        /* the roll, stopped: the chord written at the cursor */
                 int c = ui.roll_cur[s];
                 roll_heard(s);
@@ -2480,7 +2496,7 @@ static void ui_key(int k, int down)
             later_off(s, ui.key_ch[k][j], SRC_KEY);
             if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll */
                 uint32_t t0 = ui.key_t0[k], t1 = seq_now();
-                int st = (int)(((t0 + 128u) >> 8) % sq[s].steps), len = (int)((t1 - t0 + 128u) >> 8);
+                int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
                 seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_ch[k][j], 100);
             }
         }
@@ -2501,6 +2517,7 @@ static void ui_key(int k, int down)
             n = snap(n);
             ui.key_roll[k] = 2;
             ui.key_t0[k] = seq_now();
+            ui.key_step[k] = (uint8_t)seq_rec_step(s);  /* where on its own roll (a switched pattern starts it again) */
         }
         ui.key_note[k] = (uint8_t)n;
         note_on_s(s, n);
@@ -2524,8 +2541,8 @@ static void ui_key(int k, int down)
         if (j >= 0) ui.roll_cur[s] = (uint8_t)((sq[s].n[j].step + sq[s].n[j].len) % sq[s].steps);
     } else if (ui.key_roll[k] == 2 && seq_on) {
         uint32_t t0 = ui.key_t0[k], t1 = seq_now();
+        int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
         roll_heard(s);
-        int st = (int)(((t0 + 128u) >> 8) % sq[s].steps), len = (int)((t1 - t0 + 128u) >> 8);
         seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_note[k], 100);
     }
     ui.key_roll[k] = 0;
@@ -2566,6 +2583,7 @@ static const uint8_t *ui_leds(void)
  * synths in harmony with it along; with the clock outside (Clock: Ext), its start and stop play and stop, and each six
  * of its 24 a beat step the sequences, its pace taken as the tempo */
 static uint8_t mi_hn[DMK_SYNTHS][128][DMK_SYNTHS];      /* a note's harmony on each follower, + 1 */
+static uint8_t mi_sy[16][128];                          /* each channel's notes on: the synth that plays it, + 1 */
 static uint32_t mi_clk, mi_last, mi_per;                /* clocks since start; when the last came; samples between, Q4 */
 static void midi_in(int st, int d1, int d2)
 {
@@ -2575,7 +2593,10 @@ static void midi_in(int st, int d1, int d2)
         mi_last = now;
         if (dt > 200u && dt < 20000u) mi_per = mi_per ? mi_per + (int32_t)(dt * 16u - mi_per) / 8 : dt * 16u;
         if (clock_ext && mi_per) { int b = (int)(DMK_SR * 60u * 16u / (mi_per * 24u)); seq_bpm = b < 20 ? 20 : b > 300 ? 300 : b; }
-        if (clock_ext && seq_on && ++mi_clk % 6u == 0u) seq_step();
+        if (clock_ext && seq_on && ++mi_clk % 6u == 0u) {
+            seq_step();
+            if (seq_stop_req) { seq_stop_req = 0; seq_play(0); }   /* the song's end, on the outside clock too */
+        }
         return;
     }
     if (st == 0xFA || st == 0xFB) {                     /* start, continue */
@@ -2585,15 +2606,20 @@ static void midi_in(int st, int d1, int d2)
     if (st == 0xFC) { if (clock_ext) seq_play(0); return; }   /* stop */
     if ((ty != 0x80 && ty != 0x90) || d1 < 0 || d1 > 127) return;
     s = midi_chans && (st & 15) < DMK_SYNTHS ? st & 15 : ui.synth;
-    if (ty == 0x90 && d2) {
+    if (mi_sy[st & 15][d1]) {                           /* on already: the synth it began on; ended first if again */
+        int s0 = mi_sy[st & 15][d1] - 1;
+        mi_sy[st & 15][d1] = 0;
+        note_off_s(s0, d1);
+        for (f = 0; f < DMK_SYNTHS; f++) if (mi_hn[s0][d1][f]) { note_off_s(f, mi_hn[s0][d1][f] - 1); mi_hn[s0][d1][f] = 0; }
+        if (!(ty == 0x90 && d2)) return;
+    } else if (!(ty == 0x90 && d2)) return;             /* an off for nothing on */
+    {
+        mi_sy[st & 15][d1] = (uint8_t)(s + 1);
         note_on_vel(s, d1, SRC_KEY, d2);                /* its velocity heard (VOICE's Velocity) */
         for (f = 0; f < DMK_SYNTHS; f++) {
             mi_hn[s][d1][f] = 0;
-            if (f != s && harm_of(f) == s) { int h = harm_note(f, d1); note_on_vel(f, h, SRC_KEY, d2); mi_hn[s][d1][f] = (uint8_t)(h + 1); }
+            if (f != s && harm_of(f) == s) { int h = harm_note(f, d1); if (h >= 0 && h < 128) { note_on_vel(f, h, SRC_KEY, d2); mi_hn[s][d1][f] = (uint8_t)(h + 1); } }
         }
-    } else {
-        note_off_s(s, d1);
-        for (f = 0; f < DMK_SYNTHS; f++) if (mi_hn[s][d1][f]) { note_off_s(f, mi_hn[s][d1][f] - 1); mi_hn[s][d1][f] = 0; }
     }
 }
 

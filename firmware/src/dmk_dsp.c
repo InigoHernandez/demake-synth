@@ -52,6 +52,7 @@ typedef struct {
     uint32_t atk;                  /* the attack's step a block, Q24 */
     int32_t sus, level, gl, gr, vsend, esend;   /* Q24; Q15 ... */
     int32_t pan;                   /* 0..127 as turned (the LFO swings it) */
+    int32_t width;                 /* its stereo's width, Q8 (256 as it is, 0 one, 508 twice) */
     int32_t tdepth, tdrive;        /* the tape's wow depth (Q8 samples a unit of the sine), drive Q8 */
     uint16_t thl;                  /* its head loss, a one-pole Q15 */
     uint32_t twow, tflut;          /* its wow's and flutter's phase steps */
@@ -79,7 +80,7 @@ enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's t
 static synth_t syn[DMK_SYNTHS];
 
 /* the shared buses' controls */
-static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex; uint32_t vrate; uint8_t vtype, etype; } gp;
+static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex, width; uint32_t vrate; uint8_t vtype, etype; } gp;
 /* the VERB's and ECHO's types as they run: a new one is taken once the return has faded out (5.8 ms), then faded in */
 static uint8_t v_cur, e_cur;
 static int32_t v_g = 32768, e_g = 32768;
@@ -127,7 +128,7 @@ static void mq_put(int st, int d1, int d2)
 }
 /* the song's fades (dmk_seq.c sets them): the synths' share of the mix, Q15, and its step a block; the spaces' tails
  * are left to ring */
-static int32_t mix_g = 32768, mix_dg;
+static int32_t mix_g = 32768, mix_dg, mix_next;          /* mix_next: the fade after this one ends (0: none) */
 
 static const int8_t ADPCM_F[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
 
@@ -258,12 +259,16 @@ static void note_on_vel(int sy, int n, int src, int vel)
 #define VEL_KEY 100                                     /* the keys' velocity, as the roll writes it */
 static void note_on_src(int sy, int n, int src) { note_on_vel(sy, n, src, VEL_KEY); }
 
+/* a note off: one voice, the oldest of that note from that source (a second key, an octave apart, or a chord sharing
+ * a note, keeps its own: letting one go cut the other) */
 static void note_off_src(int sy, int n, int src)
 {
-    int i;
+    int i, best = -1;
+    uint32_t oldest = 0xFFFFFFFFu;
     if (midi_out & 1u && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     for (i = 0; i < DMK_VOICES; i++)
-        if (vc[i].on && vc[i].note == n && vc[i].sy == sy && vc[i].src == src) { vc[i].on = 0; if (vc[i].stage) vc[i].stage = 3; }
+        if (vc[i].on && vc[i].note == n && vc[i].sy == sy && vc[i].src == src && vc[i].age < oldest) { oldest = vc[i].age; best = i; }
+    if (best >= 0) { vc[best].on = 0; if (vc[best].stage) vc[best].stage = 3; }
 }
 static void note_on_s(int sy, int n) { note_on_src(sy, n, SRC_KEY); }   /* the keys' */
 static void note_off_s(int sy, int n) { note_off_src(sy, n, SRC_KEY); }
@@ -1034,6 +1039,11 @@ static void chain_run(int s)
         for (i = 0; i < DMK_SUB; i++) { int32_t a = x[i] < 0 ? -x[i] : x[i]; if (a > dmeter.syn_max) dmeter.syn_max = a; }
 #endif
         rows_run(s, x, pl, pr);
+        if (syn[s].width != 256)                        /* WIDTH: its sides, narrowed or widened */
+            for (i = 0; i < DMK_SUB; i++) {
+                int32_t m = (pl[i] + pr[i]) / 2, d = ((pl[i] - pr[i]) * syn[s].width) >> 9;
+                pl[i] = m + d; pr[i] = m - d;
+            }
     }
 }
 /* the second core's share of the mix: the network on the last run's input, and the last synth's chain */
@@ -1081,8 +1091,8 @@ static void dsp_render(int16_t *lr, int frames)
             for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = vin[i] = ein[i] = 0;
             if (mix_dg) {                               /* a song's fade, a step a block */
                 mix_g += mix_dg;
-                if (mix_g <= 0) { mix_g = 0; mix_dg = 0; }
-                if (mix_g >= 32768) { mix_g = 32768; mix_dg = 0; }
+                if (mix_g <= 0) { mix_g = 0; mix_dg = mix_next; mix_next = 0; }
+                if (mix_g >= 32768) { mix_g = 32768; mix_dg = mix_next; mix_next = 0; }
             }
             for (s = 0; s < DMK_SYNTHS; s++) {
                 const synth_t *p = &syn[s];
@@ -1143,8 +1153,15 @@ static void dsp_render(int16_t *lr, int frames)
                 { int32_t a = L[i] + wl + el, c = R[i] + wr + er; a = a < 0 ? -a : a; c = c < 0 ? -c : c; if (c > a) a = c;
                   if (a > dmeter.pre_max) dmeter.pre_max = a; dmeter.knee += a > 24575; }
 #endif
-                lr[k] = (int16_t)curve(T_LIM, L[i] + wl + el);
-                lr[k + 1] = (int16_t)curve(T_LIM, R[i] + wr + er);
+                {
+                    int32_t ol = L[i] + wl + el, orr = R[i] + wr + er;
+                    if (gp.width != 256) {              /* the whole mix's width (Home's Pan row) */
+                        int32_t m = (ol + orr) / 2, d = (int32_t)(((int64_t)(ol - orr) * gp.width) >> 9);
+                        ol = m + d; orr = m - d;
+                    }
+                    lr[k] = (int16_t)curve(T_LIM, ol);
+                    lr[k + 1] = (int16_t)curve(T_LIM, orr);
+                }
             }
 #ifdef DMK_BENCH
             bench_block(DMK_SUB);

@@ -594,8 +594,7 @@ static void selftest(void)
     /* the chord keys: a lower key never a higher chord, in every voicing (the owner heard B under C go up) */
     {
         int vo, k, lo0 = 0, oc;
-        for (oc = -2; oc <= 1; oc++)                    /* at every octave, so OCT- is a lower keyboard too (OCT +2's
-                                                           top folds under C7, as it always did) */
+        for (oc = -2; oc <= 2; oc++)                    /* at every octave, so OCT- is a lower keyboard too */
             for (vo = 0; vo < 5; vo++) {
                 ui.val[0][PG_CHORD][0][0] = choice_val(vo, 5); sp_sync();
                 for (k = 0; k < DMK_KEYS; k++) {
@@ -632,6 +631,35 @@ static void selftest(void)
         dmk_key(9, 0); wait_ms(200);
         for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
         if (on || ui.keys_down[9]) { fails++; printf("selftest: a key held into Arrange keeps sounding (%d)\n", on); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
+     * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
+     * stops at the song's end */
+    {
+        int on = 0, v;
+        dmk_init(27); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ch.follow[1] = FW_HARM1;
+        dmk_midi(0x90, 3, 100); dmk_midi(0x80, 3, 0); wait_ms(30);   /* (it crashed) */
+        ch.follow[1] = FW_KEY;
+        dmk_midi(0x90, 60, 100); dmk_encoder(E_SELECT, 1); wait_ms(200); dmk_midi(0x80, 60, 0); wait_ms(30);
+        for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: a MIDI note held over SELECT does not end (%d)\n", on); }
+        dmk_encoder(E_SELECT, -1); wait_ms(200);
+        ui.val[0][PG_CHORD][0][0] = choice_val(0, 5); sp_sync();   /* close: Am7 and Cmaj7 share three notes */
+        tap(B_ARP); dmk_key(4, 1); wait_ms(30); dmk_key(7, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30);
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == ui.synth;
+        if (on != ui.key_nch[7]) {
+            fails++; printf("selftest: one chord let go cut the other's notes (%d of %d; synth %d page %d)\n", on, ui.key_nch[7], ui.synth, ui.page);
+            for (v = 0; v < DMK_VOICES; v++) if (vc[v].stage) printf("  v%d sy%d n%d src%d on%d st%d\n", v, vc[v].sy, vc[v].note, vc[v].src, vc[v].on, vc[v].stage);
+        }
+        dmk_key(7, 0); wait_ms(30);
+        ui.val[0][PG_GLOBAL][2][2] = choice_val(1, 2); sp_sync();   /* the outside clock; a one-step song that stops */
+        song_n = 0; song_put(0, 0, 1); song_n = 1; song_end = SE_STOP; song_mode = 1;
+        dmk_midi(0xFA, 0, 0);
+        for (v = 0; v < 24 * 4 * 2 && seq_on; v++) { dmk_midi(0xF8, 0, 0); wait_ms(9); }
+        if (seq_on) { fails++; printf("selftest: the outside clock plays on past the song's end\n"); }
+        dmk_midi(0xFC, 0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     /* PRESET on a page of types turns the row's type, not the sound */

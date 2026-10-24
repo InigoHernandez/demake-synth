@@ -84,11 +84,12 @@ static void later_on(int sy, int note, int32_t samples, int src)
     if (i == LATER_N) { note_on_src(sy, note, src); return; }
     later[i].at = samples; later[i].sy = (uint8_t)sy; later[i].note = (uint8_t)note; later[i].src = (uint8_t)src; later[i].used = 1;
 }
-static void later_off(int sy, int note, int src)        /* off, and never started if it was still to come */
+static void later_off(int sy, int note, int src)        /* off, or never started if it was still to come (then no off:
+                                                           it would end another's of that note) */
 {
-    int i;
-    for (i = 0; i < LATER_N; i++) if (later[i].used && later[i].sy == sy && later[i].note == note && later[i].src == src) later[i].used = 0;
-    note_off_src(sy, note, src);
+    int i, gone = 0;
+    for (i = 0; i < LATER_N; i++) if (later[i].used && later[i].sy == sy && later[i].note == note && later[i].src == src) { later[i].used = 0; gone = 1; }
+    if (!gone) note_off_src(sy, note, src);
 }
 static void later_tick(int frames)
 {
@@ -347,6 +348,13 @@ static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms
     }
 }
 static void strike(int sy, const uint8_t *notes, int n) { strike_src(sy, notes, n, SRC_KEY, 0); }   /* the keys' */
+/* a synth that comes to play the chords while they hold (set to Plays chords, unmuted): the chord sounding now, not
+ * silence until the next */
+static void chord_join(int s)
+{
+    if (seq_on && ch.rhythm == RH_HOLD && ch_np && ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u))
+        strike_src(s, ch_play, ch_np, SRC_CHORD, 0);
+}
 
 /* the sounding chord off on the synths that play chords */
 static void chord_quiet(void)
@@ -449,6 +457,18 @@ static int chord_key(int n, int oct, uint8_t *notes)
         for (k = 0; k < m; k++) if (t2[k] - nd < rel) rel = t2[k] - nd;
     }
     while (lo + rel < 28) { lo += 12; r += 12; }
+    {   /* and at the top: an octave down for all while the highest key's chord would fold under C7 (it went down) */
+        int hi = note_of(degree_of(snap(53 + DMK_KEYS - 1 + oct * 12))) - 12 + (lo - (note_of(degree_of(snap(53 + oct * 12))) - 12)), top = 0;
+        for (d = 0; d < 7; d++) {
+            int8_t iv2[6];
+            uint8_t t2[8];
+            int nd = note_of(degree_of(snap(48)) + d), k, m;
+            diatonic(nd, iv2);
+            m = voice_x(nd, iv2, 0, t2, 0);
+            for (k = 0; k < m; k++) if (t2[k] - nd > top) top = t2[k] - nd;
+        }
+        while (hi + top > 96 && lo - 12 + rel >= 28) { hi -= 12; lo -= 12; r -= 12; }
+    }
     c = voice_x(r, iv, 0, notes, 0);
     ch_pn = (uint8_t)pn;
     ch_nosub = 0;
