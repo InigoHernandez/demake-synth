@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 2u                                       /* 2: eight patterns (1: the rolls alone, still read) */
+#define ST_VER 3u                                       /* 3: the arrangement; 2: eight patterns; 1: the rolls alone (all read) */
 
 static uint8_t st_buf[ST_SECTOR] POOL;                  /* a sector as it is written or was read */
 static uint8_t lib[ST_USER][ST_SOUND] POOL;             /* the library, as the flash holds it: [used, 0, 45 values] */
@@ -118,14 +118,14 @@ static void sound_init(int s)
 }
 
 /* ---- songs */
-static uint32_t song_at(int i) { return ST_SONG0 + (uint32_t)i * ST_SECTOR; }
+static uint32_t slot_at(int i) { return ST_SONG0 + (uint32_t)i * ST_SECTOR; }
 
 static int song_pack(uint8_t *o)                        /* the song open into o: its length, or -1 too long */
 {
     uint8_t *p = o;
     int s, i, k, r, g;
-    *p++ = PG_COUNT;
-    for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_COUNT; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) *p++ = ui.val[s][g][r][k];
+    *p++ = PG_SAVED;
+    for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) *p++ = ui.val[s][g][r][k];
     *p++ = theme;
     for (s = 0; s < DMK_SYNTHS; s++) *p++ = ch.follow[s];
     for (i = 0; i < 4; i++) {
@@ -145,6 +145,9 @@ static int song_pack(uint8_t *o)                        /* the song open into o:
             for (i = 0; i < q->count; i++) { *p++ = q->n[i].step; *p++ = q->n[i].len; *p++ = q->n[i].note; *p++ = q->n[i].vel; }
         }
     }
+    if (p - o + 3 + song_n * 3 > (int)(ST_SECTOR - ST_HDR)) return -1;
+    *p++ = song_n; *p++ = song_end; *p++ = song_mode;   /* the arrangement */
+    for (i = 0; i < song_n; i++) { *p++ = song[i].pat; *p++ = song[i].bars; *p++ = song[i].mute; }
     return (int)(p - o);
 }
 
@@ -165,10 +168,10 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
 {
     const uint8_t *e = p + n;
     int s, i, k, r, g;
-    if (n < 1 || *p++ != PG_COUNT) return -1;
-    if (n < 1u + DMK_SYNTHS * PG_COUNT * 20u + 1u + DMK_SYNTHS + 4u * (3u + PROG_SLOTS * 4u) + DMK_SYNTHS * 4u + DMK_SYNTHS * 2u) return -1;
+    if (n < 1 || *p++ != PG_SAVED) return -1;
+    if (n < 1u + DMK_SYNTHS * PG_SAVED * 20u + 1u + DMK_SYNTHS + 4u * (3u + PROG_SLOTS * 4u) + DMK_SYNTHS * 4u + DMK_SYNTHS * 2u) return -1;
     seq_play(0);
-    for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_COUNT; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
+    for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
     theme = *p++ % DMK_THEMES;
     for (s = 0; s < DMK_SYNTHS; s++) { ch.follow[s] = *p++; if (ch.follow[s] >= FW_COUNT) ch.follow[s] = FW_FREE; }
     for (i = 0; i < 4; i++) {
@@ -202,6 +205,14 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
         pat_cur = (uint8_t)(cur < PATTERNS && pat[cur].used ? cur : 0);
         pat[pat_cur].used = 1;
     }
+    song_init();
+    if (st_ver >= 3u && e - p >= 3) {                   /* the arrangement (older songs: none) */
+        int c = *p++;
+        song_end = (uint8_t)(*p++ % SE_COUNT); song_mode = (uint8_t)(*p++ ? 1 : 0);
+        for (i = 0; i < c && i < SONG_STEPS && e - p >= 3; i++, p += 3) song_put(i, p[0] & 7, p[1], p[2]);
+        song_n = (uint8_t)i;
+        if (!song_n) song_mode = 0;
+    }
     pat_load(pat_cur);
     for (s = 0; s < DMK_SYNTHS; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
     for (s = 0; s < DMK_SYNTHS; s++) {
@@ -220,7 +231,7 @@ static void songs_scan(void)                            /* which slots hold a so
     st_gen = 0;
     for (i = 0; i < ST_SONGS; i++) {
         song_gen[i] = 0;
-        if (st_load(song_at(i), ST_MAGIC_SONG, &n, &g)) continue;
+        if (st_load(slot_at(i), ST_MAGIC_SONG, &n, &g)) continue;
         song_gen[i] = g ? g : 1;
         /* the progression's place, for the slot's name: the CHORD page's value, packed after the counts */
         song_prog[i] = st_buf[ST_HDR + 1 + PG_CHORD * 20 + 4];
@@ -234,7 +245,7 @@ static const char *song_name(int i) { return PROGS[choice_index(choice_of(PG_CHO
 static int song_save(int i)
 {
     int n = song_pack(st_buf + ST_HDR);
-    if (n < 0 || st_save(song_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
+    if (n < 0 || st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
     st_gen = (st_gen + 1u) & 0xFFFFu;
     song_gen[i] = st_gen ? st_gen : 1;
     song_prog[i] = ui.val[0][PG_CHORD][0][4];
@@ -243,14 +254,14 @@ static int song_save(int i)
 static int song_load(int i)
 {
     uint32_t n;
-    if (i < 0 || i >= ST_SONGS || st_load(song_at(i), ST_MAGIC_SONG, &n, 0)) return -1;
+    if (i < 0 || i >= ST_SONGS || st_load(slot_at(i), ST_MAGIC_SONG, &n, 0)) return -1;
     return song_unpack(st_buf + ST_HDR, n);
 }
 static int song_erase(int i)                            /* an empty record: the slot reads as empty */
 {
     if (!store_on()) return -1;
     st_put32(st_buf, 0); st_put32(st_buf + 4, 0); st_put32(st_buf + 8, 0); st_put32(st_buf + 12, 0);
-    if (dmk_store_write(song_at(i), st_buf, ST_HDR)) return -1;
+    if (dmk_store_write(slot_at(i), st_buf, ST_HDR)) return -1;
     song_gen[i] = 0;
     return 0;
 }

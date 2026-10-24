@@ -13,7 +13,8 @@
  *   stage   102-219 cards, 6 px from the edge and apart, corners of 14
  *   foot    224-239 the ALGORITHM encoder's value */
 
-enum { PG_HOME, PG_ROLL, PG_SOUND, PG_FILTER, PG_AMP, PG_FX, PG_CHORD, PG_GLOBAL, PG_LFO, PG_DISCS, PG_COUNT };
+enum { PG_HOME, PG_ROLL, PG_SOUND, PG_FILTER, PG_AMP, PG_FX, PG_CHORD, PG_GLOBAL, PG_LFO, PG_DISCS, PG_ARR, PG_COUNT };
+#define PG_SAVED PG_ARR                                 /* the pages a song saves the values of (Arrange keeps its own) */
 
 #define Y_FIELDS 40
 #define Y_STAGE  102
@@ -52,6 +53,7 @@ static const page_t PAGE[PG_COUNT] = {
       {"Swing", "Switch", "Click", "Rec"}, {"Theme", "", "", ""}}},
     {"LFO", 1, {"LFO"}, {"Target"}, {{"Rate", "Depth", "Shape", "Fade"}}},
     {"Songs", 1, {"Songs"}, {""}, {{"Slot", "", "", ""}}},
+    {"Arrange", 1, {"Song"}, {"End"}, {{"Step", "Pattern", "Bars", "Mutes"}}},
 };
 
 /* the page each button opens (-1: none) */
@@ -127,6 +129,9 @@ static struct {
     uint8_t song, song_pick, song_arm;                  /* the song open's slot; the SONGS page's; a save over, armed */
     uint32_t song_arm_at;
     uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
+    uint8_t arr_cur, arr_bars;                          /* Arrange: the step cursor; the bars a key writes a step with */
+    uint8_t copy_arm, copy_to;                          /* HOME held + OCT+: a pattern key next pastes into it */
+    uint32_t copy_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
 } ui;
 
@@ -139,6 +144,10 @@ static void notice(const char *s)
     ui.note[i] = 0;
     ui.note_ms = ui.now ? ui.now : 1;
 }
+
+/* the keys play chords here: on CHORD, or anywhere but the roll and Arrange (whose keys write) when the Keys row
+ * says All; there they light, write and play as on CHORD */
+static int chords_here(void) { return ui.page == PG_CHORD || (ch.keys && ui.page != PG_ROLL && ui.page != PG_ARR); }
 
 /* the patterns' progression is the CHORD page's (dmk_seq.c keeps the rest) */
 static uint8_t pat_prog_get(void) { return ui.val[0][PG_CHORD][0][4]; }
@@ -332,6 +341,7 @@ static void ui_init(void)
     ui.page = PG_HOME;
     ui.touch_k = -1;
     for (s = 0; s < DMK_SYNTHS; s++) { sound_put(s, ui_first[s]); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
+    ui.arr_cur = 0; ui.arr_bars = 4; ui.copy_arm = 0;
     sp_sync();
 }
 
@@ -345,8 +355,36 @@ static const choice_t *choice_of(int page, int row, int k)
 
 static int choice_index(const choice_t *c, int v) { int i = v * c->n / 128; return i < c->n ? i : c->n - 1; }
 
+/* Arrange's values: the cursor's step (its pattern, bars, the synths it plays), the song's end */
+static const char *const ENDS[SE_COUNT] = {"Loop", "Stop", "Fade out", "Fades"};
+static void arr_text(char *o, int k)
+{
+    const sstep_t *t = ui.arr_cur < song_n ? &song[ui.arr_cur] : 0;
+    int s;
+    if (k == 4) { str_cat(o, ENDS[song_end % SE_COUNT]); return; }
+    if (k == 0) {
+        if (!t) { str_cat(o, "New"); return; }
+        o = fmt_int(o, ui.arr_cur + 1); *o++ = '/'; fmt_int(o, song_n);
+        return;
+    }
+    if (k == 2 && !t) { fmt_int(o, ui.arr_bars); return; }   /* at the end: the bars a key writes */
+    if (!t) { str_cat(o, "\xE2\x80\x94"); return; }
+    if (k == 1) fmt_int(o, t->pat + 1);
+    else if (k == 2) fmt_int(o, t->bars);
+    else { for (s = 0; s < DMK_SYNTHS; s++) *o++ = t->mute >> s & 1u ? '-' : (char)('1' + s); *o = 0; }   /* the synths it plays */
+}
+static int arr_meter(int k)
+{
+    const sstep_t *t = ui.arr_cur < song_n ? &song[ui.arr_cur] : 0;
+    if (k == 0) return song_n ? ui.arr_cur * 127 / song_n : 0;
+    if (k == 2) return ((t ? t->bars : ui.arr_bars) - 1) * 127 / 7;
+    if (!t) return 0;
+    return k == 1 ? t->pat * 127 / 7 : (7 - t->mute) * 127 / 7;
+}
+
 static void val_text(char *o, int page, int row, int k)
 {
+    if (page == PG_ARR) { arr_text(o, k); return; }
     const choice_t *c = choice_of(page, row, k);
     int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 0) { str_cat(o, THEME_NAME[theme]); return; }
@@ -475,7 +513,8 @@ static void field(int i, const char *label, int page, int row)
     val_text(v, page, row, i);
     text_mfit(x, Y_FIELDS + 16, w, v, on ? HOLO : C_INK);
     meter(x, Y_FIELDS + 44, w, page == PG_SOUND && row == 0 && i == 0 ? *vp(page, row, i) * 127 / (DMK_SAMPLES_N - 1)
-          : page == PG_DISCS && i == 0 ? ui.song_pick * 127 / (ST_SONGS - 1) : *vp(page, row, i), choice_of(page, row, i), on, 0);
+          : page == PG_DISCS && i == 0 ? ui.song_pick * 127 / (ST_SONGS - 1) : page == PG_ARR ? arr_meter(i) : *vp(page, row, i),
+          choice_of(page, row, i), on, 0);
 }
 
 /* the title, its row as the grey half (one size, one line), and the synths at the right: the current one filled */
@@ -591,7 +630,7 @@ static void foot(void)
         char *o = str_cat(t, pat_mute ? "Muted" : "Patterns");
         for (s = 0; s < DMK_SYNTHS; s++) if (pat_mute >> s & 1u) { *o++ = ' '; *o++ = (char)('1' + s); *o = 0; }
         text(PAD + 1, Y_FOOT + 2, t, &FS, C_LABEL);
-        text_r(DMK_W - PAD - 1, Y_FOOT + 2, "OCT\xE2\x88\x92 twice: clear all", &FS, C_LABEL);
+        text_r(DMK_W - PAD - 1, Y_FOOT + 2, ui.copy_arm ? "Paste: a pattern key" : "OCT+ copy, OCT\xE2\x88\x92 clear", &FS, ui.copy_arm ? C_INK : C_LABEL);
         return;
     }
     if (ui.page == PG_ROLL) {                           /* the zoom, or a held note's velocity */
@@ -610,6 +649,14 @@ static void foot(void)
         text_fit(x + 6, Y_FOOT + 2, 124 - x, v, &FS, lit(4) ? HOLO : C_INK);
         if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, ui.page == PG_FX ? "Hold FX to change" : ui.page == PG_FILTER ? "Hold SEL to change" : "Hold GLO to change", &FS, C_LABEL);
         if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, !seq_on && seq_rec ? "Keys write chords" : "REC: write", &FS, C_LABEL);
+        if (ui.page == PG_ARR) text_r(DMK_W - PAD - 1, Y_FOOT + 2, song_rec ? "Recording" : seq_on ? "PLAY: stop" : seq_rec ? "PLAY records" : "Keys write steps", &FS, C_LABEL);
+        if (ui.page == PG_HOME) {                       /* where the music is: the pattern, or the song */
+            char t[20], *o = t;
+            if (song_mode && song_playing()) { o = fmt_int(str_cat(o, "Song "), song_at); *o++ = '/'; fmt_int(o, song_n); }
+            else if (song_mode) str_cat(o, "Song mode");
+            else fmt_int(str_cat(o, "Pattern "), pat_cur + 1);
+            text_r(DMK_W - PAD - 1, Y_FOOT + 2, t, &FS, song_mode ? C_INK : C_LABEL);
+        }
     }
 }
 
@@ -1088,6 +1135,46 @@ static void stage_chord(void)                           /* the progression: its 
     }
 }
 
+/* ARRANGE (HOME held + SEQ): the song as a strip of steps, five in view around the cursor (its ring); the one playing
+ * lit; under its pattern's number its bars as ticks and the synths it plays as dots (an empty ring: muted); a "+"
+ * card after the last, where a key adds one. The card's title: the mode, and the song's length */
+static void stage_arrange(void)
+{
+    int i, cells = 5, first, bars = 0, secs, playing = song_playing() ? song_at - 1 : -1;
+    char sub[40], *o = sub;
+    for (i = 0; i < song_n; i++) bars += song[i].bars;
+    secs = bars * 4 * 60 / (seq_bpm ? seq_bpm : 72);
+    if (song_n) {
+        o = fmt_int(o, song_n); o = str_cat(o, song_n == 1 ? " step, " : " steps, ");
+        o = fmt_int(o, bars); o = str_cat(o, bars == 1 ? " bar, " : " bars, ");
+        o = fmt_int(o, secs / 60); *o++ = ':'; *o++ = (char)('0' + secs % 60 / 10); *o++ = (char)('0' + secs % 10); *o = 0;
+    } else str_cat(o, "Empty: a pattern key adds a step");
+    card(SX, SY, SW, SH, C_LINE, 1);
+    card_title(SX, SY, SW, song_mode ? "Song mode" : "Pattern mode", sub, 0);
+    first = ui.arr_cur - 2;
+    if (first > song_n + 1 - cells) first = song_n + 1 - cells;
+    if (first < 0) first = 0;
+    for (i = 0; i < cells && first + i <= song_n; i++) {
+        int j = first + i, x = cell_x(SX + 6, SW - 12, cells, i), w = cell_w(SX + 6, SW - 12, cells, i), y = SY + 50, h = 58, k;
+        if (j == song_n) { round_line(x, y, w, h, 12, 1, C_LINE); text_c(x + w / 2, y + 18, "+", &FM, C_LABEL); }
+        else {
+            const sstep_t *t = &song[j];
+            char n[2] = {(char)('1' + t->pat), 0};
+            int lit_ = j == playing, ink = lit_ ? (THEME_DARK[theme] ? C_PAPER : C_INK) : C_INK;
+            if (lit_) round_fill(x, y, w, h, 12, HOLO);
+            else round_line(x, y, w, h, 12, 1, C_LINE);
+            text_c(x + w / 2, y + 6, n, &FM, ink);
+            for (k = 0; k < t->bars; k++) fill(x + (w - (t->bars * 4 - 2)) / 2 + k * 4, y + 36, 2, 5, lit_ ? ink : C_LABEL);   /* its bars */
+            for (k = 0; k < DMK_SYNTHS; k++) {          /* the synths: a dot each, a ring when muted */
+                int dx = x + w / 2 - 9 + k * 8, dy = y + 46;
+                if (t->mute >> k & 1u) round_line(dx, dy, 5, 5, 2, 1, lit_ ? ink : C_LABEL);
+                else round_fill(dx, dy, 5, 5, 2, ink);
+            }
+        }
+        if (j == ui.arr_cur) round_line(x - 2, y - 2, w + 4, h + 4, 14, 2, C_INK);   /* the cursor */
+    }
+}
+
 /* SONGS (SAVE held 1 s): the store's fourteen slots, four in view around the one K1 picks (its outline lit); the song
  * open has a dot; an empty slot is grey. PLAY loads the slot picked (an empty one starts the first song again), SAVE
  * saves there, OCT- twice empties it */
@@ -1247,6 +1334,7 @@ static const uint8_t *ui_frame(uint32_t ms)
     case PG_CHORD: stage_chord(); break;
     case PG_GLOBAL: stage_rows(PG_GLOBAL, PAGE[PG_GLOBAL].row, 4, ui.row[PG_GLOBAL]); break;
     case PG_LFO: stage_lfo(); break;
+    case PG_ARR: stage_arrange(); break;
     default: stage_songs(); break;
     }
     ui_yield();
@@ -1381,6 +1469,29 @@ static void ui_button(int b, int down)
             ui.btn_used |= bit;
             return;
         }
+        if (b != B_HOME && ui.btn_held >> B_HOME & 1u && (b == B_SEQ || b == B_PLAY || b == B_OCTU)) {
+            /* HOME held: SEQ opens Arrange; PLAY switches pattern mode and song mode; OCT+, then a pattern key, copies */
+            ui.btn_used |= (uint16_t)(bit | 1u << B_HOME);
+            if (b == B_SEQ) { ui.page = PG_ARR; return; }
+            if (b == B_PLAY) {
+                song_mode ^= 1u;
+                if (song_mode && seq_on) song_start(0);    /* playing: the song from its first step, at the next bar */
+                notice(!song_mode ? "Pattern mode" : song_n ? "Song mode" : "Song mode: an empty song");
+                return;
+            }
+            ui.copy_arm = 1; ui.copy_to = 0xFF;
+            notice("Copy: a pattern key");
+            return;
+        }
+        if ((b == B_OCTD || b == B_OCTU) && ui.page == PG_ARR) {   /* Arrange: OCT- deletes the step, OCT+ copies it after */
+            int at = ui.arr_cur, i;
+            ui.btn_used |= bit;
+            if (at >= song_n) return;
+            if (b == B_OCTD) { for (i = at; i < song_n - 1; i++) song[i] = song[i + 1]; song_n--; }
+            else if (song_n < SONG_STEPS) { for (i = song_n; i > at + 1; i--) song[i] = song[i - 1]; song[at + 1] = song[at]; song_n++; ui.arr_cur = (uint8_t)(at + 1); }
+            else notice("128 steps at most");
+            return;
+        }
         if (b == B_SAVE && ui.btn_held >> B_EDIT & 1u) {   /* EDIT held, SAVE: the sound into the library */
             char t[24];
             int n;
@@ -1435,6 +1546,7 @@ static void ui_button(int b, int down)
         return;
     }
     ui.btn_held &= (uint16_t)~bit;
+    if (b == B_HOME) ui.copy_arm = 0;                   /* the copy waits only while HOME is held */
     if (ui.btn_used & bit) return;                      /* a modifier that was used does nothing on release */
     if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { ui.page = PG_DISCS; ui.song_pick = ui.song; return; }
     if (ui.now - ui.btn_down_at[b] > 350u) return;      /* a hold showed its layer: no tap */
@@ -1464,7 +1576,20 @@ static void ui_button(int b, int down)
         ui.page = PG_HOME;
         return;
     }
-    if (b == B_PLAY) { seq_play(!seq_on); return; }
+    if (b == B_PLAY) {
+        if (!seq_on && ui.page == PG_ARR) {             /* Arrange: the song from the cursor; REC armed, recorded */
+            if (seq_rec) {
+                song_rec = 1; rec_from = (uint8_t)(ui.arr_cur < song_n ? ui.arr_cur : song_n); rec_bars = 0;
+                notice("Recording the song");
+            } else {
+                if (!song_n) { notice("The song is empty"); return; }
+                song_mode = 1;
+                song_start(ui.arr_cur);
+            }
+        } else if (!seq_on && song_mode && song_n) song_start(0);   /* song mode: from the first step */
+        seq_play(!seq_on);
+        return;
+    }
     if (b == B_REC) { seq_rec ^= 1u; notice(seq_rec ? "Recording on" : "Recording off"); return; }
     if (BTN_PAGE[b] >= 0) {
         int p = BTN_PAGE[b];
@@ -1528,6 +1653,20 @@ static void ui_encoder(int e, int d)
         return;
     }
     if (ui.page == PG_ROLL) { roll_turn(k, d); return; }
+    if (ui.page == PG_ARR) {                            /* ARRANGE: K1 the step, K2 its pattern, K3 bars, K4 mutes, ALGO the end */
+        int dir = d > 0 ? 1 : -1, c;
+        sstep_t *t = ui.arr_cur < song_n ? &song[ui.arr_cur] : 0;
+        if (k == 0) { c = ui.arr_cur + dir; ui.arr_cur = (uint8_t)(c < 0 ? 0 : c > song_n ? song_n : c); }
+        else if (k == 4) song_end = (uint8_t)((song_end + SE_COUNT + dir) % SE_COUNT);
+        else if (k == 2) {                              /* a step's bars; past the last, the next one's */
+            c = (t ? t->bars : ui.arr_bars) + dir;
+            c = c < 1 ? 1 : c > 8 ? 8 : c;
+            if (t) t->bars = (uint8_t)c;
+            ui.arr_bars = (uint8_t)c;
+        } else if (t && k == 1) t->pat = (uint8_t)((t->pat + 8 + dir) % 8);
+        else if (t && k == 3) t->mute = (uint8_t)((t->mute + 8 + dir) % 8);
+        return;
+    }
     if (ui.page == PG_DISCS) {                          /* SONGS: K1 picks the slot */
         int n = ui.song_pick + (d > 0 ? 1 : -1);
         if (k == 0) ui.song_pick = (uint8_t)(n < 0 ? 0 : n >= ST_SONGS ? ST_SONGS - 1 : n);
@@ -1611,20 +1750,51 @@ static void ui_key(int k, int down)
         static const int8_t WK[13] = {0, -1, 1, -1, 2, -1, 3, 4, -1, 5, -1, 6, 7};
         ui.btn_used |= (uint16_t)(1u << B_HOME);
         ui.key_home[k] = 1;
-        if (k < 13 && WK[k] >= 0) pat_pick(WK[k]);
-        else if (k == 1 || k == 3 || k == 5) pat_mute_flip(k / 2);
+        if (k < 13 && WK[k] >= 0) {
+            int t = WK[k];
+            if (ui.copy_arm) {                          /* the copy: the pattern open into this one */
+                char m[24];
+                if (t == pat_cur) { notice("Another pattern"); return; }
+                if (pat[t].used && !(ui.copy_to == t && ui.now - ui.copy_at < 2000u)) {   /* over notes: twice */
+                    ui.copy_to = (uint8_t)t; ui.copy_at = ui.now;
+                    notice("Again: over it");
+                    return;
+                }
+                pat_keep();
+                pat[t] = pat[pat_cur];
+                ui.copy_arm = 0;
+                fmt_int(str_cat(fmt_int(str_cat(m, "Pattern "), pat_cur + 1), " to "), t + 1);
+                notice(m);
+                return;
+            }
+            if (song_playing()) { song_mode = 0; notice("Pattern mode"); }   /* a pattern picked: the song left */
+            pat_pick(t);
+        } else if (k == 1 || k == 3 || k == 5) pat_mute_flip(k / 2);
         return;
     }
     if (!down && ui.key_home[k]) { ui.key_home[k] = 0; return; }   /* its release: nothing sounded */
+    if (ui.page == PG_ARR && !seq_on) {                 /* Arrange, stopped: a pattern key writes the step, a black key mutes */
+        static const int8_t AK[13] = {0, -1, 1, -1, 2, -1, 3, 4, -1, 5, -1, 6, 7};
+        if (!down) return;
+        ui.key_home[k] = 1;
+        if (k < 13 && AK[k] >= 0) {
+            int at = ui.arr_cur < song_n ? ui.arr_cur : song_n;
+            if (at < song_n) song[at].pat = (uint8_t)AK[k];   /* over a step: its pattern, its bars and mutes kept */
+            else if (song_n < SONG_STEPS) { song_put(at, AK[k], ui.arr_bars, 0); song_n++; }
+            else { notice("128 steps at most"); return; }
+            ui.arr_cur = (uint8_t)(at + 1);
+        } else if ((k == 1 || k == 3 || k == 5) && ui.arr_cur < song_n) song[ui.arr_cur].mute ^= (uint8_t)(1u << (k / 2));
+        return;
+    }
     ui.keys_down[k] = (uint8_t)down;
     /* a key, a chord: on CHORD, or everywhere but the roll when the Keys row says so; released as it began */
-    if (down ? ui.page == PG_CHORD || (ch.keys && ui.page != PG_ROLL) : ui.key_nch[k] > 0) {
+    if (down ? chords_here() : ui.key_nch[k] > 0) {
         int j;
         if (down) {
             s = ui.synth;
             ui.key_sy[k] = (uint8_t)s;
             ui.key_slot[k] = 0;
-            if (!seq_on && seq_rec && ui.page == PG_CHORD) {   /* stopped, REC armed, on CHORD: the chord into the slot */
+            if (!seq_on && seq_rec) {                   /* stopped, REC armed: the chord into the slot at the cursor */
                 ui.key_slot[k] = (uint8_t)(slot_write(n) + 1);
                 if (!ui.key_slot[k]) notice(ch.prog < 16 ? "User 1-4 are full" : "Eight chords at most");
                 ui.val[0][PG_CHORD][0][4] = choice_val(ch.prog, PROG_N);
@@ -1658,7 +1828,7 @@ static void ui_key(int k, int down)
             int c = ui.roll_cur[s];
             n = snap(n);
             if (seq_find(s, c, n) >= 0 || seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }
-        } else if (seq_on && seq_rec) {
+        } else if (seq_on && seq_rec && !song_rec) {   /* a song's take records the switches, not the keys */
             n = snap(n);
             ui.key_roll[k] = 2;
             ui.key_t0[k] = seq_now();
@@ -1688,7 +1858,7 @@ static const uint8_t *ui_leds(void)
         leds[i] = ui.keys_down[i] ? 255 : 0;
         if (!ui.keys_down[i] && ui.page == PG_ROLL && !seq_on && seq_find(ui.synth, ui.roll_cur[ui.synth], n) >= 0)
             leds[i] = (ui.now / 250u) & 1u ? 255 : 0;
-        if (!ui.keys_down[i] && ui.page == PG_CHORD && ch_cmask >> (n % 12) & 1u) leds[i] = 255;   /* the chord now */
+        if (!ui.keys_down[i] && chords_here() && ch_cmask >> (n % 12) & 1u) leds[i] = 255;   /* the chord now */
     }
     if (ui.btn_held >> B_HOME & 1u) {                   /* HOME held: the patterns kept lit (the next blinking), the synths playing */
         static const uint8_t WK[8] = {0, 2, 4, 6, 7, 9, 11, 12};
@@ -1699,6 +1869,15 @@ static const uint8_t *ui_leds(void)
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
     leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;
     if (ch.keys) leds[DMK_KEYS + B_ARP] = 255;          /* the keys play chords everywhere: ARP lit */
+    if (song_mode) leds[DMK_KEYS + B_HOME] = !seq_on || seq_ticks % 16u < 2u || ui.page == PG_HOME ? 255 : 0;   /* the bar */
+    if (ui.page == PG_ARR && !(ui.btn_held >> B_HOME & 1u)) {   /* the cursor's step: its pattern's key, its synths' */
+        static const uint8_t WK[8] = {0, 2, 4, 6, 7, 9, 11, 12};
+        for (i = 0; i < DMK_KEYS; i++) leds[i] = ui.keys_down[i] ? 255 : 0;
+        if (ui.arr_cur < song_n) {
+            leds[WK[song[ui.arr_cur].pat & 7]] = 255;
+            for (i = 0; i < DMK_SYNTHS; i++) leds[1 + 2 * i] = song[ui.arr_cur].mute >> i & 1u ? 0 : 255;
+        }
+    }
     leds[DMK_KEYS + B_REC] = seq_rec && (seq_on || (ui.now / 250u) & 1u) ? 255 : 0;   /* armed: it blinks */
     leds[DMK_KEYS + B_OCTD] = ui.octave < 0 ? 255 : 0;
     leds[DMK_KEYS + B_OCTU] = ui.octave > 0 ? 255 : 0;

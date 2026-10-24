@@ -19,6 +19,8 @@ typedef struct {
 static seq_t sq[DMK_SYNTHS];
 static uint8_t seq_on, seq_rec;
 static int seq_bpm = 72;
+static uint8_t seq_stop_req;                            /* the song ended inside a step: stopped after it */
+static uint32_t seq_per_q8(void);
 static uint32_t seq_acc, seq_ticks;                     /* Q8 samples into the step; steps since PLAY */
 
 /* the scale: the song's key and mode (the CHORD page), its degrees in semitones above the key; A Aeolian at first */
@@ -83,6 +85,74 @@ static void pat_init(void)                              /* the first song: one p
     pat_cur = 0; pat_next = 0xFF; pat_mute = 0;
 }
 
+/* the song mode: the patterns arranged. A step is a pattern for 1-8 bars with its synths muted or not; a song is up
+ * to 128 of them and an end. In song mode PLAY plays them in order, each switch on its bar; in pattern mode PLAY loops
+ * the pattern open, as before. Recorded live (Arrange, REC, PLAY): each bar the pattern and the mutes playing are
+ * counted, a change closes the step (a step longer than 8 bars goes on in another) */
+#define SONG_STEPS 128
+enum { SE_LOOP, SE_STOP, SE_FADE, SE_FADES, SE_COUNT };   /* the end: loop; stop; fade out; fade in and out */
+typedef struct { uint8_t pat, bars, mute; } sstep_t;
+static sstep_t song[SONG_STEPS];
+static uint8_t song_n, song_end, song_mode, song_at, song_left, song_rec;
+static uint8_t rec_pat, rec_mute, rec_bars, rec_from;
+static int song_playing(void) { return seq_on && song_mode && song_n && !song_rec; }
+
+static int32_t song_bar_samples(int bars) { return (int32_t)((uint32_t)bars * 16u * (seq_per_q8() >> 8)); }
+static void song_put(int at, int p, int bars, int mute)
+{
+    if (at >= SONG_STEPS) return;
+    song[at].pat = (uint8_t)p; song[at].bars = (uint8_t)(bars < 1 ? 1 : bars > 8 ? 8 : bars); song[at].mute = (uint8_t)(mute & 7);
+}
+static void rec_close(void)                             /* the step recorded so far written; long ones split by 8 */
+{
+    while (rec_bars && rec_from < SONG_STEPS) {
+        int b = rec_bars > 8 ? 8 : rec_bars;
+        song_put(rec_from++, rec_pat, b, rec_mute);
+        rec_bars = (uint8_t)(rec_bars - b);
+    }
+    song_n = rec_from;
+}
+/* each bar of the clock: the song's next step when the last has had its bars; 1 when the song has ended (stopped) */
+static int song_bar(void)
+{
+    if (song_rec) {                                     /* recording: the bar counted to the step that sounds */
+        if (seq_ticks && (pat_cur != rec_pat || pat_mute != rec_mute)) { rec_close(); rec_pat = pat_cur; rec_mute = pat_mute; }
+        else if (!seq_ticks) { rec_pat = pat_cur; rec_mute = pat_mute; }
+        rec_bars++;
+        return 0;
+    }
+    if (!song_playing()) return 0;
+    if (!song_left) {
+        const sstep_t *t;
+        if (song_at >= song_n) {
+            if (song_end == SE_LOOP) song_at = 0;
+            else return 1;                              /* the end: stopped (a fade has already come down) */
+        }
+        t = &song[song_at++];
+        if (t->pat != pat_cur) pat_open(t->pat);
+        pat_mute = t->mute;
+        song_left = t->bars;
+        if ((song_end == SE_FADE || song_end == SE_FADES) && song_at == song_n) {   /* the last: the synths fade out */
+            int32_t n = song_bar_samples(t->bars);
+            mix_dg = -(32768 / (n / DMK_SUB > 0 ? n / DMK_SUB : 1)) - 1;
+        }
+    }
+    song_left--;
+    return 0;
+}
+/* PLAY in song mode: from step at; the fade-in on the first step when the song has one */
+static void song_start(int at)
+{
+    song_at = (uint8_t)(at < song_n ? at : 0);
+    song_left = 0;
+    mix_g = 32768; mix_dg = 0;
+    if (song_end == SE_FADES && song_at == 0 && song_n) {
+        int32_t n = song_bar_samples(song[0].bars);
+        mix_g = 0; mix_dg = 32768 / (n / DMK_SUB > 0 ? n / DMK_SUB : 1) + 1;
+    }
+}
+static void song_init(void) { song_n = 0; song_end = SE_LOOP; song_mode = 0; song_at = 0; song_left = 0; song_rec = 0; }
+
 static int snap(int n)                                  /* the scale's note at or under n */
 {
     int rel = ((n - SCALE_ROOT) % 12 + 12) % 12, i = 6;
@@ -130,7 +200,10 @@ static void seq_quiet(int s)                            /* every note the patter
 static void seq_step(void)                              /* every synth one step on */
 {
     int s, i, k;
-    if (pat_next < PATTERNS && !(seq_ticks % 16u)) { pat_open(pat_next); pat_next = 0xFF; }   /* on the bar */
+    if (!(seq_ticks % 16u)) {                           /* on the bar: a pattern switch, the song's step */
+        if (pat_next < PATTERNS) { pat_open(pat_next); pat_next = 0xFF; }
+        if (song_bar()) { seq_stop_req = 1; return; }
+    }
     chord_step();                                       /* the harmony first: the notes follow the chord now */
     for (s = 0; s < DMK_SYNTHS; s++) {
         seq_t *q = &sq[s];
@@ -152,11 +225,14 @@ static void seq_step(void)                              /* every synth one step 
 }
 
 static uint32_t seq_per(void) { return (uint32_t)DMK_SR * 60u * 64u / (uint32_t)seq_bpm; }   /* Q8 samples a step */
+static uint32_t seq_per_q8(void) { return seq_per(); }
 
 static void seq_play(int on)
 {
     int s;
     if (on == seq_on) return;
+    if (!on && song_rec) { rec_close(); song_rec = 0; song_mode = (uint8_t)(song_n > 0); }   /* a take ended: the song */
+    if (!on) { mix_g = 32768; mix_dg = 0; }
     seq_on = (uint8_t)on;
     for (s = 0; s < DMK_SYNTHS; s++) { seq_quiet(s); sq[s].pos = 0; }
     chord_quiet();
@@ -174,7 +250,10 @@ static void seq_render(int frames)
     if (!seq_on) return;
     per = seq_per();
     seq_acc += (uint32_t)frames * 256u;
-    while (seq_acc >= per) { seq_acc -= per; seq_step(); }
+    while (seq_acc >= per && seq_on) {
+        seq_acc -= per; seq_step();
+        if (seq_stop_req) { seq_stop_req = 0; seq_play(0); }   /* the song's end */
+    }
 }
 
 /* where the playing is, in steps since PLAY, Q8: a recorded note starts at its nearest step */
@@ -197,4 +276,5 @@ static void seq_init(void)
     seq_on = seq_rec = 0;
     for (i = 0; i < DMK_SYNTHS; i++) { unsigned k; for (k = 0; k < SEQ_LIVE; k++) sq[i].left[k] = 0; }
     pat_init();
+    song_init();
 }

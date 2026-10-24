@@ -82,6 +82,9 @@ static uint32_t vc_clock;
  * chord change never cuts a note the hands hold, nor the reverse) */
 enum { SRC_KEY, SRC_ROLL, SRC_CHORD };
 static int32_t vc_tail[DMK_SYNTHS];                     /* a stolen voice's last level, fading out (~1.5 ms) */
+/* the song's fades (dmk_seq.c sets them): the synths' share of the mix, Q15, and its step a block; the spaces' tails
+ * are left to ring */
+static int32_t mix_g = 32768, mix_dg;
 
 static const int8_t ADPCM_F[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
 
@@ -794,9 +797,14 @@ static void dsp_render(int16_t *lr, int frames)
                 vc_tail[s] -= (vc_tail[s] >> 6) + (vc_tail[s] > 0) - (vc_tail[s] < 0);   /* to zero, ~1.5 ms */
             }
             for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = vin[i] = ein[i] = 0;
+            if (mix_dg) {                               /* a song's fade, a step a block */
+                mix_g += mix_dg;
+                if (mix_g <= 0) { mix_g = 0; mix_dg = 0; }
+                if (mix_g >= 32768) { mix_g = 32768; mix_dg = 0; }
+            }
             for (s = 0; s < DMK_SYNTHS; s++) {
                 const synth_t *p = &syn[s];
-                int32_t pk = 0, sl[DMK_SUB], sr[DMK_SUB];
+                int32_t pk = 0, sl[DMK_SUB], sr[DMK_SUB], lvl = mix_g < 32768 ? (p->level * mix_g) >> 15 : p->level;
                 for (i = 0; i < DMK_SUB; i++) {         /* half the level through the effects, room for a chord; no DC */
                     int32_t x = sm[s][i] >> 2;
                     syn_dc[s] += (x * 4096 - syn_dc[s]) / 512;   /* ~14 Hz, Q12: its stall under a 512th is under */
@@ -807,7 +815,7 @@ static void dsp_render(int16_t *lr, int frames)
 #endif
                 rows_run(s, sm[s], sl, sr);
                 for (i = 0; i < DMK_SUB; i++) {
-                    int32_t xl = (sl[i] * p->level) >> 14, xr = (sr[i] * p->level) >> 14, x = (xl + xr) / 2;   /* back up */
+                    int32_t xl = (sl[i] * lvl) >> 14, xr = (sr[i] * lvl) >> 14, x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * p->gl) >> 15;
                     R[i] += (xr * p->gr) >> 15;
                     vin[i] += (x * p->vsend) >> 15;

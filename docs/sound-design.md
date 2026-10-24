@@ -31,8 +31,8 @@ them.
   - a song-wide patina: a master tape stage, a tempo pump, a tape stop.
 - **Factory sounds:** today PRESETS steps through bare recordings. Each recording should come with a designed sound
   that the owner picks and names from sheets.
-- **The song mode:** the eight patterns arranged into a whole piece, an intro to an ending, played start to finish.
-  It can be stepped in on a page, or played live with HOME and recorded as it is played.
+- **The song mode** (built): the eight patterns arranged into a piece of up to 128 steps, an intro to an ending,
+  typed from the pattern keys or recorded live.
 - **The budget is the limit for the sound, not ideas:**
   - CPU0 is at 1818 in the heaviest case, past the proven 1650 a core. The calibration puts a core near 3470, but the
     FM-1 hasn't been measured.
@@ -81,48 +81,43 @@ them.
 
    Both come first in stage 3, because they are the cheapest sound design there is.
 
-## 3. Stage 2: the song mode
+## 3. Stage 2: the song mode (built, 2026-10-24)
 
-The patterns become a piece. Today a pattern loops until HOME and a key switch it, and a chain (several keys in one
-hold of HOME) loops its patterns. A song is an **arrangement**: steps in order, each a pattern for a number of bars,
-from the first to an ending.
+The patterns become a piece. A song is an **arrangement** of up to **128 steps**, each a pattern for **1 to 8 bars**
+with its synths muted or not, and an end.
 
-- **A step:**
-  - a pattern (1–8);
-  - its length (1, 2, 4, 8 or 16 bars);
-  - which synths it mutes;
-  - its key, the song's or one of its own, for a lift in the last section (optional, later).
-- **A song:** up to 32 steps, and its end:
-  - Loop: back to the first step;
-  - Stop: after the last;
-  - Fade: the whole mix fades over the last step, the space's tails left to ring out.
-
-  Also a fade-in for the first step, for an intro that rises from silence.
-- **The page, Arrange:** HOME held + SEQ opens it, and it stays open. All 8 page buttons are taken, so it shares
-  HOME, the patterns' button.
-  - The steps are a strip of cards: the pattern's number big, its bars under it, the muted synths as dots.
+- **Two modes, one switch:** HOME held + PLAY, on any page.
+  - In pattern mode, PLAY loops the pattern open, as before.
+  - In song mode, PLAY plays the steps in order, each switch on its bar.
+  - Home's foot always says which: "Pattern 2", "Song mode", or where the song is ("Song 3/12").
+  - HOME's light stays on in song mode and beats the bar while it plays.
+  - Picking a pattern live (HOME held + a key) leaves the song for that pattern.
+- **Arrange (HOME held + SEQ):** the steps as a strip of cards, five in view.
+  - Each card shows the pattern's number, its bars as ticks and its synths as dots (a ring when muted).
   - The step playing is lit; the cursor is a ring.
-  - The foot gives the song's length in bars and in minutes at the tempo.
-- **Editing, as the Roll and the chord slots edit:**
-  - K1 the step;
-  - K2 its pattern, or a white key 1–8 directly;
-  - K3 its bars;
-  - K4 its mutes;
-  - ALGORITHM the end (Loop, Stop, Fade);
-  - OCT− deletes the step, OCT+ copies it after itself;
-  - an empty step at the end takes the next one.
-- **Recording it live:** on Arrange, REC armed and PLAY. Each switch and mute played with HOME held (as now) is
-  written as a step, with the bars it lasted. Play the song as a performance once, then tidy it on the page. A live
-  chain can be printed the same way (ARP held + OCT+, as a progression prints into a roll).
-- **Playing it:** PLAY on Arrange plays the song from the cursor's step.
-  - The head shows where it is (step 3 of 9, bar 2 of 4).
-  - The HOME light blinks with the bar.
-  - PLAY elsewhere still loops the pattern, as now: the song plays only when started from its page, so the mode
-    is never hidden.
-  - A pattern picked live with HOME held while the song plays leaves the song for that pattern, unless REC is armed.
-- **Saved with the song:** 32 steps × 3 bytes, about 100 bytes more in its record (record version 3; version 2
-  songs load with an empty arrangement).
-- **Cost:** none for the sound beyond the fade (~1 a sample); all of it is the sequencer's clock and the screen.
+  - The title gives the mode and the song's length (steps, bars, minutes).
+- **Writing, as the keys write in the Roll:**
+  - Stopped, a pattern key (white keys 1–8) writes the step at the cursor and moves on, so a song is typed:
+    1 1 2 1 3 …
+  - Over an existing step, a key changes only its pattern.
+  - A black key mutes a synth on the step.
+  - K1 the step, K2 its pattern, K3 its bars (past the last step: the bars the next key writes), K4 its mutes.
+  - OCT− deletes the step, OCT+ copies it after itself.
+- **The end (ALGORITHM):**
+  - Loop;
+  - Stop;
+  - Fade out, the synths over the last step, the space's tails left to ring;
+  - Fades, in over the first step and out over the last.
+- **Recorded live:** on Arrange, REC armed and PLAY; then switch patterns and mute synths with HOME held, as when
+  performing.
+  - Each bar is counted to the pattern and mutes playing; a change closes the step, and a step over 8 bars goes on
+    in the next.
+  - Stopping ends the take, which replaces the song from the cursor and turns song mode on.
+  - The keys played during a take aren't recorded into the rolls.
+- **Copying patterns:** HOME held, OCT+, then a pattern key: the pattern playing is copied there. Over a pattern
+  with notes, press the key twice. An empty pattern picked with HOME held still starts as a copy.
+- **Saved with the song** (record version 3, 3 bytes a step; older songs load with no arrangement).
+- **Cost:** none for the sound beyond the fade, applied once a block.
 
 ## 4. Stage 3: the sound itself
 
@@ -213,7 +208,7 @@ Today a sound is a recording and whatever the synth was set to. Instead:
 | Stage | Contents | Ends with |
 | --- | --- | --- |
 | 1 | measure the FM-1; balance the cores; free RAM | the two load numbers; the heaviest case at ~1500 a core |
-| 2 | the song mode: Arrange, its steps, live recording, the endings | a song played start to end on the FM-1; a build |
+| 2 | the song mode: Arrange, its steps, live recording, the endings (built) | a song played start to end on the FM-1; a build |
 | 3 | velocity, the LFO, layer, glide, grit, short loops, keytrack and drive | WAVs; a build |
 | 4 | Warm, Distort, Vinyl, Radio, Dictaphone, Ensemble, Phaser, Flanger, Tremolo | WAVs of each one's corners; a build |
 | 5 | Shimmer, Freeze, Ping-pong, Filtered, Reverse, Swell, Grains+, Plate if the RAM allows | WAVs; a build |
@@ -232,8 +227,7 @@ release.
 ## 10. For the owner
 
 - **What first:** which of sections 3–8 matter most? The order above is a suggestion; any stage can move.
-- **The song mode:** is an arrangement of up to 32 steps enough? Should a step also be able to change the key, or
-  the tempo?
+- **The song mode:** should a step also be able to change the key, or the tempo?
 - **The effects list:** strike anything that doesn't fit Demake's sound, and add what's missing, as a sound to
   describe or a reference to listen to (as the long modulated verb and the cloud of grains were).
 - **The master and the pump:** wanted, or does the mix stay as the three synths make it?

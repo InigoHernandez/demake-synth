@@ -42,6 +42,7 @@
       <a href="#chords">Chords</a>
       <a href="#writing">Writing progressions</a>
       <a href="#patterns">Patterns</a>
+      <a href="#song">Song mode</a>
       <a href="#saving">Saving</a>
       <p class="mgroup">Sound</p>
       <a href="#effects">Effects</a>
@@ -208,9 +209,28 @@
         <div class="mt">
           <p><b>HOME + white key</b><span>Pattern 1 to 8; playing, it waits for the bar</span></p>
           <p><b>An empty one</b><span>Starts as a copy of the one playing</span></p>
+          <p><b>HOME + OCT+, a key</b><span>Copies the pattern playing there; over notes, the key twice</span></p>
           <p><b>HOME + black key</b><span>Mutes synth 1, 2 or 3, and back</span></p>
           <p><b>HOME + OCT&minus;</b><span>Twice: clears the pattern's three rolls</span></p>
         </div>
+      </article>
+
+      <article id="song" data-group="Playing">
+        <h1>Song mode</h1>
+        <p class="msub">The patterns arranged into a piece: up to 128 steps, each a pattern for 1 to 8 bars.</p>
+        <figure class="mfig"><img src="img/screens/24_arrange.png" alt="Arrange" width="240" height="240"><figcaption>Arrange: the steps, the cursor's ring.</figcaption></figure>
+        <div class="mt">
+          <p><b>HOME + PLAY</b><span>Pattern mode or song mode, on any page</span></p>
+          <p><b>HOME + SEQ</b><span>Arrange: the song's steps</span></p>
+          <p><b>A pattern key</b><span>Stopped, writes a step and moves on</span></p>
+          <p><b>A black key</b><span>Mutes a synth on the step</span></p>
+          <p><b>K1 K2 K3 K4</b><span>The step, its pattern, its bars, its mutes</span></p>
+          <p><b>ALGORITHM</b><span>The end: loop, stop, fade out, or fade in and out</span></p>
+          <p><b>OCT&minus; OCT+</b><span>Deletes the step; copies it after itself</span></p>
+          <p><b>PLAY</b><span>Plays the song from the cursor</span></p>
+          <p><b>REC, PLAY</b><span>Records it live: switch patterns with HOME held</span></p>
+        </div>
+        <p class="note">Home's foot says which: the pattern playing, or where the song is. Picking a pattern live leaves the song.</p>
       </article>
 
       <article id="saving" data-group="Playing">
@@ -320,6 +340,6 @@
   </footer>
 </main>
 <script src="app.js?v=12"></script>
-<script src="manual.js?v=5"></script>
+<script src="manual.js?v=6"></script>
 </body>
 </html>
