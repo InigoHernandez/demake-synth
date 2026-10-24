@@ -237,10 +237,67 @@ def marks():
     BITS.mkdir(parents=True, exist_ok=True)
     # the wordmark: 384 x 96 cells, its ink from line to line; the D, its ink filling 48 x 48 cells; the tab's icon
     sprite(lit_frames(glyph_mask("demake", 92, 384, 96, span=True)), IMG / "wordmark.png")
+    stack()
+    stack(("ambi", "ent"), "plate_stack.png", plate=True)
     sprite(lit_frames(glyph_mask("d", 44, 48, 48, fit=True)), IMG / "iso.png")
     Image.fromarray(lit_frames(glyph_mask("d", 58, 64, 64, fit=True))[0], "RGBA").save(IMG / "icon.png", optimize=True)
     print("web/img/wordmark.png, iso.png (six frames each), icon.png")
     return True
+
+
+def stack(words=("dem", "ake"), path="wordmark_stack.png", plate=False):
+    """a word for a phone, after Kiloy's specimen (WORD over TYPE): its rows 168 cells wide (7 modules at 2 px a
+    cell), the letters as big as the width allows with Kiloy's tight gaps, every row one height, the narrower
+    justified to the edges; whole modules tall. Lit as the screen lights a shape, or (plate) in line and in light
+    by turns, as the plate"""
+    W, gap, lead = 168, 5, 6
+    f4 = ImageFont.truetype(str(KILOY), 800)
+    rows = []
+    for word in words:
+        ls = []
+        for ch in word:
+            im = Image.new("L", (900, 1000), 0)
+            ImageDraw.Draw(im).text((50, 50), ch, font=f4, fill=255)
+            ls.append(im)
+        rows.append(ls)
+    top = min(im.getbbox()[1] for ls in rows for im in ls)
+    bot = max(im.getbbox()[3] for ls in rows for im in ls)
+    nat = [sum(im.getbbox()[2] - im.getbbox()[0] for im in ls) + gap * (len(ls) - 1) / 1 for ls in rows]
+    k = min((W - gap * (len(ls) - 1)) / (n - gap * (len(ls) - 1)) for ls, n in zip(rows, nat))
+    rh = round((bot - top) * k)
+    H = (len(rows) * rh + lead * (len(rows) - 1) + 23) // 24 * 24     # whole modules
+    masks = []                                          # each letter's mask in the frame
+    y = (H - len(rows) * rh - lead * (len(rows) - 1)) // 2
+    for ls in rows:
+        cut = [im.crop((im.getbbox()[0], top, im.getbbox()[2], bot)) for im in ls]
+        sized = [c.resize((max(1, round(c.width * k)), rh), Image.LANCZOS) for c in cut]
+        free, g = W - sum(c.width for c in sized), len(sized) - 1
+        x = 0
+        for i, c in enumerate(sized):
+            m = np.zeros((H, W), bool)
+            w = min(c.width, W - x)
+            m[y:y + rh, x:x + w] = (np.array(c) >= 128)[:, :w]
+            masks.append(m)
+            if i < g:
+                x += c.width + free // g + (1 if i < free % g else 0)
+        y += rh + lead
+    if not plate:
+        frames = lit_frames(np.any(masks, axis=0))
+    else:
+        frames = []
+        for fk in range(6):
+            out = np.zeros((H, W, 4), np.uint8)
+            for i, m in enumerate(masks):
+                if i % 2:
+                    out[m, :3] = lit_rgb(m, fk)[m]
+                    out[m, 3] = 255
+                else:
+                    rim = m & (depth(m) == 1)
+                    out[rim, :3] = INK
+                    out[rim, 3] = 255
+            frames.append(out)
+    sprite(frames, IMG / path)
+    print(f"web/img/{path}: {W} x {H} cells ({H // 24} modules), rows {rh} tall, six frames")
 
 
 def graphics():

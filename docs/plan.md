@@ -787,7 +787,18 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
   fields, meter, cards, light), and the twelve pages as a row of names, each with its button, the one shown lit; the footer: the machine's
   words whole ("ambient lofi machine", a word a row), ink on paper, then the owner's links and Ko-fi, as MONO2K's.
   The action shimmers when reached: its core stays pale, pink and magenta bits sparkle across it and its ring runs
-  faster; pressed, the sparkle thickens. No underline, no darker tone.
+  faster; pressed, the sparkle thickens. No underline, no darker tone. A link reached lights its letters with the
+  body's bits, running. Hovers only where there is a pointer (a tap on a phone leaves nothing lit).
+- **The splash** (`web/splash.js`, once a visit, never for less motion, any key or tap skips it): the wordmark builds
+  itself on the dark ground, its bits arriving through the ordered dither and heating from the deep blue to the pale
+  core, held while the six arrangements step and a meter of ticks fills, then the screen leaves in 16 px blocks by the
+  same dither (about 2.3 s).
+- **On a phone, Kiloy stacks** after its specimen (WORD over TYPE): the wordmark "dem / ake" and the plate "ambi /
+  ent", the letters as big as the 7 modules allow, the rows edge to edge (`gen_art.py`, `stack`).
+- **The rhythm** (the owner, 2026-10-24: "a lot of spacing or too close"): a section's content starts a row under its
+  strip and ends a row above the next; a statement and its detail are one block (the detail 12 px under it); blocks a
+  row apart. Short copy: a sentence a card, a line a caption. `tools/site_audit.js` checks it in the browser (text on
+  text, text past its cell or over a box, the lines, each section's air).
 
 | Page | What is on it |
 | --- | --- |

@@ -40,7 +40,9 @@ song, a chain of colour, media, motion and space effects per synth. The plan, an
   Am(add9) and a line), `--cpu` (host instructions a sample, built with the FM-1's flags below). With `-DDMK_BENCH` and the FM-1's flags (`-fno-builtin
   -fno-vectorize -fno-slp-vectorize`): `--bench`, the bench's instructions a sample (27 + 6.0 a level).
 - Web: `sh web/build.sh`, then the `demake-web` preview (port 8761, in `../.claude/launch.json`). After a layout
-  change, measure every card, pill and image against the 48 px lines in the browser at 24, 16 and 7 modules.
+  change, run `tools/site_audit.js` in the browser on each page at 24, 16 and 7 modules (1280, 900 and 375 px): no
+  text on text, none past its cell or over a box, every item on the 48 px lines, about one row of air after each
+  section.
 - Checks: `sh tools/check.sh`: warnings, the soft-float symbol check on armv7m, ASan + UBSan over the self-test and
   the tour with its text audit, the browser build.
 - The FM-1: `.venv/bin/python tools/fm1/build.py [--diag] [--bench] [--release 0.Y]` makes `build/fm1/demake*.fwsc`

@@ -7,9 +7,21 @@
   <title>Demake</title>
   <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths, a chord machine, eight patterns a song.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=9">
+  <script>
+    /* the splash, once a visit and never for less motion; if anything fails, the page shows after 4 s regardless */
+    try {
+      if (!matchMedia("(prefers-reduced-motion: reduce)").matches && !sessionStorage.getItem("demake.splash")) {
+        document.documentElement.classList.add("splashing");
+        sessionStorage.setItem("demake.splash", "1");
+        setTimeout(function () { document.documentElement.classList.remove("splashing"); }, 4000);
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
+<div class="splash" id="splash" aria-hidden="true"><canvas></canvas></div>
+<script src="splash.js?v=1"></script>
 <main class="canvas">
 
   <!-- the header: the D in its module, the index, the two actions -->
@@ -28,8 +40,7 @@
   <section class="g hero">
     <h1 class="mark bits" style="--src: url(img/wordmark.png)" role="img" aria-label="Demake"></h1>
     <p class="say">An ambient lofi machine for the M&#8209;VAVE&nbsp;FM&#8209;1.</p>
-    <p class="meta">Firmware for the FM&#8209;1 on the open platform of CS&#8209;1 and Felucca. Phase 1: its 64 recorded
-      sounds through a filter, an envelope, tape, a room and an echo, here in the browser.</p>
+    <p class="meta">64 recorded sounds, three synths, tape and a room. Play it here, or install it on the FM&#8209;1.</p>
   </section>
 
   <!-- 01 play: the device on its light -->
@@ -85,31 +96,30 @@
   <section class="g strip"><span class="no">03</span><span class="lb">Sound</span></section>
   <section class="g text">
     <p class="say">Sixty-four pedal recordings at its core, worn by tape, codec and a room.</p>
-    <p class="meta">Built in, as in a rompler: nothing to load. A second one layers under each sound. Crush, codec smear, tape, cassette, VHS and chorus, then
-      reverbs voiced after console rooms and halls. Integer DSP, on both of the FM&#8209;1's cores.</p>
+    <p class="meta">Built in, like a rompler: nothing to load. Then crush, codec, tape, chorus, rooms and halls.</p>
     <div class="plate bits" style="--src: url(img/plate.png)" role="img" aria-label="Ambient, in line and in light"></div>
   </section>
 
   <!-- 04 the engines: what each one is, each in its light -->
   <section class="g strip" id="engines"><span class="no">04</span><span class="lb">Engines</span></section>
   <section class="g art">
-    <figure class="eng e1"><div class="img"><canvas class="heat" data-heat="img/art/flow.png"></canvas></div><figcaption><b>Sample</b><span>The 64 factory recordings, 4-bit ADPCM read from flash as they play. START trims the attack; a short loop in the sustain turns any sample into a pad.</span></figcaption></figure>
-    <figure class="eng e2"><div class="img"><canvas class="heat" data-heat="img/art/pool.png"></canvas></div><figcaption><b>Pad</b><span>Three wavetable oscillators on your own single cycles, detuned; MORPH drifts to the next wave and back.</span></figcaption></figure>
-    <figure class="eng e3"><div class="img"><canvas class="heat" data-heat="img/art/drift.png"></canvas></div><figcaption><b>Pluck</b><span>A tuned string, damped. BODY adds two resonances: kalimba, glass, bell.</span></figcaption></figure>
-    <figure class="eng e4"><div class="img"><canvas class="heat" data-heat="img/art/rise.png"></canvas></div><figcaption><b>Drone</b><span>Four partials a voice: root, fifth, octave, ninth. Each pair beats, each level wanders: a long note never repeats.</span></figcaption></figure>
-    <figure class="eng e5"><div class="img"><canvas class="heat" data-heat="img/art/twin.png"></canvas></div><figcaption><b>Layer</b><span>Under any engine, one of the 64: blend, tune, loop, tone.</span></figcaption></figure>
-    <figure class="eng e6"><div class="img"><canvas class="heat" data-heat="img/art/wave.png"></canvas></div><figcaption><b>Grit</b><span>The console's rate and grain, per synth: 22K, 22K with ADPCM, 11K with ADPCM.</span></figcaption></figure>
+    <figure class="eng e1"><div class="img"><canvas class="heat" data-heat="img/art/flow.png"></canvas></div><figcaption><b>Sample</b><span>The 64 recordings, looped and played from flash.</span></figcaption></figure>
+    <figure class="eng e2"><div class="img"><canvas class="heat" data-heat="img/art/pool.png"></canvas></div><figcaption><b>Pad</b><span>Three detuned wavetables that drift.</span></figcaption></figure>
+    <figure class="eng e3"><div class="img"><canvas class="heat" data-heat="img/art/drift.png"></canvas></div><figcaption><b>Pluck</b><span>A tuned string: kalimba, glass, bell.</span></figcaption></figure>
+    <figure class="eng e4"><div class="img"><canvas class="heat" data-heat="img/art/rise.png"></canvas></div><figcaption><b>Drone</b><span>Four partials that beat and wander.</span></figcaption></figure>
+    <figure class="eng e5"><div class="img"><canvas class="heat" data-heat="img/art/twin.png"></canvas></div><figcaption><b>Layer</b><span>A second sound under any engine.</span></figcaption></figure>
+    <figure class="eng e6"><div class="img"><canvas class="heat" data-heat="img/art/wave.png"></canvas></div><figcaption><b>Grit</b><span>The old console's rate and grain.</span></figcaption></figure>
   </section>
 
   <!-- 05 the workflow: the rules, on one page -->
   <section class="g strip" id="workflow"><span class="no">05</span><span class="lb">Workflow</span></section>
   <section class="g flow">
-    <div class="rule r1"><i class="mk">1</i><b>Keys write</b><p>The keys play the current synth. On Roll and Chord, stopped, a key writes at the cursor; playing, REC records it in time.</p></div>
-    <div class="rule r2"><i class="mk">2</i><b>One job a knob</b><p>SELECT the synth, PRESETS its sound, ALGORITHM the left cell, K1–K4 the four on top. The same on every page.</p></div>
-    <div class="rule r3"><i class="mk">3</i><b>Tap, again, hold</b><p>Tap a page button to open it, tap again for its next row, hold it for its layer: its map shows on screen.</p></div>
-    <div class="rule r4"><i class="mk">4</i><b>Hold, then act</b><p>A held key is a note, SEQ held the sequence, HOME held the patterns. OCT− takes away, OCT+ adds a copy.</p></div>
-    <div class="rule r5"><i class="mk">5</i><b>Everything undoes</b><p>GLO with OCT− undoes, sixteen steps back; GLO with OCT+ redoes. Only writing over another save asks first.</p></div>
-    <div class="rule r6"><i class="mk">6</i><b>Nothing hidden</b><p>What a held button does is on screen while you hold it; the keys' lights show the chord now.</p></div>
+    <div class="rule r1"><i class="mk">1</i><b>Keys write</b><p>Stopped, a key writes at the cursor; playing, REC records it.</p></div>
+    <div class="rule r2"><i class="mk">2</i><b>One job a knob</b><p>The same knob does the same thing on every page.</p></div>
+    <div class="rule r3"><i class="mk">3</i><b>Tap, again, hold</b><p>Tap a page, tap again for its next row, hold for its layer.</p></div>
+    <div class="rule r4"><i class="mk">4</i><b>Hold, then act</b><p>Hold a key, a sequence or a pattern, then change it.</p></div>
+    <div class="rule r5"><i class="mk">5</i><b>Everything undoes</b><p>GLO with OCT− undoes, sixteen steps back.</p></div>
+    <div class="rule r6"><i class="mk">6</i><b>Nothing hidden</b><p>Hold a button and the screen shows what it does.</p></div>
   </section>
 
   <!-- 06 the screens: the display's anatomy, then its pages, one press each -->
@@ -123,14 +133,14 @@
     </figure>
     <p class="shown" id="shownname"><b>Home</b> The synths, the one sounding lit</p>
     <ol class="legend">
-      <li><i class="mk">1</i><b>Title</b><span>The page in ink, its row in grey, one size</span></li>
-      <li><i class="mk">2</i><b>Fields</b><span>Four columns under K1–K4: a label, a value</span></li>
-      <li><i class="mk">3</i><b>Meter</b><span>Ticks in ink up to the value, its own tick tall</span></li>
-      <li><i class="mk">4</i><b>Cards</b><span>6 px from the edge and apart, corners of 14</span></li>
-      <li><i class="mk">5</i><b>Light</b><span>A blue rim, a magenta body, a pale core</span></li>
+      <li><i class="mk">1</i><b>Title</b><span>The page in ink, its row in grey</span></li>
+      <li><i class="mk">2</i><b>Fields</b><span>A label and a value a knob</span></li>
+      <li><i class="mk">3</i><b>Meter</b><span>Ticks up to the value</span></li>
+      <li><i class="mk">4</i><b>Cards</b><span>Rounded, 6 px apart</span></li>
+      <li><i class="mk">5</i><b>Light</b><span>Blue rim, magenta body, pale core</span></li>
     </ol>
     <div class="index" id="pages" aria-label="The pages">
-      <p class="ih"><b>Pages</b> <span>Twelve, each with the button that opens it. Press one to see it.</span></p>
+      <p class="ih"><b>Pages</b> <span>Press one to see it</span></p>
       <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-say="The synths, the one sounding lit"><kbd>HOME</kbd><b>Home</b><span></span></button>
       <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-say="A sequence, the cursor lit"><kbd>SEQ</kbd><b>Roll</b><span></span></button>
       <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-say="The chord now, the progression"><kbd>ARP</kbd><b>Chord</b><span></span></button>
@@ -163,6 +173,6 @@
       Geist: SIL OFL 1.1. Kiloy: Marvadesign.</span>
   </footer>
 </main>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>

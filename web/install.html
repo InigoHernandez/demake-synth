@@ -12,7 +12,7 @@
   <title>Demake installer</title>
   <meta name="description" content="Install Demake on the M-VAVE FM-1 over USB, from the browser, and go back to the official firmware.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <main class="canvas">
@@ -30,8 +30,7 @@
 
   <section class="g ihero">
     <p class="say">Demake onto your FM&#8209;1, over USB, from this page.</p>
-    <p class="meta">In Chrome or Edge on a computer. No extra hardware, and a way back to the official firmware at any
-      time.</p>
+    <p class="meta">Chrome or Edge on a computer, no extra hardware, and a way back.</p>
   </section>
 
   <!-- what the FM-1 says it runs, the package, and what is happening now -->
@@ -56,9 +55,8 @@
   <section class="g strip"><span class="no">01</span><span class="lb">Connect</span></section>
   <section class="g step one">
     <p class="lede">Plug it in, switch it on, press Connect.</p>
-    <p class="body">Use a USB cable that carries data. The browser asks to allow MIDI with system exclusive messages:
-      allow it, that is how the FM&#8209;1 answers. Close anything else using its MIDI port first: a DAW, or another
-      installer tab.</p>
+    <p class="body">Use a USB cable that carries data. Allow MIDI when the browser asks: that is how the FM&#8209;1
+      answers. Close DAWs and other installer tabs first.</p>
     <button class="act a1 lit" id="connect">Connect</button>
     <p class="sub b1" id="connect-sub">Ask the FM&#8209;1 what it runs</p>
   </section>
@@ -66,7 +64,7 @@
   <!-- 02 install -->
   <section class="g strip"><span class="no">02</span><span class="lb">Install</span></section>
   <section class="g step list">
-    <p class="lede">Press Install, then leave the cable and this page alone until it says done.</p>
+    <p class="lede">Press Install, then wait until it says done.</p>
     <ol class="body steps">
       <li><i class="mk">1</i>The running firmware checks the package and stages the update loader.</li>
       <li><i class="mk">2</i>The FM&#8209;1 restarts into its update mode.</li>
@@ -81,18 +79,17 @@
   <!-- 03 if it stops -->
   <section class="g strip"><span class="no">03</span><span class="lb">If it stops</span></section>
   <section class="g flow stops">
-    <div class="rule r1"><i class="mk">1</i><b>Not found</b><p>Check the cable carries data, nothing else holds the FM&#8209;1's MIDI port, and that you allowed MIDI. Reload the page and connect again.</p></div>
-    <div class="rule r2"><i class="mk">2</i><b>Stopped writing</b><p>The FM&#8209;1 stays in its update mode until the write is complete. Replug the cable and press Install again: the page finishes the write first.</p></div>
-    <div class="rule r3"><i class="mk">3</i><b>No screen</b><p>Switch it off and on. If it still shows nothing, hold OCT− while switching it on: a USB rescue mode, sound off, from which this page works again.</p></div>
+    <div class="rule r1"><i class="mk">1</i><b>Not found</b><p>Check the cable carries data and MIDI is allowed. Reload, then connect again.</p></div>
+    <div class="rule r2"><i class="mk">2</i><b>Stopped writing</b><p>It stays in update mode until done. Replug and press Install: the page finishes it.</p></div>
+    <div class="rule r3"><i class="mk">3</i><b>No screen</b><p>Switch it off and on. Still dark? Hold OCT− as you switch on: a rescue mode this page works from.</p></div>
   </section>
 
   <!-- 04 back to the official firmware -->
-  <section class="g strip"><span class="no">04</span><span class="lb">Back to the official firmware</span></section>
-  <section class="g step">
-    <p class="lede">M&#8209;VAVE's own updater takes the FM&#8209;1 back at any time, and so can this page.</p>
-    <p class="body">Get the official FM&#8209;1 V15 from M&#8209;VAVE and choose its unmodified <code>FM-1.fwsc</code>.
-      The file is checked here against V15's fingerprint and sent nowhere. Installing firmware other than the FM&#8209;1's
-      own is at your own risk; the rescue above and M&#8209;VAVE's updater are the ways back.</p>
+  <section class="g strip"><span class="no">04</span><span class="lb">Going back</span></section>
+  <section class="g step back">
+    <p class="lede">Back to M&#8209;VAVE's own firmware, at any time.</p>
+    <p class="body">Choose the official V15 <code>FM-1.fwsc</code> from M&#8209;VAVE, unmodified: it is checked here and
+      sent nowhere. Other firmware is at your own risk; the rescue above and M&#8209;VAVE's updater are the ways back.</p>
     <label class="act a1 pill">Choose FM-1.fwsc<input type="file" id="stock-file" accept=".fwsc"></label>
     <p class="sub b1" id="stock-sub">The official V15 file</p>
     <button class="act a2 lit" id="stock" disabled>Back to V15</button>
@@ -102,12 +99,12 @@
   <!-- 05 what an install writes -->
   <section class="g strip"><span class="no">05</span><span class="lb">What it writes</span></section>
   <section class="g step wrote">
-    <p class="lede">The firmware's own slot; the data area only where Demake keeps its own.</p>
+    <p class="lede">Its own slot, and only its own parts of the data area.</p>
     <ol class="flash">
-      <li><b>The app</b><span>Demake and its factory sounds, 32 of the 64 in this build. An install replaces whatever ran before.</span></li>
-      <li><b>0x93000–0xAFFFF</b><span>Kept for the factory sounds the app has no room for. Nothing for you to load.</span></li>
-      <li><b>0xB0000–0xBFFFF</b><span>Demake's songs, sounds and settings, once saving is built; another firmware's data there may be written over.</span></li>
-      <li><b>0xC0000–0xDFFFF</b><span>Left alone: MONO2K's store, so both firmwares keep their saves.</span></li>
+      <li><b>The app</b><span>Demake and 32 of its 64 sounds. It replaces what ran before.</span></li>
+      <li><b>0x93000–0xAFFFF</b><span>Kept for the factory sounds the app has no room for.</span></li>
+      <li><b>0xB0000–0xBFFFF</b><span>Songs and settings, once saving is built; may write over other data.</span></li>
+      <li><b>0xC0000–0xDFFFF</b><span>Left alone: MONO2K's saves stay.</span></li>
     </ol>
   </section>
 
@@ -122,12 +119,11 @@
   <footer class="g foot fin">
     <span>Demake</span><span class="w2">An ambient lofi machine</span>
     <a class="w2" href="https://ko-fi.com/sequencist" target="_blank" rel="noopener">Support on Ko&#8209;fi ↗</a><span class="r">2026</span>
-    <span class="legal">GPL-3.0. The update protocol and its code are Felucca's (Leo Kuroshita, Hügelton Instruments),
-      GPL-3.0; the FM&#8209;1 build stands on the open FM&#8209;1 platform of Felucca and CS&#8209;1. M&#8209;VAVE and
-      FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
+    <span class="legal">GPL-3.0. The update code is Felucca's (Leo Kuroshita, Hügelton Instruments). Demake is not
+      made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 <script type="module" src="install.js?v=1"></script>
 </body>
 </html>

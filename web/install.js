@@ -38,9 +38,9 @@ window.addEventListener("beforeunload", (e) => { if (busy) { e.preventDefault();
 
 async function access() {
   if (midi) return midi;
-  if (!navigator.requestMIDIAccess) throw new Error("This browser has no Web MIDI: use Chrome or Edge on a computer.");
+  if (!navigator.requestMIDIAccess) throw new Error("No Web MIDI here: use Chrome or Edge on a computer.");
   try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
-  catch (e) { throw new Error("MIDI with system exclusive messages was not allowed. Allow it in the site settings (the icon left of the address) and try again."); }
+  catch (e) { throw new Error("MIDI was not allowed. Allow it in the site settings and try again."); }
   return midi;
 }
 
@@ -61,7 +61,7 @@ $("connect").addEventListener("click", async () => {
     if (!dev) {
       show(null);
       $("connect-sub").textContent = "Not found: try again";
-      say("No FM-1 answered. Check the cable carries data, nothing else holds its MIDI port (other installer tabs, DAWs), and that it is switched on.", "err");
+      say("No FM-1 answered. Check the cable, close DAWs and other tabs, try again.", "err");
       return;
     }
     dev.link.close();
@@ -69,8 +69,7 @@ $("connect").addEventListener("click", async () => {
     $("connect-sub").textContent = `Connected · ${dev.id.text}`;
     const what = describe(dev.id);
     if (/^ota-/i.test(dev.id.model)) say(`${what}. Press Install to finish it.`);
-    else say(`Connected: it runs ${what}. ` + (pkg ? `Press Install to write ${pkg.label}.`
-      : "No package is published here yet: choose a .fwsc in step 02, then press Install."), "ok");
+    else say(`It runs ${what}. ` + (pkg ? `Press Install for ${pkg.label}.` : "Choose a .fwsc in step 02, then Install."), "ok");
   } catch (e) { say(e.message, "err"); }
   finally { lock(false); }
 });
@@ -80,7 +79,7 @@ function takePackage(raw, label) {
   const product = productOf(raw);
   if (!/^FM-1_\d+$/.test(product)) throw new Error("not an FM-1 package");
   if (!new TextDecoder("latin1").decode(raw).includes("FELUCCA-LOADER-1"))
-    throw new Error("this package has no update loader this page can drive (M-VAVE's own? Use Back to V15 for that)");
+    throw new Error("no update loader this page can drive (M-VAVE's own? Use Back to V15)");
   pkg = { product, image: logicalImage(raw), label };
   $("install-sub").textContent = `${label} · ${product}`;
   $("install").disabled = busy;
@@ -118,14 +117,14 @@ $("file").addEventListener("change", async (ev) => {
 });
 
 const WORDS = {
-  notfound: "No FM-1 answered. Check the cable, close other programs using it, and try again.",
+  notfound: "No FM-1 answered. Check the cable, close other programs, try again.",
   model: "That package is for another device.",
   stopped: "The FM-1 stopped answering. Nothing was written: try again.",
-  lost: "The FM-1 was disconnected. If it is in its update mode now, replug and press Install again to finish.",
-  noloader: "The update mode did not start. Replug the cable and press Install again.",
+  lost: "Disconnected. If it is in update mode, replug and press Install again.",
+  noloader: "The update mode did not start. Replug and press Install again.",
   noreturn: "The FM-1 did not come back: switch it off and on.",
   mismatch: "Written, but the FM-1 reports another firmware",
-  badreq: "The FM-1 asked for data outside the package: the wrong package for it?",
+  badreq: "The FM-1 asked for data outside the package: the wrong one?",
 };
 
 /* the progress: the page's meter, ticks in ink up to what is written, the tick at it lit */
