@@ -599,6 +599,13 @@ static int row_next(int page, int row)                  /* the page's next row t
 }
 static int rows_built(int page) { int r, n = 0; for (r = 0; r < PAGE[page].rows; r++) n += !row_soon(page, r); return n; }
 
+/* SELECT scrolls a page's rows where it has more than one (Home's are views of the synths, and there SELECT picks
+ * the synth, as on the roll, the filter and the amp), and the songs' slots */
+static int sel_scrolls(int page)
+{
+    return page == PG_DISCS || (PAGE[page].rows > 1 && page != PG_HOME);
+}
+
 /* a row with nothing behind it: those not built, MEDIA while its effect is off */
 static int row_off(int page, int row)
 {
@@ -837,7 +844,7 @@ static void foot(void)
         int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL), typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2) || ui.page == PG_FILTER;
         val_text(v, ui.page, r, 4);
         text_fit(x + 6, Y_FOOT + 2, 124 - x, v, &FS, lit(4) ? HOLO : C_INK);
-        if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "PRESET changes it", &FS, C_LABEL);   /* (or the page's button held and ALGORITHM) */
+        if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, sel_scrolls(ui.page) ? "SELECT: the rows" : "PRESET too", &FS, C_LABEL);
         if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, !seq_on && seq_rec ? "Keys write chords" : "REC: write", &FS, C_LABEL);
 
         if (ui.page == PG_HOME) {                       /* where the music is: the pattern, or the song */
@@ -2521,7 +2528,7 @@ static void ui_button(int b, int down)
             if (row_soon(p, ui.row[p])) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);
             if (rows_built(p) > 1 && !(ui.hinted >> p & 1u)) {   /* the first time: how to reach the next row */
                 char t[32];
-                if (p == PG_FX || p == PG_GLOBAL) str_cat(t, "ALGORITHM: the rows");
+                if (sel_scrolls(p)) str_cat(t, "SELECT: the rows");
                 else str_cat(str_cat(t, BTN_NAME[b]), " again: the next row");
                 notice(t);
                 ui.hinted |= (uint16_t)(1u << p);
@@ -2541,12 +2548,24 @@ static void ui_encoder(int e, int d)
         int b;
         for (b = 0; b < B_COUNT; b++) if (ui.btn_held >> b & 1u) ui.btn_used |= (uint16_t)(1u << b);
     }
-    if (e == E_SELECT) {                                /* a synth a click: a second step the same way within 120 ms is
-                                                           the same click (the owner's FM-1 sent two: 1, then 3) */
+    if (e == E_SELECT) {                                /* a step a click: a second the same way within 120 ms is the
+                                                           same click (the owner's FM-1 sent two: 1, then 3) */
         int dir = d > 0 ? 1 : -1, s = ui.synth + dir;
         if (dir == ui.sel_dir && ui.now - ui.sel_at < 120u) return;
         ui.sel_dir = (int8_t)dir; ui.sel_at = ui.now;
-        ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s);
+        if (!(ui.btn_held >> B_HOME & 1u) && sel_scrolls(ui.page)) {   /* it scrolls (the owner's feedback: the most
+                                                           intuitive): a page's rows, the songs' slots */
+            ui.touch_k = -1;
+            if (ui.page == PG_DISCS) { int n = ui.song_pick + dir; ui.song_pick = (uint8_t)(n < 0 ? 0 : n >= ST_SONGS ? ST_SONGS - 1 : n); return; }
+            {
+                int n = r;
+                do { n += dir; } while (n >= 0 && n < PAGE[ui.page].rows && row_soon(ui.page, n));
+                if (n >= 0 && n < PAGE[ui.page].rows) ui.row[ui.page] = (uint8_t)n;   /* stops at the ends, */
+                else notice("HOME + SELECT: the synth");   /* where it says how to reach the synth from here */
+            }
+            return;
+        }
+        ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s);   /* the synth (HOME held: on any page) */
         sp_sync();
         return;
     }
@@ -2668,13 +2687,7 @@ static void ui_encoder(int e, int d)
         }
     }
     if (ui.page == PG_CHORD && k == 4) { prog_step(d); return; }   /* a progression: its own mode and voicing with it */
-    if (k == 4 && (ui.page == PG_FX || ui.page == PG_GLOBAL) && !(ui.btn_held >> (ui.page == PG_FX ? B_FX : B_GLO) & 1u)) {
-        int n = r, dir = d > 0 ? 1 : -1;                /* ALGORITHM moves through the rows; held, it is the type */
-        do { n += dir; } while (n >= 0 && n < PAGE[ui.page].rows && row_soon(ui.page, n));
-        if (n >= 0 && n < PAGE[ui.page].rows) ui.row[ui.page] = (uint8_t)n;
-        ui.touch_k = -1;
-        return;
-    }
+    if (k == 4 && ((ui.page == PG_FX && r == 3) || (ui.page == PG_GLOBAL && r >= 2))) return;   /* (a row with no type) */
     if (ui.page == PG_GLOBAL && r == 3 && k == 0) {    /* theme */
         int t = theme + (d > 0 ? 1 : -1);
         theme = (uint8_t)(t < 0 ? DMK_THEMES - 1 : t >= DMK_THEMES ? 0 : t);

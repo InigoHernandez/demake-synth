@@ -234,13 +234,22 @@ static void selftest(void)
     wait_ms(1600);
     tap(B_FX); if (ui.page != PG_FX || ui.row[PG_FX] != 1) { fails++; printf("selftest: FX does not open FX on Media\n"); }
     tap(B_FX); if (ui.row[PG_FX] != 2) { fails++; printf("selftest: FX again is not the next row\n"); }
-    dmk_encoder(E_ALGO, 1); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: ALGORITHM does not move the rows\n"); }
-    dmk_encoder(E_ALGO, -1); dmk_encoder(E_ALGO, -1); dmk_encoder(E_ALGO, -1);
-    if (ui.row[PG_FX] != 0) { fails++; printf("selftest: ALGORITHM does not reach the first row\n"); }
-    dmk_button(B_FX, 1); dmk_encoder(E_ALGO, 1); dmk_button(B_FX, 0); wait_ms(30);
-    if (syn[ui.synth].colour != FC_SAT || ui.row[PG_FX] != 0) { fails++; printf("selftest: FX held and ALGORITHM do not pick the effect\n"); }
-    dmk_button(B_FX, 1); dmk_encoder(E_ALGO, -1); dmk_button(B_FX, 0); wait_ms(30);
-    dmk_encoder(E_ALGO, 1);
+    /* SELECT scrolls the rows (the owner: the most intuitive), stopping at the ends; ALGORITHM is the row's type;
+     * HOME held + SELECT is the synth, on any page */
+    { int s0 = ui.synth;
+    wait_ms(150); dmk_encoder(E_SELECT, 1); if (ui.row[PG_FX] != 3 || ui.synth != s0) { fails++; printf("selftest: SELECT does not scroll FX's rows\n"); }
+    wait_ms(150); dmk_encoder(E_SELECT, 1); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: SELECT goes past the last row\n"); }
+    for (int i = 0; i < 3; i++) { wait_ms(150); dmk_encoder(E_SELECT, -1); }
+    if (ui.row[PG_FX] != 0) { fails++; printf("selftest: SELECT does not reach the first row\n"); }
+    dmk_encoder(E_ALGO, 1); wait_ms(30);
+    if (syn[ui.synth].colour != FC_SAT || ui.row[PG_FX] != 0) { fails++; printf("selftest: ALGORITHM does not pick the effect\n"); }
+    dmk_encoder(E_ALGO, -1); wait_ms(30);
+    dmk_button(B_HOME, 1); wait_ms(30); dmk_encoder(E_SELECT, 1); dmk_button(B_HOME, 0); wait_ms(30);
+    if (ui.synth != (s0 < DMK_SYNTHS - 1 ? s0 + 1 : s0) || ui.page != PG_FX) { fails++; printf("selftest: HOME + SELECT does not pick the synth on FX\n"); }
+    wait_ms(150); dmk_button(B_HOME, 1); wait_ms(30); dmk_encoder(E_SELECT, -1); dmk_button(B_HOME, 0); wait_ms(30);
+    tap(B_FX); tap(B_HOME); tap(B_FX);                  /* (back on FX, its second row: as the rolls' check starts) */
+    while (ui.row[PG_FX] != 1) { wait_ms(150); dmk_encoder(E_SELECT, ui.row[PG_FX] > 1 ? -1 : 1); }
+    if (ui.synth != s0) { fails++; printf("selftest: SELECT on FX moved the synth\n"); } }
     /* the rolls: every synth its own; a key writes at the cursor, OCT- takes a held note away, PLAY sounds them */
     {
         int n0 = sq[0].count, n1 = sq[1].count, n2 = sq[2].count;
@@ -264,7 +273,9 @@ static void selftest(void)
         tap(B_FX);                                      /* back where the next check starts */
     }
     {   /* SELECT: a synth a click; a second step the same way at once is the same click (the owner's FM-1: 1, then 3) */
-        int s0 = ui.synth;
+        int s0;
+        tap(B_HOME);                                    /* (on Home SELECT is the synth; on FX, the rows) */
+        s0 = ui.synth;
         wait_ms(150);
         dmk_encoder(E_SELECT, 1); wait_ms(9); dmk_encoder(E_SELECT, 1);
         if (ui.synth != s0 + 1) { fails++; printf("selftest: one click of SELECT moved %d synths\n", ui.synth - s0); }
@@ -683,7 +694,7 @@ static void selftest(void)
     /* PRESET on a page of types turns the row's type, not the sound */
     {
         int smp = ui.val[ui.synth][PG_SOUND][0][0];
-        tap(B_FX); while (ui.row[PG_FX] != 0) dmk_encoder(E_ALGO, -1);
+        tap(B_FX); while (ui.row[PG_FX] != 0) { wait_ms(150); dmk_encoder(E_SELECT, -1); }
         dmk_encoder(E_PRESET, 1); dmk_encoder(E_PRESET, 1);
         if (syn[ui.synth].colour != FC_CRUSH || ui.val[ui.synth][PG_SOUND][0][0] != smp) { fails++; printf("selftest: PRESET on FX does not turn the effect (%d)\n", syn[ui.synth].colour); }
         dmk_encoder(E_PRESET, -1); dmk_encoder(E_PRESET, -1); dmk_encoder(E_PRESET, -1);
