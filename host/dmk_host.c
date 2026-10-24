@@ -140,6 +140,27 @@ static void tour(const char *dir)
         {B_ENV, "amp"}, {B_FX, "fx"}, {B_ARP, "chord"}, {B_GLO, "global"}, {B_LFO, "lfo"}};
     for (unsigned i = 0; i < sizeof P / sizeof P[0]; i++) { tap(P[i].b); shot(dir, P[i].n); }
     tap(B_FX); tap(B_FX); shot(dir, "fx_space");         /* FX again: the next row built */
+    {                                                   /* every effect's knobs and values, at both ends, audited (not
+                                                           kept as pictures): the labels change with the type */
+        static const int NT[3] = {FX_COLOURS, FX_MEDIAS, FX_MOTIONS};
+        uint8_t keep[3][5], row = ui.row[PG_FX];
+        int r, t, k, e;
+        memcpy(keep, ui.val[ui.synth][PG_FX], sizeof keep);
+        for (r = 0; r < 3; r++)
+            for (t = 1; t < NT[r]; t++)
+                for (e = 0; e < 2; e++) {
+                    char nm[24];
+                    ui.row[PG_FX] = (uint8_t)r;
+                    ui.val[ui.synth][PG_FX][r][4] = choice_val(t, NT[r]);
+                    for (k = 0; k < 4; k++) ui.val[ui.synth][PG_FX][r][k] = (uint8_t)(e ? 127 : 0);
+                    sp_sync();
+                    snprintf(nm, sizeof nm, "fx_%d_%d_%s", r, t, e ? "max" : "min");
+                    shot(0, nm);
+                }
+        memcpy(ui.val[ui.synth][PG_FX], keep, sizeof keep);
+        ui.row[PG_FX] = row;
+        sp_sync();
+    }
     tap(B_GLO); tap(B_GLO); shot(dir, "global_echo"); tap(B_GLO); shot(dir, "global_setup"); tap(B_GLO); tap(B_GLO);
     tap(B_EDIT); tap(B_EDIT); shot(dir, "sound_layer");   /* EDIT again: the layer, off */
     for (int i = 0; i < 70; i++) dmk_encoder(E_K1, 1);
@@ -781,6 +802,29 @@ static void selftest(void)
         sound_put(0, &lib[0][2]); lib[0][0] = 1; lib[0][1] = 0; lib[0][2 + 8 * 5 + 1] = 64;   /* a sound of 0.3, its LFO's depth 64 */
         lib_load(0, 0);
         if (ui.val[0][PG_LFO][0][1]) { fails++; printf("selftest: a sound of 0.3 loads with its LFO on\n"); }
+        /* a song and a sound of before 0.5 (fewer types a row: 5, 4, 4) keep their effects; one of now keeps the later */
+        ui.val[0][PG_FX][0][4] = choice_val(FC_LOSSY, 5); ui.val[0][PG_FX][1][4] = choice_val(FM_VHS, 4);
+        ui.val[0][PG_FX][2][4] = choice_val(FO_CHORUS, 4); ui.val[1][PG_FX][1][4] = 0;
+        tap(B_SAVE);
+        for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 5;   /* as 0.4 wrote it */
+        dmk_init(24); now_ms = 0; wait_ms(60);
+        if (syn[0].colour != FC_LOSSY || syn[0].media != FM_VHS || syn[0].motion != FO_CHORUS || syn[1].media != FM_OFF)
+            { fails++; printf("selftest: a song of 0.4 loads with other effects (%d %d %d, %d)\n", syn[0].colour, syn[0].media, syn[0].motion, syn[1].media); }
+        ui.val[0][PG_FX][0][4] = choice_val(FC_DIST, FX_COLOURS); ui.val[0][PG_FX][1][4] = choice_val(FM_DICTA, FX_MEDIAS);
+        ui.val[0][PG_FX][2][4] = choice_val(FO_TREM, FX_MOTIONS); sp_sync();
+        tap(B_SAVE); dmk_init(25); now_ms = 0; wait_ms(60);
+        if (syn[0].colour != FC_DIST || syn[0].media != FM_DICTA || syn[0].motion != FO_TREM)
+            { fails++; printf("selftest: a song does not keep the later effects\n"); }
+        sound_put(0, &lib[0][2]); lib[0][0] = 1; lib[0][1] = 1;   /* a sound of 0.4: its types where 0.4 put them */
+        lib[0][2 + 4 * 5 + 4] = choice_val(FC_NOISE, 5); lib[0][2 + 5 * 5 + 4] = choice_val(FM_CASS, 4); lib[0][2 + 6 * 5 + 4] = choice_val(FO_DRIFT, 4);
+        lib_load(0, 0);
+        if (syn[0].colour != FC_NOISE || syn[0].media != FM_CASS || syn[0].motion != FO_DRIFT)
+            { fails++; printf("selftest: a sound of 0.4 loads with other effects\n"); }
+        ui.val[0][PG_FX][2][4] = choice_val(FO_FLANGER, FX_MOTIONS); sp_sync();
+        k = sound_save(0);
+        if (k < 1) { fails++; printf("selftest: a sound not saved\n"); }
+        else { ui.val[0][PG_FX][2][4] = 0; sp_sync(); lib_load(0, k - 1);
+               if (syn[0].motion != FO_FLANGER) { fails++; printf("selftest: a sound does not keep the later effects\n"); } }
         lib[0][0] = 0;
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -865,7 +909,7 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
     ui.val[0][PG_FX][3][0] = verb ? 100 : 30;           /* a little verb, or a lot for the verbs */
     ui.val[0][PG_FX][3][1] = 0;
     if (page >= 0) {
-        int nch = page == PG_GLOBAL ? (row ? 3 : 7) : page == PG_FILTER ? 8 : row == 0 ? 5 : 4;
+        int nch = page == PG_GLOBAL ? (row ? 3 : 7) : page == PG_FILTER ? 8 : row == 0 ? FX_COLOURS : row == 1 ? FX_MEDIAS : FX_MOTIONS;
         if (page == PG_GLOBAL) type++;                  /* (Off first) */
         ui.val[0][page][row][4] = (uint8_t)(type * 128 / nch + 128 / nch / 2);
         for (j = 0; j < 4; j++) if (k[j] != 255) ui.val[0][page][row][j] = k[j];
@@ -909,6 +953,26 @@ static void fx_demo(const char *dir)
     fx_one(dir, "motion_1_chorus", "Lithops", PG_FX, 2, FO_CHORUS, CH, 0, 0);
     fx_one(dir, "motion_2_vibrato", "Nymphaea", PG_FX, 2, FO_VIB, VI, 0, 0);
     fx_one(dir, "motion_3_drift", "Lunaria", PG_FX, 2, FO_DRIFT, DR, 0, 0);
+    {                                                   /* stage 4's (docs/sound-design.md, 5) */
+        static const uint8_t WA[4] = {90, 56, 70, 127}, DI[4] = {80, 70, 30, 110}, DF[4] = {70, 80, 120, 110};
+        static const uint8_t VY[4] = {50, 60, 70, 50}, RA[4] = {60, 64, 50, 80}, DC[4] = {70, 64, 50, 90};
+        static const uint8_t EN[4] = {90, 100, 50, 100}, PS[4] = {100, 50, 30, 70}, FL[4] = {90, 90, 25, 90};
+        static const uint8_t TR[4] = {100, 40, 55, 0}, TP[4] = {110, 20, 20, 127};
+        fx_one(dir, "dry_nymphaea", "Nymphaea", -1, 0, 0, WA, 0, 0);   /* each sound as it is, to hear them against */
+        fx_one(dir, "dry_lunaria", "Lunaria", -1, 0, 0, WA, 0, 0);
+        fx_one(dir, "dry_lithops", "Lithops", -1, 0, 0, WA, 0, 0);
+        fx_one(dir, "colour_5_warm", "Nymphaea", PG_FX, 0, FC_WARM, WA, 0, 0);
+        fx_one(dir, "colour_6_distort", "Lithops", PG_FX, 0, FC_DIST, DI, 0, 0);
+        fx_one(dir, "colour_6_distort_fold", "Lithops", PG_FX, 0, FC_DIST, DF, 0, 0);
+        fx_one(dir, "media_4_vinyl", "Lunaria", PG_FX, 1, FM_VINYL, VY, 0, 0);
+        fx_one(dir, "media_5_radio", "Lunaria", PG_FX, 1, FM_RADIO, RA, 0, 0);
+        fx_one(dir, "media_6_dictaphone", "Lunaria", PG_FX, 1, FM_DICTA, DC, 0, 0);
+        fx_one(dir, "motion_4_ensemble", "Nymphaea", PG_FX, 2, FO_ENS, EN, 0, 0);
+        fx_one(dir, "motion_5_phaser", "Nymphaea", PG_FX, 2, FO_PHASER, PS, 0, 0);
+        fx_one(dir, "motion_6_flanger", "Lunaria", PG_FX, 2, FO_FLANGER, FL, 0, 0);
+        fx_one(dir, "motion_7_tremolo", "Nymphaea", PG_FX, 2, FO_TREM, TR, 0, 0);
+        fx_one(dir, "motion_7_tremolo_pan", "Nymphaea", PG_FX, 2, FO_TREM, TP, 0, 0);
+    }
     for (t = 0; t < 3; t++) fx_one(dir, FN[t], "Lunaria", PG_FILTER, 0, FT_NOTCH + t, FI, 0, 1);
     printf("fx demo: %s\n", dir);
 }
@@ -987,8 +1051,8 @@ static double cpu_case(int fx)
     dmk_init(7);
     for (s = 0; s < DMK_SYNTHS; s++) {
         if (!fx) { ui.val[s][PG_FX][1][4] = 0; ui.val[s][PG_FX][3][0] = 0; ui.val[s][PG_FX][3][1] = 0; }
-        else ui.val[s][PG_FX][1][4] = fx == 1 ? 48 : 127;   /* tape; or VHS */
-        if (fx == 2) { ui.val[s][PG_FX][0][4] = 90; ui.val[s][PG_FX][2][4] = 40; }   /* lossy, chorus */
+        else ui.val[s][PG_FX][1][4] = choice_val(fx == 1 ? FM_TAPE : FM_VHS, FX_MEDIAS);   /* tape; or VHS */
+        if (fx == 2) { ui.val[s][PG_FX][0][4] = choice_val(FC_NOISE, FX_COLOURS); ui.val[s][PG_FX][2][4] = choice_val(FO_FLANGER, FX_MOTIONS); }   /* each row's heaviest */
     }
     if (fx == 3) for (s = 0; s < DMK_SYNTHS; s++) {     /* and a layer under every voice, the LFO on the cutoff */
         ui.val[s][PG_SOUND][1][0] = 90; ui.val[s][PG_LFO][0][1] = 60; ui.val[s][PG_LFO][0][4] = choice_val(LT_CUTOFF, 5);
@@ -1052,10 +1116,10 @@ static void cpu(void)
     z = instructions();
     printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with tape x3, room and echo %.0f instructions a sample\n",
            (double)(z - a) / frames, cpu_case(0), cpu_case(1));
-    {   /* the heaviest: every synth lossy, VHS and chorus, the haze, the grains; each core's share */
+    {   /* the heaviest: every synth noise, VHS and flanger (each row's heaviest), the haze, the grains; each core's share */
         double all = cpu_case(2), c0, c1;
         cpu_cores(&c0, &c1);
-        printf("cpu: the heaviest (lossy, VHS, chorus x3, haze, grains) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
+        printf("cpu: the heaviest (noise, VHS, flanger x3, haze, grains) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
                all, c0, c1);
         all = cpu_case(3);
         cpu_cores(&c0, &c1);

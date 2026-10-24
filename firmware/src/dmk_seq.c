@@ -357,6 +357,17 @@ static void lfo_sync(void)
         }
         lfo[s].rst = 0;
     }
+    for (s = 0; s < DMK_SYNTHS; s++) {                  /* MOTION's tremolo: its step at the tempo, in time with the bars */
+        uint32_t n3, blocks;
+        if (syn[s].motion != FO_TREM) continue;
+        n3 = TREM3[syn[s].ok[2] * TREM_N / 128];
+        blocks = 165375u * n3 / ((uint32_t)(seq_bpm > 0 ? seq_bpm : 120) * 12u);   /* a third of a sixteenth's, times n3 */
+        fx[s].tstep = 0xFFFFFFFFu / (blocks ? blocks : 1u);
+        if (seq_on && !clock_ext) {                     /* glided to where the bars put it (a jump would click) */
+            uint32_t len = n3 << 8, want = seq_now() % len * 3u % len * (0xFFFFFFFFu / len);
+            fx[s].tph += (uint32_t)((int32_t)(want - fx[s].tph) / 4);
+        }
+    }
 }
 
 static void seq_render(int frames)

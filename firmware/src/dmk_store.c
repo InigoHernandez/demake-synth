@@ -16,12 +16,13 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 5u   /* 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
+#define ST_VER 6u   /* 6: more effects in each FX row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
 
 static uint8_t st_buf[ST_SECTOR] POOL;                  /* a sector as it is written or was read */
 static uint8_t lib[ST_USER][ST_SOUND] POOL;             /* the library, as the flash holds it: [used, its form, the values]:
-                                                           form 0, 45 values (before 0.4); 1, 55 */
+                                                           form 0, 45 values (before 0.4); 1, 55; 2, 55 with the
+                                                           FX rows' later types (0.5) */
 static uint32_t st_gen;                                 /* the newest song's generation */
 static uint32_t song_gen[ST_SONGS];                     /* each slot's (0: empty) */
 static uint8_t song_prog[ST_SONGS];                     /* each slot's progression, for its name */
@@ -91,11 +92,22 @@ static void sound_put(int s, uint8_t *o)                /* synth s's sound into 
     int r, k;
     for (r = 0; r < SND_ROWS_N; r++) for (k = 0; k < 5; k++) o[r * 5 + k] = ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k];
 }
+/* synth s's FX rows' types, stored when each row had fewer (5, 4, 4): the same type, at its place in the longer list */
+static void fx_types_moved(int s)
+{
+    static const uint8_t OLD_N[3] = {5, 4, 4}, NEW_N[3] = {FX_COLOURS, FX_MEDIAS, FX_MOTIONS};
+    int r;
+    for (r = 0; r < 3; r++) {
+        uint8_t *v = &ui.val[s][PG_FX][r][4];
+        *v = *v * OLD_N[r] / 128 ? choice_val(*v * OLD_N[r] / 128, NEW_N[r]) : 0;   /* (off stays 0) */
+    }
+}
 static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of before 0.4, its new controls off */
 {
     int r, k;
     for (r = 0; r < (form ? SND_ROWS_N : 9); r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = v[r * 5 + k];
     if (!form) snd_new_defaults(s);                     /* its layer, voice, drive and LFO did nothing then: off */
+    if (form < 2) fx_types_moved(s);
     sp_sync();
 }
 /* synth s's sound into the library's first free slot: its number (1..32), 0 full, -1 not written */
@@ -104,7 +116,7 @@ static int sound_save(int s)
     int i, j;
     for (i = 0; i < ST_USER && lib[i][0]; i++) {}
     if (i == ST_USER) return 0;
-    lib[i][0] = 1; lib[i][1] = 1;
+    lib[i][0] = 1; lib[i][1] = 2;
     sound_put(s, &lib[i][2]);
     for (j = 0; j < (int)(ST_USER * ST_SOUND); j++) st_buf[ST_HDR + j] = lib[j / ST_SOUND][j % ST_SOUND];
     if (st_save(ST_LIB, ST_MAGIC_LIB, ST_USER * ST_SOUND, 0)) { lib[i][0] = 0; return -1; }
@@ -192,6 +204,7 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
         static const uint8_t MD[3] = {32, 48, 32};
         ui.val[0][PG_GLOBAL][2][k] = MD[k];
     }
+    if (st_ver < 6u) for (s = 0; s < DMK_SYNTHS; s++) fx_types_moved(s);   /* before 0.5: fewer types a row */
     if (st_ver < 5u) {                                  /* before 0.4: its new controls off; Off first in the verb's
                                                            and the echo's types */
         for (s = 0; s < DMK_SYNTHS; s++) snd_new_defaults(s);

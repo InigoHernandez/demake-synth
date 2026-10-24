@@ -24,7 +24,7 @@
   const VB = [14, 14, 876, 538];
 
   const svg = document.getElementById("svg"), lcd = document.getElementById("lcd"), panel = document.getElementById("panel");
-  if (!panel) return;                                  /* a page without the emulator (the installer) */
+  if (!panel || !lcd) return;                         /* a page without the emulator (the installer; the manual's "panel" is an article) */
   const lg = lcd.getContext("2d"), img = lg.createImageData(240, 240);
   const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); (p || svg).appendChild(e); return e; };
   const label = (x, y, s, size = 11, fill = INK) => { const t = el("text", { x, y, "text-anchor": "middle", fill, "font-size": size, "font-family": "geist, sans-serif", "font-weight": 500 }); t.textContent = s; return t; };
@@ -125,7 +125,7 @@
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=11")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=12")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       power.textContent = "On";

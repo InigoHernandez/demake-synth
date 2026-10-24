@@ -39,9 +39,10 @@ static inline int32_t curve(const int16_t *t, int32_t x)
 
 /* ---- a synth's sound, in the units the voices use; sp_sync (dmk_ui.c) sets it from the controls */
 enum { FT_LP24, FT_LP12, FT_HP, FT_BP, FT_NOTCH, FT_PEAK, FT_VOWEL, FT_OFF };
-enum { FC_OFF, FC_SAT, FC_CRUSH, FC_LOSSY, FC_NOISE };          /* COLOUR */
-enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS };                       /* MEDIA */
-enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT };                    /* MOTION */
+/* each row's types; the later ones after, so a stored type keeps its place (dmk_store's version 6) */
+enum { FC_OFF, FC_SAT, FC_CRUSH, FC_LOSSY, FC_NOISE, FC_WARM, FC_DIST };                  /* COLOUR */
+enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS, FM_VINYL, FM_RADIO, FM_DICTA };                  /* MEDIA */
+enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT, FO_ENS, FO_PHASER, FO_FLANGER, FO_TREM };      /* MOTION */
 enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI, VB_OFF };   /* the VERB's types (off: nothing run) */
 enum { ET_TAPE, ET_GRAINS, ET_OFF };                                     /* the ECHO's */
 typedef struct {
@@ -302,6 +303,19 @@ static struct {
     int32_t clp, hold, sl, band[2], peak[3], step[3], frame, crk, nfol, nlp, sdc, lg[3];   /* COLOUR */
     uint32_t hum;                                       /* (its phase: it wraps) */
     int32_t chlp[2];                                    /* MOTION */
+    int32_t wlo, wpre, wtl, wdc, dpre, dg, dfi, dfo;    /* WARM; DISTORT, its level's gain (Q8) and what it hears */
+    int32_t ng, nfl, mcrk, md;                          /* a medium's own noise: its gain, the follower it rides (Q8), a crackle;
+                                                           the later media's delay (Q8), as the block began */
+    int32_t vlp[2], vrm[2];                             /* VINYL: the top rolled off, the rumble */
+    uint32_t vph, mph, fph;                             /* the platter; the dictaphone's motor, its capstan */
+    int32_t rhp[2], rlp[4], rdr, rdt, rcnt;             /* RADIO: the band; the drift, where it goes, when it turns */
+    int32_t agc, agc_g;                                 /* DICTAPHONE: the level it hears, its gain (Q8) */
+    int32_t px[2][4], py[2][4], pfb[2];                 /* PHASER: each side's stages, the fed back */
+    int32_t fdc[2], ftl[2];                             /* FLANGER: the DC of each side's copy, its tone */
+    uint32_t eph[2];                                    /* ENSEMBLE: the slow sweep, the fast */
+    int32_t ed[3];                                      /*   each tap's delay (Q8), as the block began */
+    uint32_t tph, tstep;                                /* TREMOLO: its place, its step a block (dmk_seq: the tempo's) */
+    int32_t tg[2];                                      /*   each side's gain, as the block began */
     int32_t xg[3];                                      /* each row's share while its type changes, Q15 */
     uint8_t gate, cur[3];                               /* the holes; the type each row runs now */
 } fx[DMK_SYNTHS];
@@ -389,6 +403,50 @@ static void colour_block(int sy, int32_t *x, int type)
             n += ((sinp((uint32_t)fx[sy].hum) + sinp((uint32_t)fx[sy].hum * 3u) / 3) * k3) >> 13;
             x[i] += (n * g) >> 15;
         }
+    } else if (type == FC_WARM) {                       /* a triode's lean: the lows and mids bent (an even harmonic, a
+                                                           soft top), the highs passed by clean so it thickens without
+                                                           fizz; BODY lifts the lows into it, TILT turns the result */
+        int32_t drive = 256 + k0 * 6, even = k0 * 64, body = k2 * 2, tilt = (k1 - 64) * 256, mix = k3 * 258;
+        int32_t comp = 65536 / drive, lin = (65536 + k0 * 100) / (256 + body / 2);   /* as loud as it came in (+1.5 dB at
+                                                           full), small; BODY paid back */
+        for (i = 0; i < DMK_SUB; i++) {
+            int32_t v, u, q, y;
+            fx[sy].wlo += ((x[i] - fx[sy].wlo) * 750) >> 15;          /* ~170 Hz: the body */
+            v = x[i] + ((fx[sy].wlo * body) >> 8);
+            fx[sy].wpre += ((v - fx[sy].wpre) * 14000) >> 15;         /* ~4 kHz: below it bends, above it is clean */
+            u = clampi((fx[sy].wpre * drive) >> 8, -65535, 65535);
+            q = ((u >> 1) * (u >> 1)) >> 15;                          /* u^2 / 2^17 */
+            y = curve(T_SAT, u - ((q * even) >> 13));                 /* up to 0.25 u^2: the bottom bent harder */
+            fx[sy].wdc += (y * 256 - fx[sy].wdc) >> 10;               /* its DC out (~7 Hz, Q8) */
+            y -= fx[sy].wdc >> 8;
+            y = ((((y * comp) >> 8) + v - fx[sy].wpre) * lin) >> 8;
+            fx[sy].wtl += ((y - fx[sy].wtl) * 3500) >> 15;            /* ~800 Hz: the tilt's hinge */
+            y += (int32_t)(((int64_t)(2 * fx[sy].wtl - y) * tilt) >> 15);
+            x[i] += (int32_t)(((int64_t)(y - x[i]) * mix) >> 15);
+        }
+    } else if (type == FC_DIST) {                       /* drive into a clip whose knee is soft; SHAPE turns it into a
+                                                           fold (a sine of the drive: past full it folds back) */
+        int32_t drive = 256 + k0 * k0 / 2, fold = k2 * 258, mix = k3 * 258, g0 = fx[sy].dg, g1, sin_ = 0, sout = 0, gst;
+        /* the level matched, slowly (~0.2 s): what went in against what the clip made of it, +3.5 dB (its tone and mix take some back), at most as it
+         * made it (a drive loudens the quiet sounds most, and a fixed law can't know the sound) */
+        g1 = fx[sy].dfo > 64 ? fx[sy].dfi * 384 / fx[sy].dfo : g0;   /* (a mean level: 32 bits hold it x 384) */
+        g1 = clampi(g1, 8, 256);
+        g1 = g0 + ((g1 - g0) >> 3);
+        fx[sy].dg = g1;
+        gst = (g1 - g0) / DMK_SUB;
+        for (i = 0; i < DMK_SUB; i++) {
+            int32_t u, c, y;
+            fx[sy].dpre += ((x[i] - fx[sy].dpre) * 18000) >> 15;      /* ~5 kHz in: fewer of the fold's aliases */
+            u = (int32_t)(((int64_t)fx[sy].dpre * drive) >> 8);
+            c = curve(T_LIM, u);
+            y = c + (((sinp((uint32_t)u << 15) - c) * fold) >> 15);
+            sin_ += (x[i] < 0 ? -x[i] : x[i]) >> 4; sout += (y < 0 ? -y : y) >> 4;
+            y = (y * (g0 + gst * (i + 1))) >> 8;
+            fx[sy].clp += ((y - fx[sy].clp) * tone) >> 15;
+            x[i] += (int32_t)(((int64_t)(fx[sy].clp - x[i]) * mix) >> 15);
+        }
+        fx[sy].dfi += (sin_ - fx[sy].dfi) >> 9;         /* a block's mean, in and out (~0.2 s) */
+        fx[sy].dfo += (sout - fx[sy].dfo) >> 9;
     }
 }
 
@@ -464,6 +522,128 @@ static void media_block(int sy, int32_t *x, int t)
     }
 }
 
+/* MEDIA's later three: VINYL (a record at 33 1/3: the platter's slow wow, a little warp, the top rolled off; its
+ * surface's crackle, most of it small, and a rumble under it), RADIO (AM through a small speaker: a 150 Hz - 5 kHz band
+ * BAND narrows to 600 Hz - 1.2 kHz and TONE moves, its top four poles; static in the band; the station drifting off and back, the static
+ * rising as it fades), DICTAPHONE (a microcassette: narrow, a fast capstan warble on a slower wow, the automatic level
+ * squeezing it, its hiss and motor raised in the gaps; SPEED: the slower, the darker and the more it warbles). Their
+ * noise rides the sound and its tail (~3 s, the needle still on the record), so a quiet synth is quiet */
+static void media_new(int sy, int32_t *x, int t)
+{
+    const synth_t *p = &syn[sy];
+    int i, k0 = p->mk[0], k1 = p->mk[1], k2 = p->mk[2], k3 = p->mk[3];
+    int32_t g0 = fx[sy].ng, g1, pk = 0, gs;
+    for (i = 0; i < DMK_SUB; i++) { int32_t a = x[i] < 0 ? -x[i] : x[i]; if (a > pk) pk = a; }
+    pk <<= 8;
+    if (pk > fx[sy].nfl) fx[sy].nfl += (pk - fx[sy].nfl) >> 2;
+    else fx[sy].nfl -= (fx[sy].nfl >> 12) + (fx[sy].nfl > 0);   /* ~1.5 s a block at a time */
+    g1 = fx[sy].nfl > (2048 << 8) ? 32768 : fx[sy].nfl >> 4;
+    fx[sy].ng = g1;
+    gs = (g1 - g0) / DMK_SUB;
+    if (t == FM_VINYL) {
+        int32_t depth = k0 * 280, tone = T_OP[64 + k1 / 2], rum = k3;
+        uint32_t crk = (uint32_t)(k2 * k2) / 17u;       /* crackles a sample, in 2^-20: ~40 a second at full */
+        int32_t m, d = fx[sy].md, ds;
+        fx[sy].vph += 54045u * DMK_SUB;                 /* a turn each 1.8 s */
+        m = sinp(fx[sy].vph) + sinp(fx[sy].vph * 2u) / 5;   /* off its centre, a little warped: up to ~1.1 % */
+        fx[sy].md = 200 * 256 + ((m * depth) >> 15);
+        ds = (fx[sy].md - d) / DMK_SUB;
+        for (i = 0; i < DMK_SUB; i++) {
+            int32_t pos, f, y, n, g = g0 + gs * i;
+            uint32_t j, r;
+            tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
+            pos = (int32_t)(fx[sy].tw << 8) - (d += ds);
+            j = (uint32_t)(pos >> 8); f = pos & 255;
+            y = (tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8;
+            fx[sy].tw++;
+            fx[sy].vlp[0] += ((y - fx[sy].vlp[0]) * tone) >> 15;
+            fx[sy].vlp[1] += ((fx[sy].vlp[0] - fx[sy].vlp[1]) * tone) >> 15;
+            r = xs32(&fx[sy].rng);
+            n = ((int32_t)r >> 20) * k2 >> 10;          /* the surface's hiss, faint */
+            if ((r >> 12) < crk) {                      /* a crackle: its size cubed, so most are small */
+                uint32_t q = xs32(&fx[sy].rng), a = q >> 17;
+                a = (((a * a) >> 15) * a) >> 15;
+                fx[sy].mcrk = (int32_t)((a * (uint32_t)(24 + k2)) >> 9) * (q & 1u ? -1 : 1);
+            }
+            n += fx[sy].mcrk; fx[sy].mcrk = fx[sy].mcrk * 5 / 8;
+            fx[sy].vrm[0] += (int32_t)(((int64_t)((((int32_t)r >> 16) << 8) - fx[sy].vrm[0]) * 187) >> 15);   /* ~40 Hz */
+            fx[sy].vrm[1] += (int32_t)(((int64_t)(fx[sy].vrm[0] - fx[sy].vrm[1]) * 187) >> 15);
+            n += ((fx[sy].vrm[1] >> 8) * rum) >> 9;     /* the rumble, ~-43 dB at full */
+            x[i] = curve(T_LIM, fx[sy].vlp[1] + ((n * g) >> 15));
+        }
+    } else if (t == FM_RADIO) {
+        int sh = (k1 - 64) * 13 / 64, lo = clampi(37 + k0 * 25 / 127 + sh, 0, 127), hi;
+        int32_t fade, lvl, sa, chp, c, mk = 384 + k0 * 3;   /* (1.5x, to 3x as BAND narrows) */
+        if (--fx[sy].rcnt <= 0) {                       /* the drift: somewhere new each 0.1 - 0.85 s, most often near */
+            uint32_t q = xs32(&fx[sy].rng);
+            fx[sy].rcnt = 300 + (int32_t)(q >> 21);
+            q = xs32(&fx[sy].rng) >> 17;
+            fx[sy].rdt = (int32_t)((q * q) >> 15);
+        }
+        fx[sy].rdr += (fx[sy].rdt - fx[sy].rdr) >> 9;  /* glided, ~0.9 Hz */
+        fade = (fx[sy].rdr * k3) >> 7;
+        lvl = 32768 - ((fade * 3) >> 2);                /* down to ~-12 dB as it drifts */
+        sa = k2 * (64 + (fade >> 8));                   /* the static, up as the station goes */
+        hi = clampi(101 - k0 * 22 / 127 + sh - (fade * 10 >> 15), 0, 127);
+        chp = T_OP[lo]; c = T_OP[hi];
+        for (i = 0; i < DMK_SUB; i++) {
+            int32_t y, n, g = g0 + gs * i;
+            uint32_t r = xs32(&fx[sy].rng);
+            tp_buf[sy][fx[sy].tw++ & (TP_LEN - 1)] = (int16_t)sat16(x[i]);   /* (the line kept, for a type after) */
+            n = ((int32_t)r >> 18) * sa >> 15;          /* hiss and, now and then, a crackle in it */
+            if ((r >> 12) < (uint32_t)k2 * 3u) fx[sy].mcrk = ((int32_t)xs32(&fx[sy].rng) >> 19) * k2 >> 7;
+            n += fx[sy].mcrk; fx[sy].mcrk = fx[sy].mcrk * 3 / 4;
+            y = (int32_t)(((int64_t)x[i] * lvl) >> 15) + ((n * g) >> 15);
+            fx[sy].rhp[0] += ((y - fx[sy].rhp[0]) * chp) >> 15; y -= fx[sy].rhp[0];
+            fx[sy].rhp[1] += ((y - fx[sy].rhp[1]) * chp) >> 15; y -= fx[sy].rhp[1];
+            fx[sy].rlp[0] += ((y - fx[sy].rlp[0]) * c) >> 15;   /* the top: four poles, as a receiver's is steep */
+            fx[sy].rlp[1] += ((fx[sy].rlp[0] - fx[sy].rlp[1]) * c) >> 15;
+            fx[sy].rlp[2] += ((fx[sy].rlp[1] - fx[sy].rlp[2]) * c) >> 15;
+            fx[sy].rlp[3] += ((fx[sy].rlp[2] - fx[sy].rlp[3]) * c) >> 15;
+            x[i] = curve(T_SAT, (fx[sy].rlp[3] * mk) >> 8);   /* the small speaker: made up, and soft at the top */
+        }
+    } else {                                            /* DICTAPHONE */
+        int32_t mul = 256 + (127 - k2) * 2, af = (k0 * 9 * mul) >> 8, aw = (k0 * 46 * mul) >> 8;
+        int32_t c = T_OP[clampi(84 + k2 * 14 / 127 + (k1 - 64) * 13 / 64, 0, 127)], chp = T_OP[50];
+        int32_t hiss = 64 + (127 - k2), gmax = 256 + k3 * 14, a0 = fx[sy].agc_g, a1, as, pk2 = 0, fl, d = fx[sy].md, ds;
+        uint32_t fr = 680000u + (uint32_t)k2 * 3800u, mi;   /* the capstan: 7 .. 12 Hz */
+        /* the level control: from what it heard (in fast, out over ~0.2 s), the gain toward 6000, at most SQUASH's
+         * (8x), glided; a block's step across it */
+        a1 = fx[sy].agc * gmax > (6000 << 8) ? (6000 << 8) / (fx[sy].agc + 1) : gmax;
+        a1 = 256 + (((a1 - 256) * k3) >> 7);
+        fx[sy].agc_g += (a1 - fx[sy].agc_g) >> 3;
+        as = (fx[sy].agc_g - a0) / DMK_SUB;
+        fx[sy].fph += fr * DMK_SUB;
+        fx[sy].wow += (146000u + (uint32_t)(fx[sy].wd * 20)) * DMK_SUB;   /* ~1.5 Hz, its rate wandering */
+        fl = sinp(fx[sy].fph);
+        fx[sy].md = 150 * 256 + ((fl * af + sinp(fx[sy].wow) * aw) >> 15);
+        ds = (fx[sy].md - d) / DMK_SUB;
+        mi = 97000000u + (uint32_t)k2 * 200000u + (uint32_t)(fl * 40);   /* the motor's whine, ~1 kHz, warbling */
+        for (i = 0; i < DMK_SUB; i++) {
+            int32_t pos, f, y, n, g = g0 + gs * i, a;
+            uint32_t j, r = xs32(&fx[sy].rng);
+            tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
+            pos = (int32_t)(fx[sy].tw << 8) - (d += ds);
+            j = (uint32_t)(pos >> 8); f = pos & 255;
+            y = (tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8;
+            fx[sy].tw++;
+            fx[sy].mph += mi;
+            n = ((((int32_t)r >> 22) * hiss) >> 9) + (sinp(fx[sy].mph) >> 10);
+            y += (n * g) >> 15;                         /* under the level control: it raises them in the gaps */
+            fx[sy].rhp[0] += ((y - fx[sy].rhp[0]) * chp) >> 15; y -= fx[sy].rhp[0];   /* ~300 Hz up */
+            fx[sy].rlp[0] += ((y - fx[sy].rlp[0]) * c) >> 15;
+            fx[sy].rlp[1] += ((fx[sy].rlp[0] - fx[sy].rlp[1]) * c) >> 15;
+            y = fx[sy].rlp[1] * 5 / 4;                  /* (the band made up) */
+            a = y < 0 ? -y : y;
+            if (a > pk2) pk2 = a;
+            x[i] = curve(T_LIM, (int32_t)(((int64_t)y * (a0 + as * (i + 1))) >> 8));
+        }
+        if (pk2 > fx[sy].agc) fx[sy].agc += (pk2 - fx[sy].agc) >> 1;
+        else fx[sy].agc -= (fx[sy].agc >> 9) + (fx[sy].agc > 0);
+        fx[sy].wd += ((int32_t)(xs32(&fx[sy].rng) >> 22) - 512 - fx[sy].wd) >> 6;
+    }
+}
+
 /* MOTION's chorus: two taps swept in quadrature at 7-17 ms, a tone on the wet, mixed into a stereo pair */
 static void chorus_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
 {
@@ -486,6 +666,164 @@ static void chorus_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
         fx[sy].cw++;
         l[i] = x[i] - ((x[i] * mix) >> 16) + ((tap[0] * mix) >> 15);
         r[i] = x[i] - ((x[i] * mix) >> 16) + ((tap[1] * mix) >> 15);
+    }
+}
+
+/* ENSEMBLE: the string machine's: three taps of one line at 120 degrees, each swept by a slow sweep (0.3 - 1.5 Hz)
+ * and a fast one (4 - 8 Hz) at once, so the three never beat the same way; the sweeps a block at a time, each tap's
+ * delay stepped across it. Left and right: the three's middle and their difference, WIDTH apart */
+static void ens_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
+{
+    const synth_t *p = &syn[sy];
+    int i, k;
+    int32_t as = p->ok[0] * 160, af = p->ok[0] * 20, tone = T_OP[64 + p->ok[1] / 2], w = p->ok[3] * 258, d[3], ds[3];
+    fx[sy].eph[0] += (29218u + (uint32_t)p->ok[2] * 920u) * DMK_SUB;
+    fx[sy].eph[1] += (389564u + (uint32_t)p->ok[2] * 3067u) * DMK_SUB;
+    for (k = 0; k < 3; k++) {
+        uint32_t o = (uint32_t)k * 0x55555555u;
+        int32_t e = 200 * 256 + ((sinp(fx[sy].eph[0] + o) * as + sinp(fx[sy].eph[1] + o) * af) >> 15);
+        d[k] = fx[sy].ed[k]; ds[k] = (e - d[k]) / DMK_SUB; fx[sy].ed[k] = e;
+    }
+    for (i = 0; i < DMK_SUB; i++) {
+        int32_t t[3], c, sd;
+        ch_buf[sy][fx[sy].cw & (CH_LEN - 1)] = (int16_t)sat16(x[i]);
+        for (k = 0; k < 3; k++) {
+            int32_t pos = (int32_t)(fx[sy].cw << 8) - (d[k] += ds[k]), f = pos & 255;
+            uint32_t j = (uint32_t)(pos >> 8);
+            t[k] = (ch_buf[sy][j & (CH_LEN - 1)] * (256 - f) + ch_buf[sy][(j + 1) & (CH_LEN - 1)] * f) >> 8;
+        }
+        fx[sy].cw++;
+        c = (t[0] + t[1] + t[2]) * 11 >> 5;             /* (about a third of the three, a little over) */
+        sd = (int32_t)(((int64_t)(t[0] - t[1]) * w) >> 16);
+        fx[sy].chlp[0] += ((c + sd - fx[sy].chlp[0]) * tone) >> 15;
+        fx[sy].chlp[1] += ((c - sd - fx[sy].chlp[1]) * tone) >> 15;
+        l[i] = (x[i] >> 1) + ((fx[sy].chlp[0] * 7) >> 3);
+        r[i] = (x[i] >> 1) + ((fx[sy].chlp[1] * 7) >> 3);
+    }
+}
+
+/* the sweep's triangle at q, 0 .. 65534 */
+static inline uint32_t tri16(uint32_t q) { uint32_t t = q >> 16; return t < 32768u ? t << 1 : (65535u - t) << 1; }
+
+/* PHASER: the pedal's four all-pass stages, mono as the pedal is (after Felucca's, perform.c, GPL-3.0: its stages, its
+ * coefficients, T_PHA); their breaks swept by a triangle around TONE's place (350 Hz .. 2 kHz) by DEPTH (to 4 octaves
+ * each way, within 150 Hz .. 4.8 kHz), fed back by RESO (0 .. 0.7); the coefficient a block at a time, at its
+ * middle. Out: (dry + all-passed) / 2, its two notches. Each stage clamped (an all-pass overshoots up to 3x on a
+ * sharp edge) */
+static void phaser_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
+{
+    const synth_t *p = &syn[sy];
+    int i, st;
+    int32_t a, fbk = p->ok[3] * 180, cq = (8 * 2048) + p->ok[1] * 16 * 2048 / 127, dsp = p->ok[0] * 16 * 2048 / 127, q;
+    int32_t *px = fx[sy].px[0], *py = fx[sy].py[0];
+    uint32_t inc = T_LFO[p->ok[2] * 80 / 127];           /* 0.05 .. 2.2 Hz */
+    q = cq + (int32_t)(((int64_t)((int32_t)tri16(fx[sy].clfo + inc / 2u) - 32767) * dsp) >> 15);
+    q = clampi(q, 0, 32 * 2048 - 1);
+    a = T_PHA[q >> 11] + (((T_PHA[(q >> 11) + 1] - T_PHA[q >> 11]) * (q & 2047)) >> 11);
+    fx[sy].clfo += inc;
+    for (i = 0; i < DMK_SUB; i++) {
+        int32_t xs = clampi((x[i] + 2) >> 2, -16383, 16383), u = xs + ((fx[sy].pfb[0] * fbk + 16384) >> 15), y = u;
+        ch_buf[sy][fx[sy].cw++ & (CH_LEN - 1)] = (int16_t)sat16(x[i]);   /* (the line kept, for a type after) */
+        for (st = 0; st < 4; st++) {                    /* y = a (u - y1) + u1 */
+            y = clampi(px[st] + ((a * (u - py[st]) + 8192) >> 14), -65535, 65535);
+            px[st] = u;
+            py[st] = y;
+            u = y;
+        }
+        fx[sy].pfb[0] = clampi(y, -32767, 32767);
+        l[i] = r[i] = (xs + y) * 5 >> 1;                /* (x + y) / 2 * 1.25: x at a quarter above */
+    }
+}
+
+/* FLANGER: a short tape flange (after Felucca's): one line, its delay swept from 0.25 ms to DEPTH's (up to 8 ms) on
+ * a squared triangle (longer near the short end, where the comb is widest: the sweep sounds even), the right a quarter
+ * behind, fed back by RESO (0 .. 0.85, the sum soft), TONE on the swept copy, a DC blocker on it (one: both read the same
+ * line). The delays a block at a time, stepped across it. Out: (dry + swept) / 2 */
+static void flanger_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
+{
+    const synth_t *p = &syn[sy];
+    int i, c;
+    int32_t fbk = p->ok[3] * 219, tone = T_OP[64 + p->ok[1] / 2], d[2], ds[2];
+    uint32_t inc = T_LFO[p->ok[2] * 80 / 127], span = (uint32_t)p->ok[0] * 342u / 127u;
+    fx[sy].clfo += inc;
+    for (c = 0; c < 2; c++) {
+        uint32_t t = tri16(fx[sy].clfo - (uint32_t)c * 0x40000000u);
+        int32_t e = (int32_t)((11u << 8) + ((span * ((t * t) >> 16)) >> 8));
+        d[c] = fx[sy].ed[c]; ds[c] = (e - d[c]) / DMK_SUB; fx[sy].ed[c] = e;
+    }
+    for (i = 0; i < DMK_SUB; i++) {
+        int32_t v[2], dc;
+        for (c = 0; c < 2; c++) {
+            int32_t pos = (int32_t)(fx[sy].cw << 8) - (d[c] += ds[c]), f = pos & 255, y;
+            uint32_t j = (uint32_t)(pos >> 8);
+            y = (ch_buf[sy][j & (CH_LEN - 1)] * (256 - f) + ch_buf[sy][(j + 1) & (CH_LEN - 1)] * f) >> 8;
+            fx[sy].ftl[c] += ((y - fx[sy].ftl[c]) * tone) >> 15;
+            v[c] = fx[sy].ftl[c];
+        }
+        /* the line at the sound's level, as every type writes it (a type after reads it as it is), the sum soft */
+        ch_buf[sy][fx[sy].cw++ & (CH_LEN - 1)] = (int16_t)curve(T_LIM, x[i] + ((v[0] * fbk) >> 15));
+        fx[sy].fdc[0] += ((v[0] << 8) - fx[sy].fdc[0]) >> 9;
+        dc = fx[sy].fdc[0] >> 8;
+        l[i] = (x[i] + v[0] - dc) * 5 >> 3;             /* (dry + swept) / 2 * 1.25 */
+        r[i] = (x[i] + v[1] - dc) * 5 >> 3;
+    }
+}
+
+/* TREMOLO's divisions, in thirds of a sixteenth: 1/2, 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T (the screen's TREMS) */
+#define TREM_N 7
+static const uint8_t TREM3[TREM_N] = {24, 12, 8, 6, 4, 3, 2};
+/* TREMOLO: the level, or with PAN the two sides against each other, swung by a sine that SHAPE squares (driven into
+ * its top, so its edges stay ~1 % of the cycle: no click), at RATE's division of the tempo (dmk_seq keeps it in time
+ * with the bars); its gains a block at a time, stepped across it */
+static void trem_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
+{
+    const synth_t *p = &syn[sy];
+    int i;
+    int32_t d = p->ok[0] * 258, sh = p->ok[1], pan = p->ok[3] * 258, s, m, g, gr, sl, sr;
+    fx[sy].tph += fx[sy].tstep;
+    s = sinp(fx[sy].tph);
+    if (sh) s = clampi((int32_t)(((int64_t)s * (256 + sh * sh / 4)) >> 8), -32767, 32767);
+    m = (s + 32767) >> 1;                               /* 0 .. 32767: 0 the trough */
+    g = 32768 - (((32768 - m) * d) >> 15);
+    gr = g + (int32_t)(((int64_t)((32768 - ((m * d) >> 15)) - g) * pan) >> 15);   /* PAN: the right against the left */
+    sl = (g - fx[sy].tg[0]) / DMK_SUB; sr = (gr - fx[sy].tg[1]) / DMK_SUB;
+    for (i = 0; i < DMK_SUB; i++) {
+        int32_t a = fx[sy].tg[0] + sl * (i + 1), b = fx[sy].tg[1] + sr * (i + 1);
+        ch_buf[sy][fx[sy].cw++ & (CH_LEN - 1)] = (int16_t)sat16(x[i]);
+        l[i] = (int32_t)(((int64_t)x[i] * a) >> 15);
+        r[i] = (int32_t)(((int64_t)x[i] * b) >> 15);
+    }
+    fx[sy].tg[0] = g; fx[sy].tg[1] = gr;
+}
+
+static void motion_block(int sy, const int32_t *x, int32_t *l, int32_t *r, int t)
+{
+    if (t == FO_CHORUS) chorus_block(sy, x, l, r);
+    else if (t == FO_ENS) ens_block(sy, x, l, r);
+    else if (t == FO_PHASER) phaser_block(sy, x, l, r);
+    else if (t == FO_FLANGER) flanger_block(sy, x, l, r);
+    else trem_block(sy, x, l, r);
+}
+
+/* a later type coming in: its own state from rest (a stale one rings as it fades in); the line is the sound's */
+static void fx_enter(int sy, int row, int t)
+{
+    int c, k;
+    if (row == 1 && t >= FM_VINYL) {
+        fx[sy].vlp[0] = fx[sy].vlp[1] = fx[sy].vrm[0] = fx[sy].vrm[1] = 0;
+        fx[sy].rhp[0] = fx[sy].rhp[1] = fx[sy].rlp[0] = fx[sy].rlp[1] = fx[sy].rlp[2] = fx[sy].rlp[3] = 0;
+        fx[sy].agc = 0; fx[sy].agc_g = 256; fx[sy].mcrk = 0; fx[sy].md = (t == FM_DICTA ? 150 : 200) << 8;
+        fx[sy].nfl = fx[sy].ng = 0;
+    } else if (row == 0 && t >= FC_WARM) {
+        fx[sy].wlo = fx[sy].wpre = fx[sy].wtl = fx[sy].wdc = fx[sy].dpre = fx[sy].clp = fx[sy].dfi = fx[sy].dfo = 0;
+        fx[sy].dg = 64;
+    } else if (row == 2 && t >= FO_ENS) {
+        for (c = 0; c < 2; c++) {
+            for (k = 0; k < 4; k++) fx[sy].px[c][k] = fx[sy].py[c][k] = 0;
+            fx[sy].pfb[c] = fx[sy].fdc[c] = fx[sy].ftl[c] = fx[sy].chlp[c] = 0;
+            fx[sy].tg[c] = 32768;
+        }
+        for (k = 0; k < 3; k++) fx[sy].ed[k] = t == FO_FLANGER ? 11 << 8 : 200 * 256;
     }
 }
 
@@ -725,7 +1063,7 @@ static void bench_block(int n)
 static int xg_next(int sy, int row, int want)           /* the row's share at the block's end; its type taken when out */
 {
     int32_t g;
-    if (want != fx[sy].cur[row] && !fx[sy].cur[row]) { fx[sy].cur[row] = (uint8_t)want; fx[sy].xg[row] = 0; }   /* from off: in */
+    if (want != fx[sy].cur[row] && !fx[sy].cur[row]) { fx[sy].cur[row] = (uint8_t)want; fx[sy].xg[row] = 0; fx_enter(sy, row, want); }   /* from off: in */
     g = fx[sy].xg[row];
     g += want != fx[sy].cur[row] ? -XG_STEP : XG_STEP;
     return g < 0 ? 0 : g > 32768 ? 32768 : g;
@@ -746,23 +1084,25 @@ static void rows_run(int s, int32_t *x, int32_t *l, int32_t *r)
         if (fx[s].cur[row]) {
             int fading = g0 < 32768 || g1 < 32768;
             if (fading) for (i = 0; i < DMK_SUB; i++) dry[i] = x[i];
-            if (row) media_block(s, x, fx[s].cur[row]); else colour_block(s, x, fx[s].cur[row]);
+            if (!row) colour_block(s, x, fx[s].cur[row]);
+            else if (fx[s].cur[row] >= FM_VINYL) media_new(s, x, fx[s].cur[row]);
+            else media_block(s, x, fx[s].cur[row]);
             if (fading) xg_mix(x, dry, g0, g1);
         } else if (row)
             for (i = 0; i < DMK_SUB; i++) tp_buf[s][fx[s].tw++ & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
         fx[s].xg[row] = g1;
-        if (want != fx[s].cur[row] && !g1) fx[s].cur[row] = (uint8_t)want;
+        if (want != fx[s].cur[row] && !g1) { fx[s].cur[row] = (uint8_t)want; fx_enter(s, row, want); }
     }
-    {                                                   /* MOTION: the chorus here (vibrato and drift are the voices') */
-        int want = p->motion == FO_CHORUS;
+    {                                                   /* MOTION: here (vibrato and drift are the voices') */
+        int want = p->motion == FO_VIB || p->motion == FO_DRIFT ? FO_OFF : p->motion;
         int32_t g1 = xg_next(s, 2, want), g0 = fx[s].xg[2];
         if (fx[s].cur[2]) {
-            chorus_block(s, x, l, r);
+            motion_block(s, x, l, r, fx[s].cur[2]);
             if (g0 < 32768 || g1 < 32768) { xg_mix(l, x, g0, g1); xg_mix(r, x, g0, g1); }
         } else
             for (i = 0; i < DMK_SUB; i++) { l[i] = r[i] = x[i]; ch_buf[s][fx[s].cw++ & (CH_LEN - 1)] = (int16_t)sat16(x[i]); }
         fx[s].xg[2] = g1;
-        if (want != fx[s].cur[2] && !g1) fx[s].cur[2] = (uint8_t)want;
+        if (want != fx[s].cur[2] && !g1) { fx[s].cur[2] = (uint8_t)want; fx_enter(s, 2, want); }
     }
 }
 

@@ -182,6 +182,10 @@ def main():
     # buses' half rate
     arr("T_OP", "uint16_t", [round(32767 * (1 - math.exp(-2 * math.pi * min(20 * 1000 ** (v / 127), 19000) / SR))) for v in range(128)])
     arr("T_OPH", "uint16_t", [round(32767 * (1 - math.exp(-2 * math.pi * min(20 * 1000 ** (v / 127), 10000) / (SR / 2)))) for v in range(128)])
+    # MOTION's phaser: its stages' all-pass coefficient a = (g - 1) / (g + 1), g = tan(pi f / fs), Q14, for a break
+    # of 150 Hz * 2^(5 i / 32): 150 Hz .. 4.8 kHz in 33 points (the four-stage pedal's sweep, as Felucca's PH_A)
+    arr("T_PHA", "int16_t", [round(16384 * (math.tan(math.pi * 150 * 2 ** (5 * i / 32) / SR) - 1)
+                                   / (math.tan(math.pi * 150 * 2 ** (5 * i / 32) / SR) + 1)) for i in range(33)])
     # equal-power pan, Q15: the right's gain at v, the left's at 127 - v
     arr("T_PAN", "uint16_t", [round(32767 * math.sin(v / 127 * math.pi / 2)) for v in range(128)])
     # the echo's time, half-rate samples: 30 ms .. 1.45 s on an exponential law

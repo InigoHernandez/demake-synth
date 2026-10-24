@@ -45,9 +45,9 @@ them.
 | Part | Built | Cost now |
 | --- | --- | --- |
 | Voice | ADPCM recording, Q16 pitch, SVF (LP24 LP12 HP BP Notch Peak Vowel Off), ADSR | 12 voices: ~900 in the heaviest case [M] |
-| Colour | Saturate, Crush (with its output stage), Lossy (3 bands, holes), Noise (hiss, crackle, hum) | Lossy 76, Crush 33 [M] |
-| Media | Tape, Cassette (dropouts glide), VHS (smooth tracking) | VHS 161, Tape 103, Cassette 140 [M] |
-| Motion | Chorus (2 taps, stereo), Vibrato, Drift | Chorus 78 [M] |
+| Colour | Saturate, Crush (with its output stage), Lossy (3 bands, holes), Noise (hiss, crackle, hum), Warm, Distort | Noise 86, Lossy 75, Crush 32 [M] |
+| Media | Tape, Cassette (dropouts glide), VHS (smooth tracking), Vinyl, Radio, Dictaphone | VHS 122, Cassette 119, Tape 82 [M] |
+| Motion | Chorus (2 taps, stereo), Vibrato, Drift, Ensemble, Phaser, Flanger, Tremolo | Flanger 69, Chorus 61 [M] |
 | Verb | Room (combs), Hall, Space, Haze, Bloom, Lofi (8-line FDN on the second core) | Haze 381 [M] |
 | Echo | Tape (mu-law, 1.5 s), Grains (6, octaves and fifths) | — |
 | Mix | DC blocker, half level through the effects, soft limiter, fades on every type change | — |
@@ -155,28 +155,38 @@ Not here, on purpose:
 - **Unison.** It would double the voices a note uses. Drift's per-note detune and Chorus give the width more
   cheaply.
 
-## 5. Stage 4: effects per synth
+## 5. Stage 4: effects per synth (built, 2026-10-25; waiting for the owner's ears)
 
 Each row keeps its four macros: K1 Amount, K2 Tone, K3 Time or Rate, K4 Character. Every new type gets the same
 treatment as 0.2's:
-- a fade when it comes in or goes;
+- a fade when it comes in or goes, and its own state from rest as it comes in (`fx_enter`);
 - glides on its own events;
-- the click detector, run over its corners;
-- WAVs of those corners for the owner.
+- the click detector, run over its corners (each type switched on and off, and to the next, every second; its
+  knobs swept; all at 0 and at 127): no clicks, nothing clipped [M] (Vinyl's crackle is its own);
+- WAVs of those corners for the owner (`--fxdemo`: the nine, and each sound dry to hear them against).
 
-| Row | New type | What it sounds like | K1 · K2 · K3 · K4 | Cost, RAM |
+The new types come after the old in each list, so a stored type keeps its place: the store's version 6 (a song) and
+the library's form 2 (a sound) move a type stored at 5, 4, 4 a row to its place in 7, 7, 8. The stress test and
+`--cpu` take each row's heaviest: Noise, VHS, Flanger.
+
+| Row | Type | What it is | K1 · K2 · K3 · K4 | Cost a synth [M] |
 | --- | --- | --- | --- | --- |
-| Colour | **Warm** | a soft, uneven saturation that thickens without fizz; the "tube" in a tape deck | Drive · Tilt · Body · Mix | ~35, — [E] |
-| Colour | **Distort** | drive into a clip that turns into a fold: grit for plucks and keys | Drive · Tone · Shape · Mix | 54, — (plan 1.2) |
-| Media | **Vinyl** | a record at 33⅓: slow wow, rumble, crackle and the top rolled off | Wow · Tone · Crackle · Rumble | ~60, its line [E] |
-| Media | **Radio** | AM through a small speaker: a 300 Hz–3 kHz band, static, the tuning drifting | Band · Tone · Static · Drift | ~50, — [E] |
-| Media | **Dictaphone** | a microcassette: narrow, fast-warbling, squeezed, a motor whine | Warble · Tone · Speed · Squeeze | ~80, its line [E] |
-| Motion | **Ensemble** | three chorus voices on a slow and a fast sweep: a string machine's shimmer | Depth · Tone · Rate · Width | ~75, its line (plan 1.2) |
-| Motion | **Phaser** | four slow all-pass stages: the swirl under pads | Depth · Tone · Rate · Feedback | ~40, — [E] |
-| Motion | **Flanger** | a short tape flange, slow and deep | Depth · Tone · Rate · Feedback | ~45, its line [E] |
-| Motion | **Tremolo** | the level or the pan, swung to the tempo | Depth · Shape · Rate · Pan | ~10, — [E] |
+| Colour | **Warm** | a triode's lean: an even harmonic and a soft top on the lows and mids (below ~4 kHz), the highs passed by clean so it thickens without fizz; BODY lifts the lows into it | Drive · Tilt · Body · Mix | 69 |
+| Colour | **Distort** | a soft-kneed clip that SHAPE turns into a sine fold; ~5 kHz in, a slow level match out (+0..2 dB on any sound) | Drive · Tone · Shape · Mix | 62 |
+| Media | **Vinyl** | 33⅓: the platter's wow (0.56 Hz, off centre and a little warped, to ~1.1 %), the top rolled off, the surface's crackle (its size cubed: most small) and hiss, a ~40 Hz rumble | Wow · Tone · Crackle · Rumble | 95 |
+| Media | **Radio** | AM through a small speaker: 150 Hz–5 kHz narrowing to 600 Hz–1.2 kHz, its top four poles, static in the band, the station drifting off and back (to -12 dB) with the static rising as it goes | Band · Tone · Static · Drift | 73 |
+| Media | **Dictaphone** | a microcassette: narrow, a 7–12 Hz capstan warble on a 1.5 Hz wow, the automatic level control (to 8x) raising its hiss and motor in the gaps; the slower, the darker | Warble · Tone · Speed · Squash | 94 |
+| Motion | **Ensemble** | the string machine's: three taps at 120°, each on a slow (0.3–1.5 Hz) and a fast (4–8 Hz) sweep, WIDTH apart | Depth · Tone · Rate · Width | 67 |
+| Motion | **Phaser** | the pedal's four all-pass stages, mono (after Felucca's), swept 150 Hz–4.8 kHz around TONE's place | Depth · Tone · Rate · Reso | 61 |
+| Motion | **Flanger** | a tape flange (after Felucca's): 0.25–8 ms on a squared triangle, the right a quarter behind, fed back to 0.85 | Depth · Tone · Rate · Reso | 69 |
+| Motion | **Tremolo** | the level, or with PAN the sides against each other, on 1/2 .. 1/16T of the tempo, in time with the bars; SHAPE squares it (edges ~1 % of the cycle) | Depth · Shape · Rate · Pan | 10 |
 
-The rows have room: Colour holds 4 types and Off, Media 3, Motion 3. With these, each row has 6 or 7.
+- Each new type costs no more than its row's heaviest (Noise 86, VHS 122), but Ensemble and Flanger, 6-8 over the
+  Chorus's 61. The heaviest case (Noise, VHS, Flanger on all three, Haze, Grains): CPU0 1575, CPU1 1200 [M]; with a
+  layer under every voice and the LFO on, CPU0 1602, CPU1 1375. Under the proven 1650.
+- Levels against the dry sound, at the demos' settings, on three sounds: within -2..+3 dB [M] (Tremolo -1.5 at full
+  depth: it halves the level half the time).
+- Flash and RAM: the code and one 33-point table; no new line (each shares its row's).
 
 ## 6. Stage 5: the spaces
 
@@ -226,7 +236,7 @@ Today a sound is a recording and whatever the synth was set to. Instead:
 | 1 | measure the FM-1; balance the cores; free RAM | the two load numbers; the heaviest case at ~1500 a core |
 | 2 | scenes and per-synth patterns, the Song page, the song mode, harmony (built) | a song played start to end on the FM-1; a build |
 | 3 | velocity, the LFO, layer, glide, grit, short loops, keytrack and drive | WAVs; a build |
-| 4 | Warm, Distort, Vinyl, Radio, Dictaphone, Ensemble, Phaser, Flanger, Tremolo | WAVs of each one's corners; a build |
+| 4 | Warm, Distort, Vinyl, Radio, Dictaphone, Ensemble, Phaser, Flanger, Tremolo (built) | WAVs of each one's corners; a build |
 | 5 | Shimmer, Freeze, Ping-pong, Filtered, Reverse, Swell, Grains+, Plate if the RAM allows | WAVs; a build |
 | 6 | master tape, pump, tape stop, the performance layer | WAVs; a build |
 | 7 | the factory sounds, from the owner's sheets | the release |

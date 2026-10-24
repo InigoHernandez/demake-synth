@@ -67,17 +67,25 @@ static const char *const LAYER_NAME[B_COUNT] = {"ALGORITHM, the effect", "help",
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
 static const char *const FILTERS[] = {"LP24", "LP12", "HP", "BP", "Notch", "Peak", "Vowel", "Off"};
-static const char *const COLOURS[] = {"Off", "Saturate", "Crush", "Lossy", "Noise"};
-static const char *const MEDIAS[] = {"Off", "Tape", "Cassette", "VHS"};
-static const char *const MOTIONS[] = {"Off", "Chorus", "Vibrato", "Drift"};
+/* each row's types (the later ones after, so a stored type keeps its place: dmk_store's version 6) */
+#define FX_COLOURS 7
+#define FX_MEDIAS 7
+#define FX_MOTIONS 8
+static const char *const COLOURS[FX_COLOURS] = {"Off", "Saturate", "Crush", "Lossy", "Noise", "Warm", "Distort"};
+static const char *const MEDIAS[FX_MEDIAS] = {"Off", "Tape", "Cassette", "VHS", "Vinyl", "Radio", "Dictaphone"};
+static const char *const MOTIONS[FX_MOTIONS] = {"Off", "Chorus", "Vibrato", "Drift", "Ensemble", "Phaser", "Flanger", "Tremolo"};
+static const char *const TREMS[] = {"1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T"};   /* (dmk_dsp's TREM3) */
 /* each effect's four knobs, by row and type (the off ones: the row's own) */
-static const char *const FXK[3][5][4] = {
+static const char *const FXK[3][8][4] = {
     {{"Amount", "Tone", "Time", "Spice"}, {"Drive", "Tone", "Bias", "Mix"}, {"Bits", "Tone", "Rate", "Jitter"},
-     {"Loss", "Band", "Frame", "Holes"}, {"Hiss", "Tone", "Crackle", "Hum"}},
+     {"Loss", "Band", "Frame", "Holes"}, {"Hiss", "Tone", "Crackle", "Hum"}, {"Drive", "Tilt", "Body", "Mix"},
+     {"Drive", "Tone", "Shape", "Mix"}},
     {{"Amount", "Tone", "Time", "Spice"}, {"Amount", "Tone", "Wow", "Flutter"}, {"Warble", "Tone", "Rate", "Dropout"},
-     {"Wobble", "Band", "Rate", "Track"}},
+     {"Wobble", "Band", "Rate", "Track"}, {"Wow", "Tone", "Crackle", "Rumble"}, {"Band", "Tone", "Static", "Drift"},
+     {"Warble", "Tone", "Speed", "Squash"}},
     {{"Amount", "Tone", "Time", "Spice"}, {"Depth", "Tone", "Rate", "Mix"}, {"Depth", "", "Rate", "Fade"},
-     {"Depth", "Detune", "Rate", ""}}};
+     {"Depth", "Detune", "Rate", ""}, {"Depth", "Tone", "Rate", "Width"}, {"Depth", "Tone", "Rate", "Reso"},
+     {"Depth", "Tone", "Rate", "Reso"}, {"Depth", "Shape", "Rate", "Pan"}}};
 static const char *const ZOOMS[] = {"16", "32", "64"};
 static const char *const OFF[] = {"Off"};
 static const char *const LFOS[] = {"Sine", "Triangle", "Ramp", "Square", "Random"};
@@ -110,7 +118,7 @@ static const char *const VERBS[] = {"Off", "Room", "Hall", "Space", "Haze", "Blo
 static const char *const ECHOS[] = {"Off", "Tape", "Grains"};
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
-    {PG_FX, 0, 4, 5, COLOURS}, {PG_FX, 1, 4, 4, MEDIAS}, {PG_FX, 2, 4, 4, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
+    {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, FX_MEDIAS, MEDIAS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
     {PG_GLOBAL, 0, 4, 7, VERBS}, {PG_GLOBAL, 1, 4, 3, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
@@ -309,9 +317,9 @@ static void sp_sync(void)
         p->rel = T_EXP[VS(s, PG_AMP, 0, 3)];
         v = VS(s, PG_AMP, 0, 4);
         p->level = v * v * 2;                           /* Q15 on a square law: 64 is -12 dB */
-        p->colour = (uint8_t)(VS(s, PG_FX, 0, 4) * 5 / 128);
-        p->media = (uint8_t)(VS(s, PG_FX, 1, 4) * 4 / 128);
-        p->motion = (uint8_t)(VS(s, PG_FX, 2, 4) * 4 / 128);
+        p->colour = (uint8_t)(VS(s, PG_FX, 0, 4) * FX_COLOURS / 128);
+        p->media = (uint8_t)(VS(s, PG_FX, 1, 4) * FX_MEDIAS / 128);
+        p->motion = (uint8_t)(VS(s, PG_FX, 2, 4) * FX_MOTIONS / 128);
         for (v = 0; v < 4; v++) { p->ck[v] = VS(s, PG_FX, 0, v); p->mk[v] = VS(s, PG_FX, 1, v); p->ok[v] = VS(s, PG_FX, 2, v); }
         p->tape = (uint8_t)(p->media == FM_TAPE);
         p->tdepth = VS(s, PG_FX, 1, 0) * 800;           /* the wow: up to ~40 cents at its slowest */
@@ -435,7 +443,7 @@ static void ui_init(void)
         ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
         ui.val[s][PG_FILTER][0][0] = t[4]; ui.val[s][PG_FILTER][0][1] = t[5]; ui.val[s][PG_FILTER][0][2] = t[6];
         ui.val[s][PG_FILTER][0][4] = 0;                 /* LP24 */
-        ui.val[s][PG_FX][1][4] = t[8] ? 48 : 0;         /* Media: tape, or off */
+        ui.val[s][PG_FX][1][4] = t[8] ? choice_val(FM_TAPE, FX_MEDIAS) : 0;   /* Media: tape, or off */
         ui.val[s][PG_FX][0][4] = 0;                     /* Colour, Motion: off */
         ui.val[s][PG_FX][2][4] = 0;
         ui.val[s][PG_FX][1][0] = t[9]; ui.val[s][PG_FX][1][1] = 90;
@@ -533,6 +541,10 @@ static void val_text(char *o, int page, int row, int k)
     }
     if (page == PG_SOUND && row == 2 && (k == 1 || k == 2)) { if (!v) str_cat(o, "Off"); else str_cat(fmt_int(o, v * 100 / 127), "%"); return; }
     if (page == PG_FILTER && k == 3 && !v) { str_cat(o, "Off"); return; }
+    if (page == PG_FX && row == 2 && k == 2 && choice_index(choice_of(PG_FX, 2, 4), *vp(PG_FX, 2, 4)) == FO_TREM) {
+        str_cat(o, TREMS[v * TREM_N / 128]);            /* the tremolo's rate: its division of the tempo */
+        return;
+    }
     if (page == PG_LFO && row == 0 && k == 0) {         /* the rate, Hz; synced: the division */
         const choice_t *sc = choice_of(PG_LFO, 1, 0);
         int sy = choice_index(sc, *vp(PG_LFO, 1, 0));
@@ -2135,7 +2147,7 @@ static void overlays(void)
 /* the test build's load case (docs/sound-design.md, stage 1): HOME and SAVE held, then REC. Every synth lossy, VHS and
  * chorus, the haze and the grains, twelve notes struck again every two seconds; the same keys put it all back */
 static struct { uint8_t on, kept[DMK_SYNTHS][3], gkept[2]; uint32_t at; } stress;
-static const uint8_t STRESS_ROW[3] = {90, 127, 40};    /* the rows' type knobs: lossy, VHS, chorus */
+static uint8_t stress_row(int r) { return choice_val(r == 0 ? FC_NOISE : r == 1 ? FM_VHS : FO_FLANGER, r == 0 ? FX_COLOURS : r == 1 ? FX_MEDIAS : FX_MOTIONS); }   /* the rows' heaviest [M] */
 static void stress_notes(int on)
 {
     int i;
@@ -2149,7 +2161,7 @@ static void stress_set(int on)
     if (on == stress.on) return;
     for (s = 0; s < DMK_SYNTHS; s++)
         for (r = 0; r < 3; r++) {
-            if (on) { stress.kept[s][r] = ui.val[s][PG_FX][r][4]; ui.val[s][PG_FX][r][4] = STRESS_ROW[r]; }
+            if (on) { stress.kept[s][r] = ui.val[s][PG_FX][r][4]; ui.val[s][PG_FX][r][4] = stress_row(r); }
             else ui.val[s][PG_FX][r][4] = stress.kept[s][r];
         }
     for (r = 0; r < 2; r++) {
