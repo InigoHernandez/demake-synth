@@ -50,5 +50,11 @@ extern void (*dmk_par_end)(void);
 /* a frame is many milliseconds of drawing on the FM-1: the platform may set dmk_yield, which the frame calls between
  * its parts, where nothing is half done, to render the sound ahead meanwhile (dmk_render from inside dmk_frame) */
 extern void (*dmk_yield)(void);
+/* the store (docs/plan.md, 2.6): 64 KiB the platform keeps for the songs and the sound library. dmk_store_read reads
+ * n bytes at offset at; dmk_store_write erases the 4 KiB sector at at (a multiple of 4096) and writes n <= 4096 bytes
+ * there, the first 16 (the record's header) last. 0: done. Unset: no store, nothing saved. Set them before dmk_init,
+ * which loads the newest song */
+extern int (*dmk_store_read)(uint32_t at, void *p, uint32_t n);
+extern int (*dmk_store_write)(uint32_t at, const void *p, uint32_t n);
 
 #endif

@@ -51,7 +51,7 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Return", "Tone", "Size", "Mod"}, {"Return", "Tone", "Time", "Regen"},
       {"Swing", "Switch", "Click", "Rec"}, {"Theme", "", "", ""}}},
     {"LFO", 1, {"LFO"}, {"Target"}, {{"Rate", "Depth", "Shape", "Fade"}}},
-    {"Songs", 1, {"Songs"}, {""}, {{"Song", "Card", "", ""}}},
+    {"Songs", 1, {"Songs"}, {""}, {{"Slot", "", "", ""}}},
 };
 
 /* the page each button opens (-1: none) */
@@ -121,6 +121,9 @@ static struct {
     uint8_t key_ch[DMK_KEYS][7], key_nch[DMK_KEYS];     /* the CHORD page: each key's chord, as it sounds */
     uint8_t clear_arm;                                  /* OCT- once: 1 this synth's roll, 2 all three, armed */
     uint32_t clear_at;
+    uint8_t song, song_pick, song_arm;                  /* the song open's slot; the SONGS page's; a save over, armed */
+    uint32_t song_arm_at;
+    uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
 } ui;
 
@@ -133,6 +136,23 @@ static void notice(const char *s)
     ui.note[i] = 0;
     ui.note_ms = ui.now ? ui.now : 1;
 }
+
+/* the store (dmk_store.c, after this file) */
+#define ST_SONGS 14
+static int store_on(void);
+static int song_save(int i);
+static int song_load(int i);
+static int song_used(int i);
+static int song_erase(int i);
+static void song_new(void);
+static const char *song_name(int i);
+static int sound_save(int s);
+static void sound_init(int s);
+static void sound_put(int s, uint8_t *o);
+static int lib_count(void);
+static int lib_nth(int n);
+static void lib_load(int s, int slot);
+static uint8_t ui_first[DMK_SYNTHS][45];                /* INIT: each synth's sound as the first song has it */
 
 /* a control's value: a synth's own on its pages, the song's on Home's last column and Global; Home's rows are views of
  * each synth's level (AMP), sends and pan (FX, SPACE) */
@@ -286,6 +306,7 @@ static void ui_init(void)
     ui.row[PG_FX] = 1;                                  /* Media: the first effect built */
     ui.page = PG_HOME;
     ui.touch_k = -1;
+    for (s = 0; s < DMK_SYNTHS; s++) { sound_put(s, ui_first[s]); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
     sp_sync();
 }
 
@@ -304,6 +325,7 @@ static void val_text(char *o, int page, int row, int k)
     const choice_t *c = choice_of(page, row, k);
     int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 0) { str_cat(o, THEME_NAME[theme]); return; }
+    if (page == PG_DISCS && k == 0) { if (ui.song_pick < 9) *o++ = '0'; fmt_int(o, ui.song_pick + 1); return; }
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
@@ -428,7 +450,7 @@ static void field(int i, const char *label, int page, int row)
     val_text(v, page, row, i);
     text_mfit(x, Y_FIELDS + 16, w, v, on ? HOLO : C_INK);
     meter(x, Y_FIELDS + 44, w, page == PG_SOUND && row == 0 && i == 0 ? *vp(page, row, i) * 127 / (DMK_SAMPLES_N - 1)
-          : *vp(page, row, i), choice_of(page, row, i), on, 0);
+          : page == PG_DISCS && i == 0 ? ui.song_pick * 127 / (ST_SONGS - 1) : *vp(page, row, i), choice_of(page, row, i), on, 0);
 }
 
 /* the title, its row as the grey half (one size, one line), and the synths at the right: the current one filled */
@@ -533,6 +555,11 @@ static void foot(void)
 {
     const page_t *pg = &PAGE[ui.page];
     int r = ui.row[ui.page];
+    if (ui.page == PG_DISCS) {                          /* SONGS: what PLAY and SAVE do here */
+        text(PAD + 1, Y_FOOT + 2, store_on() ? "PLAY: load" : "No store here", &FS, C_LABEL);
+        if (store_on()) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "SAVE: save here", &FS, C_LABEL);
+        return;
+    }
     if (ui.btn_held >> B_HOME & 1u && ui.now - ui.btn_down_at[B_HOME] > 350u) {   /* the patterns */
         text(PAD + 1, Y_FOOT + 2, "Patterns", &FS, C_LABEL);
         text_r(DMK_W - PAD - 1, Y_FOOT + 2, "OCT\xE2\x88\x92 twice: clear all", &FS, C_LABEL);
@@ -1027,16 +1054,21 @@ static void stage_chord(void)                           /* the progression: its 
     }
 }
 
+/* SONGS (SAVE held 1 s): the store's fourteen slots, four in view around the one K1 picks (its outline lit); the song
+ * open has a dot; an empty slot is grey. PLAY loads the slot picked (an empty one starts the first song again), SAVE
+ * saves there, OCT- twice empties it */
 static void stage_songs(void)
 {
-    static const char *const SONG[3] = {"First snow", "Embers", "Night drive"};
-    int i, h = (SH - 3 * G) / 4;
+    int i, h = (SH - 3 * G) / 4, first = ui.song_pick < 1 ? 0 : ui.song_pick - 1;
+    if (first > ST_SONGS - 4) first = ST_SONGS - 4;
     for (i = 0; i < 4; i++) {
-        int y = SY + i * (h + G);
-        char n[3] = {'0', (char)('1' + i), 0};
-        round_line(SX, y, SW, h, h / 2, 1, C_LINE);
-        text(SX + 14, y + (h - 12) / 2, n, &FS, C_LABEL);
-        text(SX + 40, y + (h - 20) / 2 - 1, i < 3 ? SONG[i] : "Empty", &FM, i < 3 ? C_INK : C_LABEL);
+        int n = first + i, y = SY + i * (h + G), used = song_used(n), pick = n == ui.song_pick;
+        char t[3] = {(char)('0' + (n + 1) / 10), (char)('0' + (n + 1) % 10), 0};
+        if (pick) round_line(SX, y, SW, h, h / 2, 2, HOLO);
+        else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
+        text(SX + 14, y + (h - 12) / 2, t, &FS, C_LABEL);
+        text_fit(SX + 40, y + (h - 20) / 2 - 1, SW - 70, used ? song_name(n) : "Empty", &FM, used ? C_INK : C_LABEL);
+        if (n == ui.song && used) round_fill(SX + SW - 22, y + h / 2 - 3, 6, 6, 3, C_INK);   /* the song open */
     }
 }
 
@@ -1315,6 +1347,34 @@ static void ui_button(int b, int down)
             ui.btn_used |= bit;
             return;
         }
+        if (b == B_SAVE && ui.btn_held >> B_EDIT & 1u) {   /* EDIT held, SAVE: the sound into the library */
+            char t[24];
+            int n;
+            ui.btn_used |= bit;
+            if (!store_on()) { notice("No store here"); return; }
+            if (seq_on) { notice("Stop to save"); return; }
+            n = sound_save(ui.synth);
+            if (n <= 0) { notice(n ? "Not saved" : "The library is full"); return; }
+            fmt_int(str_cat(t, n < 10 ? "Saved as User 0" : "Saved as User "), n);
+            notice(t);
+            ui.preset[ui.synth] = (uint8_t)(DMK_SAMPLES_N + lib_count() - 1);
+            return;
+        }
+        if (b == B_OCTD && ui.btn_held >> B_EDIT & 1u) {   /* EDIT held, OCT-: INIT, the recording kept */
+            sound_init(ui.synth);
+            ui.preset[ui.synth] = ui.val[ui.synth][PG_SOUND][0][0];
+            ui.btn_used |= bit;
+            notice("Init");
+            return;
+        }
+        if (b == B_OCTD && ui.page == PG_DISCS) {       /* SONGS, OCT- twice: the slot emptied */
+            if (!song_used(ui.song_pick)) { notice("Empty already"); return; }
+            if (ui.clear_arm == 3 && ui.now - ui.clear_at < 2000u) {
+                notice(song_erase(ui.song_pick) ? "Not emptied" : "Slot emptied");
+                ui.clear_arm = 0;
+            } else { ui.clear_arm = 3; ui.clear_at = ui.now; notice("OCT\xE2\x88\x92 again: empty it"); }
+            return;
+        }
         if (b == B_OCTD && (ui.btn_held >> B_SEQ & 1u || ui.btn_held >> B_HOME & 1u)) {
             /* SEQ held, OCT- twice: this synth's roll cleared; HOME held (the patterns), all three. Twice, as
              * nothing is saved yet to bring them back */
@@ -1342,9 +1402,34 @@ static void ui_button(int b, int down)
     }
     ui.btn_held &= (uint16_t)~bit;
     if (ui.btn_used & bit) return;                      /* a modifier that was used does nothing on release */
-    if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { ui.page = PG_DISCS; return; }
+    if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { ui.page = PG_DISCS; ui.song_pick = ui.song; return; }
     if (ui.now - ui.btn_down_at[b] > 350u) return;      /* a hold showed its layer: no tap */
-    if (b == B_SAVE) { notice("Nothing to save yet"); return; }
+    if (b == B_SAVE) {                                  /* the song into its slot (SONGS: the slot picked) */
+        char t[24];
+        int at = ui.page == PG_DISCS ? ui.song_pick : ui.song;
+        if (!store_on()) { notice("No store here"); return; }
+        if (seq_on) { notice("Stop to save"); return; }
+        if (ui.page == PG_DISCS && song_used(at) && at != ui.song && !(ui.song_arm && ui.now - ui.song_arm_at < 2000u)) {
+            ui.song_arm = 1; ui.song_arm_at = ui.now;   /* over another song: twice */
+            notice("SAVE again: over it");
+            return;
+        }
+        ui.song_arm = 0;
+        if (song_save(at)) { notice("Not saved"); return; }
+        ui.song = (uint8_t)at;
+        fmt_int(str_cat(t, at < 9 ? "Saved in song 0" : "Saved in song "), at + 1);
+        notice(t);
+        return;
+    }
+    if (b == B_PLAY && ui.page == PG_DISCS) {           /* SONGS, PLAY: the slot picked loaded (empty: a new song) */
+        int at = ui.song_pick, s;
+        if (song_used(at)) { if (song_load(at)) { notice("Not loaded"); return; } notice("Loaded"); }
+        else { song_new(); notice("A new song"); }
+        ui.song = (uint8_t)at;
+        for (s = 0; s < DMK_SYNTHS; s++) ui.preset[s] = ui.val[s][PG_SOUND][0][0];
+        ui.page = PG_HOME;
+        return;
+    }
     if (b == B_PLAY) { seq_play(!seq_on); return; }
     if (b == B_REC) { seq_rec ^= 1u; notice(seq_rec ? "Recording on" : "Recording off"); return; }
     if (BTN_PAGE[b] >= 0) {
@@ -1375,11 +1460,20 @@ static void ui_encoder(int e, int d)
         for (b = 0; b < B_COUNT; b++) if (ui.btn_held >> b & 1u) ui.btn_used |= (uint16_t)(1u << b);
     }
     if (e == E_SELECT) { int s = ui.synth + (d > 0 ? 1 : -1); ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s); sp_sync(); return; }
-    if (e == E_PRESET) {                                /* the synth's sound: the next recording */
-        uint8_t *sv = &ui.val[ui.synth][PG_SOUND][0][0];
-        int n = *sv + (d > 0 ? 1 : -1);
-        *sv = (uint8_t)(n < 0 ? DMK_SAMPLES_N - 1 : n >= DMK_SAMPLES_N ? 0 : n);
-        notice(DMK_SAMPLES[*sv].name);
+    if (e == E_PRESET) {                                /* the synth's sound: the next recording, then the library's */
+        uint8_t *sv = &ui.val[ui.synth][PG_SOUND][0][0], *pr = &ui.preset[ui.synth];
+        int tot = DMK_SAMPLES_N + lib_count(), n;
+        if (*pr < DMK_SAMPLES_N || *pr >= tot) *pr = *sv;   /* from the recording it plays, if not one of the library's */
+        n = *pr + (d > 0 ? 1 : -1);
+        *pr = (uint8_t)(n < 0 ? tot - 1 : n >= tot ? 0 : n);
+        if (*pr < DMK_SAMPLES_N) { *sv = *pr; notice(DMK_SAMPLES[*sv].name); }
+        else {
+            char t[16];
+            int slot = lib_nth(*pr - DMK_SAMPLES_N);
+            lib_load(ui.synth, slot);
+            fmt_int(str_cat(t, slot < 9 ? "User 0" : "User "), slot + 1);
+            notice(t);
+        }
         sp_sync();
         return;
     }
@@ -1400,6 +1494,11 @@ static void ui_encoder(int e, int d)
         return;
     }
     if (ui.page == PG_ROLL) { roll_turn(k, d); return; }
+    if (ui.page == PG_DISCS) {                          /* SONGS: K1 picks the slot */
+        int n = ui.song_pick + (d > 0 ? 1 : -1);
+        if (k == 0) ui.song_pick = (uint8_t)(n < 0 ? 0 : n >= ST_SONGS ? ST_SONGS - 1 : n);
+        return;
+    }
     if (ui.page == PG_CHORD) {
         int h, i;
         for (h = 0; h < DMK_KEYS && !(ui.keys_down[h] && ui.key_slot[h]); h++) {}

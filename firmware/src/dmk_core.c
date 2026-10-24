@@ -8,6 +8,8 @@
 int (*dmk_par_begin)(void (*job)(void));
 void (*dmk_par_end)(void);
 void (*dmk_yield)(void);
+int (*dmk_store_read)(uint32_t at, void *p, uint32_t n);
+int (*dmk_store_write)(uint32_t at, const void *p, uint32_t n);
 static void ui_yield(void) { if (dmk_yield) dmk_yield(); }
 
 #include "dmk_gfx.c"
@@ -15,6 +17,7 @@ static void ui_yield(void) { if (dmk_yield) dmk_yield(); }
 #include "dmk_seq.c"
 #include "dmk_chord.c"
 #include "dmk_ui.c"
+#include "dmk_store.c"
 
 static uint32_t samples;
 
@@ -29,6 +32,7 @@ void dmk_init(uint32_t seed)
     seq_init();
     chord_init();
     ui_init();
+    store_boot();
 }
 
 void dmk_render(int16_t *lr, int frames)

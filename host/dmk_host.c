@@ -94,6 +94,21 @@ static void wait_ms(uint32_t ms)
 }
 static void tap(int b) { dmk_button(b, 1); wait_ms(60); dmk_button(b, 0); wait_ms(60); }
 
+/* the store, in RAM: a sector erased to 0xFF and written, as the flash; host_store_on(0) takes it away */
+static uint8_t host_store[65536];
+static int hs_read(uint32_t at, void *p, uint32_t n) { if (at + n > sizeof host_store) return -1; memcpy(p, host_store + at, n); return 0; }
+static int hs_write(uint32_t at, const void *p, uint32_t n)
+{
+    if (at & 4095u || n > 4096u || at + 4096u > sizeof host_store) return -1;
+    memset(host_store + at, 0xFF, 4096); memcpy(host_store + at, p, n);
+    return 0;
+}
+static void host_store_on(int on, int fresh)
+{
+    if (fresh) memset(host_store, 0xFF, sizeof host_store);
+    dmk_store_read = on ? hs_read : NULL; dmk_store_write = on ? hs_write : NULL;
+}
+
 static int shots;
 static void shot_fr(const char *dir, const char *name, const uint8_t *fr)
 {
@@ -114,6 +129,7 @@ static void shot(const char *dir, const char *name) { shot_fr(dir, name, dmk_fra
 
 static void tour(const char *dir)
 {
+    host_store_on(1, 1);                                /* a store, empty: the tour saves a song */
     dmk_init(1);
     now_ms = 0;
     ui.hinted = 0xFFFFu;                                /* the first-time hints stay off the pictures */
@@ -131,7 +147,8 @@ static void tour(const char *dir)
     tap(B_HOME); dmk_encoder(E_SELECT, 1); shot(dir, "home_synth2");
     dmk_button(B_HOME, 1); wait_ms(500); shot(dir, "home_held"); dmk_button(B_HOME, 0); wait_ms(60);
     tap(B_OCTU); wait_ms(300); shot(dir, "notice");
-    dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); shot(dir, "discs");
+    tap(B_SAVE); wait_ms(100); shot(dir, "saved");     /* SAVE: the song into its slot */
+    dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); dmk_encoder(E_K1, 1); wait_ms(60); shot(dir, "discs");
     tap(B_GLO); tap(B_GLO);                             /* to SETUP */
     for (int t = 1; t < DMK_THEMES; t++) {
         dmk_encoder(E_K1, 1);
@@ -152,6 +169,7 @@ static void tour(const char *dir)
     shot_fr(dir, "update", dmk_update_frame(3, 0));
     shot_fr(dir, "update_write", dmk_update_frame(5, 0));
     shot_fr(dir, "update_stopped", dmk_update_frame(9, -3));
+    host_store_on(0, 0);
     printf("tour: %d screens%s%s, text audit %s\n", shots, dir ? " in " : "", dir ? dir : "", ta_bad ? "FAILED" : "clean");
 }
 
@@ -261,7 +279,50 @@ static void selftest(void)
         if (ui.page == PG_HOME) { fails++; printf("selftest: a used HOME opened Home on release\n"); }
         seq_init();
     }
+    /* the store: SAVE keeps the song; a start loads the newest; SONGS loads, saves over (twice), empties; EDIT + SAVE
+     * puts the sound in the library, PRESETS reaches it, EDIT + OCT- is INIT */
+    {
+        int notes, cut;
+        host_store_on(1, 1);
+        dmk_init(9); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        seq_add(0, 5, 3, 62, 90); notes = sq[0].count;
+        ui.val[0][PG_FILTER][0][0] = 33; cut = 33; sp_sync();
+        tap(B_SAVE);
+        if (strncmp(ui.note, "Saved in song 01", 16)) { fails++; printf("selftest: SAVE does not save (%s)\n", ui.note); }
+        seq_play(1); tap(B_SAVE); seq_play(0);
+        if (strcmp(ui.note, "Stop to save")) { fails++; printf("selftest: SAVE while playing is not refused\n"); }
+        dmk_init(10); now_ms = 0; wait_ms(60);
+        if (sq[0].count != notes || ui.val[0][PG_FILTER][0][0] != cut || seq_find(0, 5, 62) < 0) { fails++; printf("selftest: a start does not load the saved song\n"); }
+        ui.boot_done = 1;
+        ui.val[1][PG_AMP][0][0] = 5; sq[2].count = 0;   /* a second song, in slot 2 */
+        dmk_button(B_SAVE, 1); wait_ms(1100); dmk_button(B_SAVE, 0); wait_ms(30);
+        if (ui.page != PG_DISCS) { fails++; printf("selftest: SAVE held does not open SONGS\n"); }
+        dmk_encoder(E_K1, 1); tap(B_SAVE);
+        if (!song_used(1) || ui.song != 1) { fails++; printf("selftest: SAVE on SONGS does not save into the slot picked\n"); }
+        dmk_encoder(E_K1, -1); tap(B_PLAY);             /* slot 1: the first song back */
+        if (ui.page != PG_HOME || ui.val[1][PG_AMP][0][0] == 5 || sq[0].count != notes) { fails++; printf("selftest: PLAY on SONGS does not load\n"); }
+        dmk_button(B_SAVE, 1); wait_ms(1100); dmk_button(B_SAVE, 0); wait_ms(30); dmk_encoder(E_K1, 1);
+        tap(B_SAVE);                                    /* over song 2, once: asks */
+        if (strcmp(ui.note, "SAVE again: over it")) { fails++; printf("selftest: saving over another song does not ask\n"); }
+        tap(B_OCTD); tap(B_OCTD);
+        if (song_used(1)) { fails++; printf("selftest: OCT- twice on SONGS does not empty the slot\n"); }
+        dmk_encoder(E_K1, 1); tap(B_PLAY);              /* an empty slot: a new song */
+        if (sq[0].count == notes && seq_find(0, 5, 62) >= 0) { fails++; printf("selftest: an empty slot does not start a new song\n"); }
+        ui.synth = 1; ui.val[1][PG_FILTER][0][1] = 99; sp_sync();
+        dmk_button(B_EDIT, 1); wait_ms(30); dmk_button(B_SAVE, 1); dmk_button(B_SAVE, 0); dmk_button(B_EDIT, 0); wait_ms(30);
+        if (lib_count() != 1) { fails++; printf("selftest: EDIT + SAVE does not save the sound (%s)\n", ui.note); }
+        dmk_button(B_EDIT, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_EDIT, 0); wait_ms(30);
+        if (ui.val[1][PG_FILTER][0][1] == 99) { fails++; printf("selftest: EDIT + OCT- is not INIT\n"); }
+        ui.preset[1] = DMK_SAMPLES_N - 1; ui.val[1][PG_SOUND][0][0] = DMK_SAMPLES_N - 1;
+        dmk_encoder(E_PRESET, 1);
+        if (ui.val[1][PG_FILTER][0][1] != 99 || strcmp(ui.note, "User 01")) { fails++; printf("selftest: PRESETS does not reach the library (%s)\n", ui.note); }
+        dmk_init(11);
+        if (lib_count() != 1) { fails++; printf("selftest: the library is not kept\n"); }
+        host_store_on(0, 0);
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     /* a modifier that was used does nothing on release */
+    tap(B_FX);
     dmk_button(B_GLO, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_GLO, 0); wait_ms(30);
     if (ui.page != PG_FX) { fails++; printf("selftest: a used GLO opened its page on release\n"); }
     tour(NULL);

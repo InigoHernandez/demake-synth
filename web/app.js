@@ -94,6 +94,25 @@
     wm.src = "img/wordmark.png";
   }
 
+  // ---- the store: the songs and sounds saved in the emulator, kept in this browser (64 KiB, as on the FM-1)
+  const STORE_KEY = "demake-store-1";
+  function storeLoad() {
+    try {
+      const t = localStorage.getItem(STORE_KEY);
+      if (!t) return null;
+      const b = atob(t), u = new Uint8Array(b.length);
+      for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+      return u.length === 65536 ? u : null;
+    } catch (e) { return null; }
+  }
+  function storeKeep(u) {
+    try {
+      let b = "";
+      for (let i = 0; i < u.length; i += 8192) b += String.fromCharCode.apply(null, u.subarray(i, i + 8192));
+      localStorage.setItem(STORE_KEY, btoa(b));
+    } catch (e) { /* storage off or full: the save lasts until the page closes */ }
+  }
+
   // ---- the sound: the core in a worklet
   let ctx = null, node = null, gain = null, master = 0.8;
   const send = (m) => { if (node) node.port.postMessage(m); };
@@ -102,13 +121,13 @@
     if (ctx) { ctx.resume(); return; }
     try {
       ctx = new AudioContext({ sampleRate: 44100 });
-      await ctx.audioWorklet.addModule("worklet.js?v=5");
+      await ctx.audioWorklet.addModule("worklet.js?v=6");
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=5")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=6")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
-      node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0 });
+      node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       power.textContent = "On";
     } catch (e) { power.textContent = "No sound: " + e.message; }
   });
@@ -136,6 +155,7 @@
   });
 
   function onmsg(m) {
+    if (m.t === "store") { storeKeep(m.st); return; }
     if (m.t !== "frame") return;
     const d = img.data, fb = m.fb, pal = m.pal;
     for (let i = 0; i < 240 * 240; i++) {

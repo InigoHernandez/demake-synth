@@ -12,8 +12,8 @@
 #ifndef APP_VER
 #define APP_VER "0.0"
 #endif
-/* Demake's store (docs/plan.md, 2.6): 0xB0000..0xC0000, MONO2K's 0xC0000..0xE0000 left alone. Nothing is written
- * there before the store is built (phase 3) */
+/* Demake's store (docs/plan.md, 2.6): 0xB0000..0xC0000, MONO2K's 0xC0000..0xE0000 left alone. The core lays it
+ * out (dmk_store.c: songs and the sound library, each record with its magic and CRC); this writes it */
 #define BANK_AT 0x000B0000u
 #define BANK_LEN 0x00010000u
 #define CV_MAX (240u * 18u)                     /* the platform's text: a line of FONT_S at a time (crash, update, rescue) */
@@ -63,6 +63,25 @@ static void render_ahead(void)
         RING_PUBLISH();
         ring_w++;
     }
+}
+
+/* ---- the store: the core's records in Demake's 64 KiB, a 4 KiB sector a write, the record's header written last
+ * so a cut save never reads as a record. Called from the panel (the loop), never inside a render: the second core
+ * is idle and reads no flash; the erase stops the sound ~50 ms, so the core saves only while stopped */
+static int store_read(uint32_t at, void *p, uint32_t n)
+{
+    if (at > BANK_LEN || n > BANK_LEN - at) return -1;
+    return st_read(BANK_AT + at, p, n);
+}
+static int store_write(uint32_t at, const void *p, uint32_t n)
+{
+    const uint8_t *b = p;
+    uint32_t took;
+    int rc;
+    if (!flash_ok || (at & 0xFFFu) || n > 0x1000u || at + 0x1000u > BANK_LEN) return -1;
+    if ((rc = fl_erase4k(BANK_AT + at, &took)) != 0) return rc;
+    if (n > 16u && (rc = fl_write(BANK_AT + at + 16u, b + 16, n - 16u)) != 0) return rc;
+    return fl_write(BANK_AT + at, b, n < 16u ? n : 16u);
 }
 
 /* ---- the second core: the core hands it some synths of each block (dmk_par_begin), CS-1's audio worker runs them */
@@ -309,6 +328,7 @@ static void app_init(void)
     if (audio_worker_online) { dmk_par_begin = par_begin; dmk_par_end = par_end; }
 #endif
     dmk_yield = frame_yield;
+    if (flash_ok) { dmk_store_read = store_read; dmk_store_write = store_write; }   /* before init: it loads the newest song */
     dmk_init(fm1_ticks());
     lcd_fill(0, 0, 240, 240, 0x0000u);
     render_ahead();

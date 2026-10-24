@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Demake's AudioWorklet: the firmware's core in one WebAssembly instance, as it runs on the FM-1. The page sends the
-// controls; this sends back the screen (4 bits a pixel), its 16 colours and the LEDs, 30 times a second.
+// controls; this sends back the screen (4 bits a pixel), its 16 colours and the LEDs, 30 times a second, and the
+// store after each save (the page keeps it: the songs and sounds saved in the browser).
 class Demake extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -14,7 +15,9 @@ class Demake extends AudioWorkletProcessor {
       const inst = new WebAssembly.Instance(new WebAssembly.Module(m.bytes), {});
       this.x = inst.exports;
       if (this.x._initialize) this.x._initialize();
+      if (m.store && m.store.length === 65536) new Uint8Array(this.x.memory.buffer, this.x.w_store(), 65536).set(m.store);
       this.x.w_init(m.seed >>> 0);
+      this.storeGen = this.x.w_store_gen();
       this.audio = new Int16Array(this.x.memory.buffer, this.x.w_audio(), 256);
       this.port.postMessage({ t: "ready" });
       return;
@@ -37,6 +40,11 @@ class Demake extends AudioWorkletProcessor {
     for (let i = 0; i < 128; i++) {
       o[0][i] = a[i * 2] / 32768;
       if (o[1]) o[1][i] = a[i * 2 + 1] / 32768;
+    }
+    if (x.w_store_gen() !== this.storeGen) {            /* a save: the store to the page, which keeps it */
+      this.storeGen = x.w_store_gen();
+      const st = new Uint8Array(x.memory.buffer, x.w_store(), 65536).slice();
+      this.port.postMessage({ t: "store", st }, [st.buffer]);
     }
     const ms = Math.floor(currentTime * 1000);
     if (ms - this.lastFrame >= 33) {
