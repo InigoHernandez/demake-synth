@@ -974,6 +974,11 @@ static void lfo_run(int s, int nb)
 {
     const synth_t *p = &syn[s];
     int b;
+    if (!p->ldepth && !lfo[s].gs && !lfo[s].cut && !lfo[s].pit) {   /* off, and all of it glided away: nothing */
+        for (b = 0; b < nb; b++) { lfo_c[s][b] = lfo_g[s][b] = lfo_cut[s][b] = 0; lfo_pit[s][b] = 0; }
+        lfo[s].sm = 0;
+        return;
+    }
     for (b = 0; b < nb; b++) {
         int32_t g = 0, c, tc, tp;
         if (p->ldepth) {
@@ -1093,22 +1098,24 @@ static void dsp_render(int16_t *lr, int frames)
                 lv0 = lfo[s].lv; gl0 = lfo[s].pl; gr0 = lfo[s].pr;   /* from where the last block left them: glided */
                 mod = lv0 != 32768 || lv1 != 32768 || gl0 != gl1 || gr0 != gr1;
                 lfo[s].lv = lv1; lfo[s].pl = gl1; lfo[s].pr = gr1;
+                /* each side held under twice full scale (the limiter bends it anyway), so its products with a gain
+                 * (to 32768) stay in 32 bits: a chain past full at full level wrapped into a click */
                 if (mod) for (i = 0; i < DMK_SUB; i++) {   /* the level and the pan, glided across the block */
-                    int32_t xl = (int32_t)(((int64_t)sl[i] * lvl) >> 14), xr = (int32_t)(((int64_t)sr[i] * lvl) >> 14), x;
+                    int32_t xl = clampi((sl[i] * lvl) >> 14, -65535, 65535), xr = clampi((sr[i] * lvl) >> 14, -65535, 65535), x;
                     int32_t lv = lv0 + (lv1 - lv0) * i / DMK_SUB;
-                    xl = (int32_t)(((int64_t)xl * lv) >> 15); xr = (int32_t)(((int64_t)xr * lv) >> 15);
+                    xl = (xl * lv) >> 15; xr = (xr * lv) >> 15;
                     x = (xl + xr) / 2;
-                    L[i] += (int32_t)(((int64_t)xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15);
-                    R[i] += (int32_t)(((int64_t)xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15);
-                    vin[i] += (int32_t)(((int64_t)x * p->vsend) >> 15);
-                    ein[i] += (int32_t)(((int64_t)x * p->esend) >> 15);
+                    L[i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
+                    R[i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
+                    vin[i] += (x * p->vsend) >> 15;
+                    ein[i] += (x * p->esend) >> 15;
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
-                } else for (i = 0; i < DMK_SUB; i++) {   /* (64-bit products: a chain past full, times a gain, overflowed) */
-                    int32_t xl = (int32_t)(((int64_t)sl[i] * lvl) >> 14), xr = (int32_t)(((int64_t)sr[i] * lvl) >> 14), x = (xl + xr) / 2;   /* back up */
-                    L[i] += (int32_t)(((int64_t)xl * p->gl) >> 15);
-                    R[i] += (int32_t)(((int64_t)xr * p->gr) >> 15);
-                    vin[i] += (int32_t)(((int64_t)x * p->vsend) >> 15);
-                    ein[i] += (int32_t)(((int64_t)x * p->esend) >> 15);
+                } else for (i = 0; i < DMK_SUB; i++) {
+                    int32_t xl = clampi((sl[i] * lvl) >> 14, -65535, 65535), xr = clampi((sr[i] * lvl) >> 14, -65535, 65535), x = (xl + xr) / 2;   /* back up */
+                    L[i] += (xl * p->gl) >> 15;
+                    R[i] += (xr * p->gr) >> 15;
+                    vin[i] += (x * p->vsend) >> 15;
+                    ein[i] += (x * p->esend) >> 15;
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 }
                 syn_peak[s] = pk > syn_peak[s] ? pk : syn_peak[s] - (syn_peak[s] >> 6);
