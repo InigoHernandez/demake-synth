@@ -465,6 +465,10 @@ its end. SNAP is on by default, and the ROLL then shows only the scale's rows (G
 
 #### 3.6.1 Patterns and performance
 
+*Built differently (2026-10-24, the owner's ask): each synth has eight patterns of its own, and sixteen scenes combine
+them, on the white keys with HOME held; a song arranges the scenes. See `docs/sound-design.md` section 3. The table
+below is the first design.*
+
 A song has **8 patterns**. A pattern holds the three synths' sequences and a chord progression. The sounds, the
 effects, the key and the tempo belong to the song, so a switch changes the notes and the harmony, never the timbre:
 seamless while playing.

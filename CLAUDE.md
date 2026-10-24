@@ -1,7 +1,8 @@
 # Demake
 
-An ambient lofi machine for the M-VAVE FM-1: three synths, a piano roll each, a chord machine, eight patterns a
-song, a chain of colour, media, motion and space effects per synth. The plan, and every decision so far, is
+An ambient lofi machine for the M-VAVE FM-1 on the owner's 64 recordings (the samples engine only): three synths, a
+piano roll and eight patterns each, sixteen scenes and a song of them, a chord machine and harmony, a chain of
+colour, media, motion and space effects per synth, a store of songs and sounds. The plan, and every decision so far, is
 `docs/plan.md`; read it first. The design rules are its 5.1, the build order its section 7.
 
 ## Hard rules
@@ -16,6 +17,7 @@ song, a chain of colour, media, motion and space effects per synth. The plan, an
   `Source/` only; float), hugelton/Felucca (GPL-3.0, integer) and Felucca-Engines (MIT). Keep their notices in
   `LICENSES/` when code from them lands.
 - The samples are the owner's own recordings (`../Demake/sample sounds/`); every factory sound gets a new short name.
+  Demake plays only them: no synth engines (the owner, 2026-10-24).
 - **The design (plan 5 and 6), for the screen, the emulator and the website:** Geist for all text (`assets/fonts/`,
   SIL OFL 1.1) in sentence case, names as written (FX, LFO, Am(add9)); Kiloy only in the wordmark and its D, never
   committed as a font (only its renders: `tools/gen_art.py`, the bitmap FL face); Kiloy's shapes in the UI (corners
@@ -29,8 +31,8 @@ song, a chain of colour, media, motion and space effects per synth. The plan, an
 ## Build, test
 
 - Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_samples.py [--wav build/samples]` (the owner's 64
-  WAVs from `DMK_SAMPLES` into `firmware/gen/dmk_samples.h` and `assets/samples/PROCESSING.md`; `DMK_SAMPLES_N`
-  picks how many are built in: 32, bank A, on the FM-1, all 64 elsewhere), `tools/gen_font.py [--sheet build/fonts.png]`,
+  WAVs from `DMK_SAMPLES` into `firmware/gen/dmk_samples.h` and `assets/samples/PROCESSING.md`; all 64 on every
+  build), `tools/gen_font.py [--sheet build/fonts.png]`,
   `tools/gen_art.py` (the site's art, wordmark, D, icon, plate, band, seal and the screens' frames; Kiloy from
   `DMK_KILOY`).
 - Host: `cc -std=c99 -D_DARWIN_C_SOURCE -O2 -Wall -Wextra -Wno-unused-function -Ifirmware/src -Ifirmware/gen -o

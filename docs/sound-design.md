@@ -31,8 +31,8 @@ them.
   - a song-wide patina: a master tape stage, a tempo pump, a tape stop.
 - **Factory sounds:** today PRESETS steps through bare recordings. Each recording should come with a designed sound
   that the owner picks and names from sheets.
-- **The song mode** (built): the eight patterns arranged into a piece of up to 128 steps, an intro to an ending,
-  typed from the pattern keys or recorded live.
+- **Scenes and the song mode** (built): each synth's eight patterns, sixteen scenes that combine them, and a song of up
+  to 128 steps, typed from the scene keys or recorded live; one synth can harmonize another.
 - **The budget is the limit for the sound, not ideas:**
   - CPU0 is at 1818 in the heaviest case, past the proven 1650 a core. The calibration puts a core near 3470, but the
     FM-1 hasn't been measured.
@@ -81,43 +81,46 @@ them.
 
    Both come first in stage 3, because they are the cheapest sound design there is.
 
-## 3. Stage 2: the song mode (built, 2026-10-24)
+## 3. Stage 2: scenes, the song mode, harmony (built, 2026-10-24)
 
-The patterns become a piece. A song is an **arrangement** of up to **128 steps**, each a pattern for **1 to 8 bars**
-with its synths muted or not, and an end.
+Modelled, at the owner's ask, on how a pocket studio arranges its patterns: patterns per track, scenes that combine
+them, a song of scenes.
 
-- **Two modes, one switch:** HOME held + PLAY, on any page.
-  - In pattern mode, PLAY loops the pattern open, as before.
-  - In song mode, PLAY plays the steps in order, each switch on its bar.
-  - Home's foot always says which: "Pattern 2", "Song mode", or where the song is ("Song 3/12").
-  - HOME's light stays on in song mode and beats the bar while it plays.
-  - Picking a pattern live (HOME held + a key) leaves the song for that pattern.
-- **Arrange (HOME held + SEQ):** the steps as a strip of cards, five in view.
-  - Each card shows the pattern's number, its bars as ticks and its synths as dots (a ring when muted).
-  - The step playing is lit; the cursor is a ring.
-  - The title gives the mode and the song's length (steps, bars, minutes).
-- **Writing, as the keys write in the Roll:**
-  - Stopped, a pattern key (white keys 1–8) writes the step at the cursor and moves on, so a song is typed:
-    1 1 2 1 3 …
-  - Over an existing step, a key changes only its pattern.
-  - A black key mutes a synth on the step.
-  - K1 the step, K2 its pattern, K3 its bars (past the last step: the bars the next key writes), K4 its mutes.
-  - OCT− deletes the step, OCT+ copies it after itself.
-- **The end (ALGORITHM):**
-  - Loop;
-  - Stop;
-  - Fade out, the synths over the last step, the space's tails left to ring;
-  - Fades, in over the first step and out over the last.
-- **Recorded live:** on Arrange, REC armed and PLAY; then switch patterns and mute synths with HOME held, as when
-  performing.
-  - Each bar is counted to the pattern and mutes playing; a change closes the step, and a step over 8 bars goes on
-    in the next.
-  - Stopping ends the take, which replaces the song from the cursor and turns song mode on.
-  - The keys played during a take aren't recorded into the rolls.
-- **Copying patterns:** HOME held, OCT+, then a pattern key: the pattern playing is copied there. Over a pattern
-  with notes, press the key twice. An empty pattern picked with HOME held still starts as a copy.
-- **Saved with the song** (record version 3, 3 bytes a step; older songs load with no arrangement).
-- **Cost:** none for the sound beyond the fade, applied once a block.
+- **Patterns per synth.**
+  - Each synth has eight patterns of its own: its rolls, up to 64 steps each.
+  - The Roll's head names the one it edits.
+- **Scenes.**
+  - Sixteen scenes, on the sixteen white keys with HOME held, switched on the bar.
+  - A scene says which pattern each synth plays, with the progression and which synths are muted.
+  - An empty scene picked starts as a copy of the one playing, its patterns shared.
+  - A variation is one synth's pattern changed in it (below).
+  - HOME held + OCT+, then a scene key, copies the scene there; over one in use, the key twice.
+- **The Song page** (HOME held + SEQ), two rows on ALGORITHM:
+  - **Scene:** the scene open as three lanes, each synth's pattern and its notes.
+    - K1–K3 each synth's pattern (at the bar when playing); K4 the progression.
+    - White keys 1–8 are the selected synth's pattern; black keys mute.
+    - OCT+ copies the selected synth's pattern into its next empty one, now the scene's: a variation in one press.
+      OCT− twice clears it.
+  - **Steps:** the song, up to 128 steps, each a scene for 1–8 bars.
+    - Stopped, a scene key writes a step and moves on.
+    - K1 the step, K2 its scene, K3 its bars, K4 the end.
+    - OCT− deletes a step, OCT+ copies it.
+- **Two modes, one switch:** HOME held + PLAY, scene mode or song mode, on any page.
+  - Home's foot says which: "Scene 3", "Song mode", "Song 3/12".
+  - HOME's light beats the bar in a song.
+  - Picking a scene live leaves the song.
+- **The end:** Loop, Stop, Fade out (the synths fade over the last step, the space's tails ring), or Fades (in over
+  the first step too).
+- **Recorded live:** on the Song page, REC and PLAY, then switch scenes with HOME held. Each bar is counted to the
+  scene playing; stopping ends the take and turns song mode on.
+- **Harmony**, after the sequencers that harmonize one track from another:
+  - FOLLOW (SEQ held + ALGORITHM) gains Harmony of 1, 2 and 3.
+  - The synth leaves its roll and plays each note its lead plays, moved by its interval in scale steps, on the scale
+    as the chord bends it.
+  - The interval is SEQ held + K2, an octave below to an octave above, a third above at first.
+  - The lead's keys are harmonized live.
+- **Saved with the song** (record version 4, which converts older songs: a pattern of three rolls becomes a scene).
+- **Cost:** the sequencer's clock only, and the fade once a block.
 
 ## 4. Stage 3: the sound itself
 
@@ -208,7 +211,7 @@ Today a sound is a recording and whatever the synth was set to. Instead:
 | Stage | Contents | Ends with |
 | --- | --- | --- |
 | 1 | measure the FM-1; balance the cores; free RAM | the two load numbers; the heaviest case at ~1500 a core |
-| 2 | the song mode: Arrange, its steps, live recording, the endings (built) | a song played start to end on the FM-1; a build |
+| 2 | scenes and per-synth patterns, the Song page, the song mode, harmony (built) | a song played start to end on the FM-1; a build |
 | 3 | velocity, the LFO, layer, glide, grit, short loops, keytrack and drive | WAVs; a build |
 | 4 | Warm, Distort, Vinyl, Radio, Dictaphone, Ensemble, Phaser, Flanger, Tremolo | WAVs of each one's corners; a build |
 | 5 | Shimmer, Freeze, Ping-pong, Filtered, Reverse, Swell, Grains+, Plate if the RAM allows | WAVs; a build |

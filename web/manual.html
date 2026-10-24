@@ -41,8 +41,9 @@
       <a href="#rolls">The rolls</a>
       <a href="#chords">Chords</a>
       <a href="#writing">Writing progressions</a>
-      <a href="#patterns">Patterns</a>
-      <a href="#song">Song mode</a>
+      <a href="#patterns">Scenes and patterns</a>
+      <a href="#song">The Song page</a>
+      <a href="#songmode">Song mode</a>
       <a href="#saving">Saving</a>
       <p class="mgroup">Sound</p>
       <a href="#effects">Effects</a>
@@ -185,9 +186,10 @@
           <p><b>Voice row</b><span>Voicing, inversion (Auto moves least), spread, strum</span></p>
           <p><b>Key row</b><span>Key, mode, chord length, rhythm</span></p>
           <p><b>Keys row</b><span>Chord or All; the type: sevenths, triads, ninths, add9, sus2, sus4, 6/9, power</span></p>
-          <p><b>SEQ + ALGO</b><span>How this synth follows: chords, key, chord, root, free</span></p>
+          <p><b>SEQ + ALGO</b><span>How this synth follows: chords, key, chord, root, free, or another synth's harmony</span></p>
+          <p><b>SEQ + K2</b><span>The harmony's interval: an octave below to an octave above</span></p>
         </div>
-        <p class="note">The first song: the pad plays the chords, the piano follows the key, the third synth the root. The card's grey line names the synth that plays them.</p>
+        <p class="note">The first song: the pad plays the chords, the piano follows the key, the third synth the root. The card's grey line names the synth that plays them. In harmony with another synth, a synth leaves its roll and plays each note the other plays, moved on the scale; keys played on the lead are harmonized too.</p>
       </article>
 
       <article id="writing" data-group="Playing">
@@ -203,34 +205,48 @@
       </article>
 
       <article id="patterns" data-group="Playing">
-        <h1>Patterns</h1>
-        <p class="msub">Eight a song: each the three rolls and the progression. The sounds, the key and the tempo stay.</p>
-        <figure class="mfig"><img src="img/screens/16_home_held.png" alt="Patterns" width="240" height="240"><figcaption>HOME held: the one playing lit, an empty one grey.</figcaption></figure>
+        <h1>Scenes and patterns</h1>
+        <p class="msub">Each synth has eight patterns of its own. A scene says which one each synth plays, with the progression and the mutes.</p>
+        <figure class="mfig"><img src="img/screens/16_home_held.png" alt="Scenes" width="240" height="240"><figcaption>HOME held: the sixteen scenes, the one playing lit.</figcaption></figure>
         <div class="mt">
-          <p><b>HOME + white key</b><span>Pattern 1 to 8; playing, it waits for the bar</span></p>
-          <p><b>An empty one</b><span>Starts as a copy of the one playing</span></p>
-          <p><b>HOME + OCT+, a key</b><span>Copies the pattern playing there; over notes, the key twice</span></p>
-          <p><b>HOME + black key</b><span>Mutes synth 1, 2 or 3, and back</span></p>
-          <p><b>HOME + OCT&minus;</b><span>Twice: clears the pattern's three rolls</span></p>
+          <p><b>HOME + white key</b><span>Scene 1 to 16; playing, it waits for the bar</span></p>
+          <p><b>An empty scene</b><span>Starts as a copy of the one playing, its patterns shared</span></p>
+          <p><b>HOME + OCT+, a key</b><span>Copies the scene there; over one in use, the key twice</span></p>
+          <p><b>HOME + black key</b><span>Mutes synth 1, 2 or 3 in the scene, and back</span></p>
+          <p><b>HOME + OCT&minus;</b><span>Twice: clears the scene's three rolls</span></p>
         </div>
+        <p class="note">A variation: on the Song page's Scene row, OCT+ copies the selected synth's pattern into a new one, which the scene now plays. Change it there; the other scenes keep the first.</p>
       </article>
 
       <article id="song" data-group="Playing">
-        <h1>Song mode</h1>
-        <p class="msub">The patterns arranged into a piece: up to 128 steps, each a pattern for 1 to 8 bars.</p>
-        <figure class="mfig"><img src="img/screens/24_arrange.png" alt="Arrange" width="240" height="240"><figcaption>Arrange: the steps, the cursor's ring.</figcaption></figure>
-        <div class="mt">
-          <p><b>HOME + PLAY</b><span>Pattern mode or song mode, on any page</span></p>
-          <p><b>HOME + SEQ</b><span>Arrange: the song's steps</span></p>
-          <p><b>A pattern key</b><span>Stopped, writes a step and moves on</span></p>
-          <p><b>A black key</b><span>Mutes a synth on the step</span></p>
-          <p><b>K1 K2 K3 K4</b><span>The step, its pattern, its bars, its mutes</span></p>
-          <p><b>ALGORITHM</b><span>The end: loop, stop, fade out, or fade in and out</span></p>
-          <p><b>OCT&minus; OCT+</b><span>Deletes the step; copies it after itself</span></p>
-          <p><b>PLAY</b><span>Plays the song from the cursor</span></p>
-          <p><b>REC, PLAY</b><span>Records it live: switch patterns with HOME held</span></p>
+        <h1>The Song page</h1>
+        <p class="msub">HOME + SEQ. Two rows on ALGORITHM: the scene open, and the song's steps.</p>
+        <div class="mfigs">
+          <figure class="mfig"><img src="img/screens/23_arrange_scene.png" alt="Scene row" width="240" height="240"><figcaption>Scene: each synth's pattern and notes.</figcaption></figure>
+          <figure class="mfig"><img src="img/screens/24_arrange.png" alt="Steps row" width="240" height="240"><figcaption>Steps: the song, the cursor's ring.</figcaption></figure>
         </div>
-        <p class="note">Home's foot says which: the pattern playing, or where the song is. Picking a pattern live leaves the song.</p>
+        <div class="mt">
+          <p><b>Scene, K1 K2 K3</b><span>Each synth's pattern; playing, at the bar</span></p>
+          <p><b>Scene, K4</b><span>The scene's progression</span></p>
+          <p><b>Scene, a white key</b><span>The selected synth's pattern 1 to 8</span></p>
+          <p><b>Scene, OCT+ OCT&minus;</b><span>Copies the pattern into a new one; twice, clears it</span></p>
+          <p><b>Steps, a white key</b><span>Stopped, writes a step of that scene and moves on</span></p>
+          <p><b>Steps, K1 K2 K3 K4</b><span>The step, its scene, its bars (1 to 8), the end</span></p>
+          <p><b>Steps, OCT&minus; OCT+</b><span>Deletes the step; copies it after itself</span></p>
+        </div>
+      </article>
+
+      <article id="songmode" data-group="Playing">
+        <h1>Song mode</h1>
+        <p class="msub">A song is up to 128 steps, each a scene for 1 to 8 bars. Scene mode loops the scene open.</p>
+        <div class="mt">
+          <p><b>HOME + PLAY</b><span>Scene mode or song mode, on any page</span></p>
+          <p><b>PLAY</b><span>In song mode, the song; on the Song page, from the cursor</span></p>
+          <p><b>The end</b><span>Loop, stop, fade out, or fade in and out</span></p>
+          <p><b>REC, PLAY</b><span>On the Song page: records it live, switch scenes with HOME held</span></p>
+          <p><b>A scene picked</b><span>While the song plays: leaves the song for it</span></p>
+        </div>
+        <p class="note">Home's foot says which: the scene playing, or where the song is. HOME's light beats the bar in a song.</p>
       </article>
 
       <article id="saving" data-group="Playing">
@@ -340,6 +356,6 @@
   </footer>
 </main>
 <script src="app.js?v=12"></script>
-<script src="manual.js?v=6"></script>
+<script src="manual.js?v=7"></script>
 </body>
 </html>
