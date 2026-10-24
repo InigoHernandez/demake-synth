@@ -162,6 +162,8 @@ static void tour(const char *dir)
     }
     theme = 0;
     tap(B_SEQ); dmk_encoder(E_SELECT, 1); dmk_encoder(E_SELECT, 1); shot(dir, "roll_synth3");   /* its own pattern */
+    tap(B_ARP); tap(B_ARP); tap(B_ARP); dmk_encoder(E_K2, 1); dmk_encoder(E_K2, 1); wait_ms(60); shot(dir, "chord_keys");   /* the Keys row */
+    dmk_encoder(E_K2, -1); dmk_encoder(E_K2, -1); tap(B_SEQ);
     dmk_button(B_SEQ, 1); wait_ms(500); shot(dir, "roll_seq_held");                               /* SEQ: OCT- clears */
     dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); wait_ms(100); shot(dir, "roll_clear_armed"); dmk_button(B_SEQ, 0); wait_ms(2100);
     ta_reset(); boot(1650); shot_fr(dir, "boot_arrive", fb);
@@ -347,6 +349,23 @@ static void selftest(void)
         tap(B_SAVE); dmk_init(13); now_ms = 0; wait_ms(60);
         if (!pat[0].used || !pat[1].used || pat[2].used || pat_cur != 1 || sq[1].count != n0 + 1) { fails++; printf("selftest: a song does not keep its patterns\n"); }
         host_store_on(0, 0);
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    /* the Keys row: chords everywhere (the roll's keys still notes), of the type it picks; released whole */
+    {
+        int on;
+        dmk_init(14); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_TRIAD, KT_COUNT); sp_sync();
+        tap(B_HOME); ui.synth = 1;
+        dmk_key(4, 1); wait_ms(30);
+        on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 1;
+        if (on != 3) { fails++; printf("selftest: Keys Everywhere, Triads: a key on Home is not a triad (%d)\n", on); }
+        dmk_key(4, 0); wait_ms(30);
+        on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 1;
+        if (on) { fails++; printf("selftest: a chord key on Home leaves %d notes held\n", on); }
+        if (!(dmk_leds()[DMK_KEYS + B_ARP])) { fails++; printf("selftest: ARP is not lit with the keys on chords\n"); }
+        tap(B_SEQ); { int n0 = sq[1].count; ui.roll_cur[1] = 3; dmk_key(4, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30);
+          if (sq[1].count != n0 + 1) { fails++; printf("selftest: on the roll the keys do not stay notes\n"); } }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     /* a modifier that was used does nothing on release */

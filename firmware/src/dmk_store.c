@@ -174,7 +174,16 @@ static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is t
     for (i = 0; i < 4; i++) {
         uprog[i].mode = *p++; uprog[i].voicing = *p++; uprog[i].n = *p++;
         if (uprog[i].n > PROG_SLOTS) uprog[i].n = 0;
-        for (k = 0; k < PROG_SLOTS; k++) { uprog[i].s[k].root = *p++; uprog[i].s[k].q = *p++; uprog[i].s[k].half = *p++; uprog[i].s[k].pedal = *p++; }
+        for (k = 0; k < PROG_SLOTS; k++) {               /* each checked: a damaged one plays as Am, a bar */
+            cslot_t *c = &uprog[i].s[k];
+            c->root = *p++; c->q = *p++; c->half = *p++; c->pedal = *p++;
+            if (c->root > 11) c->root = 0;
+            if (c->q >= Q_COUNT) c->q = 0;
+            if (c->half < 1 || c->half > 8) c->half = 2;
+            c->pedal = c->pedal ? 1 : 0;
+        }
+        if (uprog[i].mode >= MO_COUNT) uprog[i].mode = MO_AEOL;
+        if (uprog[i].voicing >= VO_COUNT) uprog[i].voicing = VO_WIDE;
     }
     for (s = 0; s < DMK_SYNTHS; s++) { ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++; }
     pat_init();

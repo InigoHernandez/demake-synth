@@ -34,6 +34,7 @@ static void chord_quiet(void);
 static int follow_note(int s, int n);
 static int plays_chords(int s);
 static void later_tick(int frames);
+static void chord_rest(void);
 
 /* the patterns (docs/plan.md, 3.6.1): a song has eight; a pattern is the three rolls and the progression, the
  * sounds, effects, key and tempo being the song's, so a switch changes the notes and the harmony, never the timbre.
@@ -123,7 +124,7 @@ static void seq_del(int s, int i)
 static void seq_quiet(int s)                            /* every note the pattern sounds, off */
 {
     int i;
-    for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i]) { note_off_s(s, sq[s].live[i]); sq[s].left[i] = 0; }
+    for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i]) { note_off_src(s, sq[s].live[i], SRC_ROLL); sq[s].left[i] = 0; }
 }
 
 static void seq_step(void)                              /* every synth one step on */
@@ -133,17 +134,17 @@ static void seq_step(void)                              /* every synth one step 
     chord_step();                                       /* the harmony first: the notes follow the chord now */
     for (s = 0; s < DMK_SYNTHS; s++) {
         seq_t *q = &sq[s];
-        for (i = 0; i < SEQ_LIVE; i++) if (q->left[i] && !--q->left[i]) note_off_s(s, q->live[i]);
+        for (i = 0; i < SEQ_LIVE; i++) if (q->left[i] && !--q->left[i]) note_off_src(s, q->live[i], SRC_ROLL);
         for (i = 0; i < q->count; i++) {
             const snote_t *n = &q->n[i];
             int len = n->len, slot = 0;
             if (n->step != q->pos || plays_chords(s) || pat_mute >> s & 1u) continue;   /* the chords' synth leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
             for (k = 0; k < SEQ_LIVE; k++) if (!q->left[k]) { slot = k; break; }
-            if (k == SEQ_LIVE) { note_off_s(s, q->live[0]); slot = 0; }   /* all sounding: the first gives way */
+            if (k == SEQ_LIVE) { note_off_src(s, q->live[0], SRC_ROLL); slot = 0; }   /* all sounding: the first gives way */
             q->live[slot] = (uint8_t)follow_note(s, n->note);
             q->left[slot] = (uint8_t)(len < 1 ? 1 : len);
-            note_on_s(s, q->live[slot]);
+            note_on_src(s, q->live[slot], SRC_ROLL);
         }
         q->pos = (uint8_t)((q->pos + 1) % q->steps);
     }
@@ -160,6 +161,7 @@ static void seq_play(int on)
     for (s = 0; s < DMK_SYNTHS; s++) { seq_quiet(s); sq[s].pos = 0; }
     chord_quiet();
     chord_start();
+    if (!on) chord_rest();                              /* stopped: no chord shown as sounding */
     seq_acc = 0;
     seq_ticks = 0;
     if (on) seq_step();                                 /* the first step sounds at once */

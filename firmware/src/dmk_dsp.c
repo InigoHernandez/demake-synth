@@ -69,15 +69,19 @@ static int32_t v_g = 32768, e_g = 32768;
 typedef struct {
     const dmk_sample_t *s;
     uint32_t ph, inc, inc0, age, rng;
-    int32_t a, b, s1, s2, env, lp, bp, lp2, bp2;
+    int32_t a, b, s1, s2, env, lp, bp, lp2, bp2, lastv;   /* lastv: its last sample out, for a steal's fade */
     int16_t drift, dgoal, det;     /* MOTION's drift, its goal, the note's own detune (cents Q4) */
     uint16_t blocks;               /* blocks since the note began: vibrato's fade-in */
     uint16_t blk, end;
-    uint8_t bi, stage, note, sy, on, loop;   /* stage: 0 silent, 1 attack, 2 decay and sustain, 3 release */
+    uint8_t bi, stage, note, sy, on, loop, src;   /* stage: 0 silent, 1 attack, 2 decay and sustain, 3 release */
     int16_t buf[28];
 } voice_t;
 static voice_t vc[DMK_VOICES];
 static uint32_t vc_clock;
+/* who started a voice: the keys, a roll, the chord machine; a note off ends only its own source's (the progression's
+ * chord change never cuts a note the hands hold, nor the reverse) */
+enum { SRC_KEY, SRC_ROLL, SRC_CHORD };
+static int32_t vc_tail[DMK_SYNTHS];                     /* a stolen voice's last level, fading out (~1.5 ms) */
 
 static const int8_t ADPCM_F[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
 
@@ -110,21 +114,21 @@ static int32_t smp_next(voice_t *o)
     return o->buf[o->bi++];
 }
 
-static void note_on_s(int sy, int n)
+static void note_on_src(int sy, int n, int src)
 {
-    int i, best = 0, k;
+    int i, best = -1, k;
     uint32_t oldest = 0xFFFFFFFFu, inc;
+    int32_t quiet = 0x7FFFFFFF;
     const synth_t *p = &syn[sy];
     const dmk_sample_t *s;
     voice_t *o;
     if (n < 0 || n > 127 || sy < 0 || sy >= DMK_SYNTHS) return;
-    for (i = 0; i < DMK_VOICES; i++)                    /* a silent voice, else the oldest released, else the oldest */
-        if (vc[i].stage == 0) { best = i; oldest = 0; break; }
-    if (oldest)
-        for (i = 0; i < DMK_VOICES; i++) {
-            uint32_t a = vc[i].age + (vc[i].on ? 0x80000000u : 0u);
-            if (a < oldest) { oldest = a; best = i; }
-        }
+    for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage == 0) { best = i; break; }   /* a silent voice */
+    if (best < 0) {                                     /* else the quietest released one, else the oldest held */
+        for (i = 0; i < DMK_VOICES; i++) if (!vc[i].on && vc[i].env < quiet) { quiet = vc[i].env; best = i; }
+        if (best < 0) for (i = 0; i < DMK_VOICES; i++) if (vc[i].age < oldest) { oldest = vc[i].age; best = i; }
+        vc_tail[vc[best].sy] += vc[best].lastv;         /* what it was sounding fades out, not cut */
+    }
     o = &vc[best];
     s = &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0];
     k = clampi(n - s->root + p->tune, -48, 48);
@@ -146,15 +150,17 @@ static void note_on_s(int sy, int n)
     o->ph = 0;
     o->env = 0; o->stage = 1;
     o->lp = o->bp = o->lp2 = o->bp2 = 0;
-    o->note = (uint8_t)n; o->sy = (uint8_t)sy; o->on = 1; o->age = vc_clock++;
+    o->note = (uint8_t)n; o->sy = (uint8_t)sy; o->on = 1; o->age = vc_clock++; o->src = (uint8_t)src; o->lastv = 0;
 }
 
-static void note_off_s(int sy, int n)
+static void note_off_src(int sy, int n, int src)
 {
     int i;
     for (i = 0; i < DMK_VOICES; i++)
-        if (vc[i].on && vc[i].note == n && vc[i].sy == sy) { vc[i].on = 0; if (vc[i].stage) vc[i].stage = 3; }
+        if (vc[i].on && vc[i].note == n && vc[i].sy == sy && vc[i].src == src) { vc[i].on = 0; if (vc[i].stage) vc[i].stage = 3; }
 }
+static void note_on_s(int sy, int n) { note_on_src(sy, n, SRC_KEY); }   /* the keys' */
+static void note_off_s(int sy, int n) { note_off_src(sy, n, SRC_KEY); }
 
 /* the filter: a Chamberlin state-variable, one stage or two; 64-bit products (resonance runs past 16 bits) */
 static inline int32_t svf_step(int32_t *lp, int32_t *bp, int32_t x, int32_t f, int32_t q, int32_t *hp_out)
@@ -669,6 +675,7 @@ static void dsp_reset(void)
     }
     { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }
     vq_w = vq_r = wq_w = wq_r = 0;
+    for (i = 0; i < DMK_SYNTHS; i++) vc_tail[i] = 0;
     v_cur = gp.vtype; e_cur = gp.etype; v_g = e_g = 32768;
     for (i = 0; i < GR_N; i++) gr[i].len = 0;
     gr_clock = 0;
@@ -746,8 +753,9 @@ static void voices_run(int half)
                 METER(dmeter.clamp_v += y > 65536 || y < -65536);
                 METER(dmeter.voice_max = (y < 0 ? -y : y) > dmeter.voice_max ? (y < 0 ? -y : y) : dmeter.voice_max);
                 if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;   /* a resonance past full: bent, not cut */
-                out[i] += (int32_t)(((int64_t)y * ((e0 + de * i) >> 9)) >> 15);
-                if (!o->stage) break;                   /* a one-shot ended */
+                o->lastv = (int32_t)(((int64_t)y * ((e0 + de * i) >> 9)) >> 15);
+                out[i] += o->lastv;
+                if (!o->stage) { o->lastv = 0; break; }   /* a one-shot ended */
             }
             if (o->stage) o->env = e1;
         }
@@ -781,7 +789,10 @@ static void dsp_render(int16_t *lr, int frames)
         if (v_cur != VB_ROOM && !par) verb_job();
         for (b = 0; b < nb; b++) {
             int32_t sm[DMK_SYNTHS][DMK_SUB], L[DMK_SUB], R[DMK_SUB], vin[DMK_SUB], ein[DMK_SUB];
-            for (s = 0; s < DMK_SYNTHS; s++) for (i = 0; i < DMK_SUB; i++) sm[s][i] = vbuf[0][s][b * DMK_SUB + i] + vbuf[1][s][b * DMK_SUB + i];
+            for (s = 0; s < DMK_SYNTHS; s++) for (i = 0; i < DMK_SUB; i++) {
+                sm[s][i] = vbuf[0][s][b * DMK_SUB + i] + vbuf[1][s][b * DMK_SUB + i] + vc_tail[s];
+                vc_tail[s] -= (vc_tail[s] >> 6) + (vc_tail[s] > 0) - (vc_tail[s] < 0);   /* to zero, ~1.5 ms */
+            }
             for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = vin[i] = ein[i] = 0;
             for (s = 0; s < DMK_SYNTHS; s++) {
                 const synth_t *p = &syn[s];

@@ -45,8 +45,8 @@ static const page_t PAGE[PG_COUNT] = {
     {"FX", 4, {"Colour", "Media", "Motion", "Space"}, {"Effect", "Effect", "Effect", ""},
      {{"Amount", "Tone", "Time", "Spice"}, {"Amount", "Tone", "Time", "Spice"},   /* an effect names its own */
       {"Amount", "Tone", "Time", "Spice"}, {"Verb", "Echo", "Pan", "Width"}}},
-    {"Chord", 2, {"Voice", "Key"}, {"Prog", "Prog"},
-     {{"Voicing", "Invert", "Spread", "Strum"}, {"Key", "Mode", "Change", "Rhythm"}}},
+    {"Chord", 3, {"Voice", "Key", "Keys"}, {"Prog", "Prog", "Prog"},
+     {{"Voicing", "Invert", "Spread", "Strum"}, {"Key", "Mode", "Change", "Rhythm"}, {"Keys", "Type", "", ""}}},
     {"Global", 4, {"Verb", "Echo", "Song", "Theme"}, {"Type", "Type", "", ""},
      {{"Return", "Tone", "Size", "Mod"}, {"Return", "Tone", "Time", "Regen"},
       {"Swing", "Switch", "Click", "Rec"}, {"Theme", "", "", ""}}},
@@ -85,6 +85,8 @@ static const char *const KEYS[] = {"C", "C\xE2\x99\xAF", "D", "E\xE2\x99\xAD", "
 static const char *const MODENAMES[] = {"Aeolian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Ionian"};
 static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\xC3\x97" "2"), ("\xC3\x97" "4")};
 static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Arp up", "Arp down"};
+static const char *const KEYMODES[] = {"Chord", "All"};   /* the keys play chords on CHORD, or on every page but the roll */
+static const char *const KTYPES[] = {"Sevenths", "Triads", "Ninths", "Add9", "Sus2", "Sus4", "6/9", "Power"};
 static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords"};
 static const char *const PROGS[20] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
     "Power lines", "Tower beacon", "Slow thaw", "Candle", "Embers", "Low clouds", "Snowfield", "Static", "Mixtape", "Night drive",
@@ -100,6 +102,7 @@ static const choice_t CHOICE[] = {
     {PG_GLOBAL, 0, 4, 6, VERBS}, {PG_GLOBAL, 1, 4, 2, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
     {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 20, PROGS}, {PG_CHORD, 1, 4, 20, PROGS},
     {PG_CHORD, 1, 0, 12, KEYS}, {PG_CHORD, 1, 1, 6, MODENAMES}, {PG_CHORD, 1, 2, 4, CHANGES}, {PG_CHORD, 1, 3, 5, RHYTHMS},
+    {PG_CHORD, 2, 0, 2, KEYMODES}, {PG_CHORD, 2, 1, 8, KTYPES}, {PG_CHORD, 2, 4, 20, PROGS},
 };
 
 static struct {
@@ -152,7 +155,8 @@ static void pat_mute_flip(int s)                        /* HOME held, a black ke
 {
     int i;
     pat_mute ^= (uint8_t)(1u << s);
-    if (pat_mute >> s & 1u) { seq_quiet(s); if (ch.follow[s] == FW_PLAYS) for (i = 0; i < ch_np; i++) later_off(s, ch_play[i]); }
+    (void)i;
+    if (pat_mute >> s & 1u) { seq_quiet(s); if (ch.follow[s] == FW_PLAYS) chord_off(s); }
 }
 
 /* the store (dmk_store.c, after this file) */
@@ -262,6 +266,8 @@ static void sp_sync(void)
     seq_mode = (uint8_t)(VS(0, PG_CHORD, 1, 1) * 6 / 128);
     ch.change = (uint8_t)(VS(0, PG_CHORD, 1, 2) * 4 / 128);
     ch.rhythm = (uint8_t)(VS(0, PG_CHORD, 1, 3) * 5 / 128);
+    ch.keys = (uint8_t)(VS(0, PG_CHORD, 2, 0) * 2 / 128);
+    ch.ktype = (uint8_t)(VS(0, PG_CHORD, 2, 1) * KT_COUNT / 128);
     cur_synth = ui.synth;
 }
 
@@ -310,6 +316,7 @@ static void ui_init(void)
     ui.val[0][PG_CHORD][0][3] = 64; ui.val[0][PG_CHORD][0][4] = 4;            /* wide, auto, no spread or strum; First snow */
     ui.val[0][PG_CHORD][1][0] = 9 * 128 / 12 + 5; ui.val[0][PG_CHORD][1][1] = 10;   /* A, Aeolian */
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
+    ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* keys: chords on CHORD, sevenths */
     ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the verb: a hall */
     ui.val[0][PG_GLOBAL][0][4] = 31; ui.val[0][PG_GLOBAL][0][3] = 64;
     ui.val[0][PG_GLOBAL][1][4] = 0;                     /* the echo: tape */
@@ -1052,9 +1059,14 @@ static void stage_chord(void)                           /* the progression: its 
     const prog_t *pr = cur_prog();
     char sub[32], nm[16];
     int i, y = SY + SH - 30, n = pr->n, writing = !seq_on && seq_rec, now = ch_shown >= 0 ? ch_shown : 0;
-    int focus = writing ? ch_cur : now, cells = n + (writing && n < PROG_SLOTS), show = cells > 5 ? 4 : cells, first = 0;
+    int focus = writing ? ch_cur : now, cells = n + (writing && n < PROG_SLOTS), show = cells > 5 ? 4 : cells, first = 0, widest = 0, s, on_n = 0;
+    char *o;
+    for (i = 0; i < n; i++) { char t[16]; t[0] = 0; chord_name_q(t, seq_key + pr->s[i].root, pr->s[i].q, QS); if (text_w(t, &FS) > widest) widest = text_w(t, &FS); }
+    while (show > 3 && widest > cell_w(SX + 4, SW - 8, show, 0) - 8) show--;   /* long names: fewer pills, in a window */
     card(SX, SY, SW, SH, C_LINE, 1);
-    str_cat(str_cat(str_cat(sub, KEYS[seq_key]), " "), MODENAMES[seq_mode]);
+    o = str_cat(str_cat(str_cat(sub, KEYS[seq_key]), " "), MODENAMES[seq_mode]);   /* and which synths play it */
+    for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) { o = str_cat(o, on_n++ ? (char[]){'+', (char)('1' + s), 0} : (char[]){',', ' ', 'o', 'n', ' ', (char)('1' + s), 0}); }
+    if (!on_n) str_cat(o, ", on none");
     card_title(SX, SY, SW, pr->name, n ? sub : "Empty: REC, then the keys", 0);
     nm[0] = 0;
     if (ch_shown == -1 && n) chord_name(nm, seq_key + pr->s[0].root, pr->s[0].q);
@@ -1352,7 +1364,7 @@ static void ui_button(int b, int down)
             int h;
             for (h = 0; h < DMK_KEYS && !(ui.keys_down[h] && ui.key_slot[h]); h++) {}
             if (h < DMK_KEYS) {                         /* a written chord held: OCT- takes it away, OCT+ copies it after */
-                if (b == B_OCTD) { slot_delete(ui.key_slot[h] - 1); ui.key_slot[h] = 0; ch_cur = (uint8_t)(ch_cur > 0 ? ch_cur - 1 : 0); }
+                if (b == B_OCTD) { ch_cur = (uint8_t)(ui.key_slot[h] - 1); slot_delete(ch_cur); ui.key_slot[h] = 0; }   /* the cursor stays */
                 else ui.key_slot[h] = (uint8_t)(slot_copy(ui.key_slot[h] - 1) + 1);
                 ui.btn_used |= bit;
                 return;
@@ -1510,7 +1522,7 @@ static void ui_encoder(int e, int d)
         char t[32];
         int f = ch.follow[ui.synth] + (d > 0 ? 1 : -1);
         ch.follow[ui.synth] = (uint8_t)(f < 0 ? 0 : f >= FW_COUNT ? FW_COUNT - 1 : f);
-        if (ch.follow[ui.synth] != FW_PLAYS) { int i; for (i = 0; i < ch_np; i++) later_off(ui.synth, ch_play[i]); }
+        if (ch.follow[ui.synth] != FW_PLAYS) chord_off(ui.synth);
         str_cat(t, FOLLOWS[ch.follow[ui.synth]]);
         notice(t);
         return;
@@ -1532,7 +1544,7 @@ static void ui_encoder(int e, int d)
             if (k == 1) c->q = (uint8_t)((c->q + Q_COUNT + dir) % Q_COUNT);
             if (k == 2) { int l = c->half + dir; c->half = (uint8_t)(l < 1 ? 1 : l > 16 ? 16 : l); ch_len = c->half; }
             if (k == 3) c->pedal = (uint8_t)(dir > 0);
-            for (i = 0; i < ui.key_nch[h]; i++) later_off(ui.key_sy[h], ui.key_ch[h][i]);   /* heard as it is now */
+            for (i = 0; i < ui.key_nch[h]; i++) later_off(ui.key_sy[h], ui.key_ch[h][i], SRC_KEY);   /* heard as it is now */
             ch_pn = 0;
             ui.key_nch[h] = (uint8_t)voice(48 + (seq_key + c->root) % 12, QI[c->q], c->pedal, ui.key_ch[h]);
             ch_name[0] = 0; chord_name(ch_name, seq_key + c->root, c->q);
@@ -1555,6 +1567,8 @@ static void ui_encoder(int e, int d)
         if (pr->n) { ui.val[0][PG_CHORD][1][1] = choice_val(pr->mode, 6); ui.val[0][PG_CHORD][0][0] = choice_val(pr->voicing, 5); }
         ch_cur = 0;
         sp_sync();
+        if (seq_on) { chord_quiet(); chord_start(); }   /* from its first chord, at the next step */
+        chord_rest();
         return;
     }
     if (k == 4 && (ui.page == PG_FX || ui.page == PG_GLOBAL) && !(ui.btn_held >> (ui.page == PG_FX ? B_FX : B_GLO) & 1u)) {
@@ -1603,17 +1617,19 @@ static void ui_key(int k, int down)
     }
     if (!down && ui.key_home[k]) { ui.key_home[k] = 0; return; }   /* its release: nothing sounded */
     ui.keys_down[k] = (uint8_t)down;
-    if (ui.page == PG_CHORD || (!down && ui.key_nch[k])) {   /* the CHORD page: a key, a chord */
+    /* a key, a chord: on CHORD, or everywhere but the roll when the Keys row says so; released as it began */
+    if (down ? ui.page == PG_CHORD || (ch.keys && ui.page != PG_ROLL) : ui.key_nch[k] > 0) {
         int j;
         if (down) {
             s = ui.synth;
             ui.key_sy[k] = (uint8_t)s;
             ui.key_slot[k] = 0;
-            if (!seq_on && seq_rec) {                   /* stopped, REC armed: the chord into the slot at the cursor */
+            if (!seq_on && seq_rec && ui.page == PG_CHORD) {   /* stopped, REC armed, on CHORD: the chord into the slot */
                 ui.key_slot[k] = (uint8_t)(slot_write(n) + 1);
+                if (!ui.key_slot[k]) notice(ch.prog < 16 ? "User 1-4 are full" : "Eight chords at most");
                 ui.val[0][PG_CHORD][0][4] = choice_val(ch.prog, PROG_N);
             }
-            ui.key_nch[k] = (uint8_t)chord_key(n, ui.key_ch[k]);
+            ui.key_nch[k] = (uint8_t)chord_key(n, ui.octave, ui.key_ch[k]);
             if (ui.key_slot[k]) ch_shown = ui.key_slot[k] - 1;
             strike(s, ui.key_ch[k], ui.key_nch[k]);
             ui.key_roll[k] = seq_on && seq_rec ? 2 : 0;
@@ -1623,7 +1639,7 @@ static void ui_key(int k, int down)
         s = ui.key_sy[k];
         if (ui.key_slot[k]) { ch_cur = ui.key_slot[k]; ui.key_slot[k] = 0; }   /* the cursor to the next slot */
         for (j = 0; j < ui.key_nch[k]; j++) {
-            later_off(s, ui.key_ch[k][j]);
+            later_off(s, ui.key_ch[k][j], SRC_KEY);
             if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll */
                 uint32_t t0 = ui.key_t0[k], t1 = seq_now();
                 int st = (int)(((t0 + 128u) >> 8) % sq[s].steps), len = (int)((t1 - t0 + 128u) >> 8);
@@ -1682,6 +1698,7 @@ static const uint8_t *ui_leds(void)
     }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
     leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;
+    if (ch.keys) leds[DMK_KEYS + B_ARP] = 255;          /* the keys play chords everywhere: ARP lit */
     leds[DMK_KEYS + B_REC] = seq_rec && (seq_on || (ui.now / 250u) & 1u) ? 255 : 0;   /* armed: it blinks */
     leds[DMK_KEYS + B_OCTD] = ui.octave < 0 ? 255 : 0;
     leds[DMK_KEYS + B_OCTU] = ui.octave > 0 ? 255 : 0;
