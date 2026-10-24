@@ -233,10 +233,9 @@ Today a sound is a recording and whatever the synth was set to. Instead:
 
 The song mode comes early: it costs no CPU, needs no measurement, and turns the patterns into finished pieces.
 
-Releases: 0.3 (FM-1_968) went out after stage 2, once it ran on the owner's FM-1. One identity is left in Demake's
-range (0.4 = FM-1_969):
-- 0.4 after stages 1, 3 and 4;
-- the stages after that need the range widened (section 10).
+Releases: 0.3 (FM-1_968) went out after stage 2, once it ran on the owner's FM-1; 0.4 (FM-1_969) after stage 3 and
+three reviews' fixes, at the owner's word. That was the last identity in Demake's range: the next release needs a new
+range (section 10).
 
 Or the range is widened (section 10). Every package goes to the owner first, as `~/Downloads` builds, before a
 release.
@@ -249,4 +248,4 @@ release.
   describe or a reference to listen to (as the long modulated verb and the cloud of grains were).
 - **The master and the pump:** wanted, or does the mix stay as the three synths make it?
 - **Factory sounds:** one designed sound per recording (64), or more (a few variations of the favourites)?
-- **Releases:** one release left in the range (0.4), then a new identity range for the versions after it?
+- **Releases:** the range is used up (0.4 = FM-1_969): which identities for the versions after it?

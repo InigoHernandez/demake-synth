@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.3.fwsc",
-  "version": "0.3",
+  "file": "demake-0.4.fwsc",
+  "version": "0.4",
   "date": "2026-10-24",
-  "product": "FM-1_968",
-  "sha256": "7794d28d2fd6df768a618aadad10420d8666b237cce27e0d0debf1f57b0cd3df",
-  "note": "Scenes and a song of them; eight patterns a synth; harmony between the synths; MIDI in and out; two new landscapes, full screen on OCT- and OCT+; plant names."
+  "product": "FM-1_969",
+  "sha256": "5259074034bb2c9b9f695915dae8219f0860e79d0798d026b052058373f27a71",
+  "note": "A layer under each sound, glide, velocity, grit, drive; the LFO heard; Off for the reverb and the echo; chords written on the roll; knobs without phantom steps; the full-screen landscape whole; many fixes."
 }
