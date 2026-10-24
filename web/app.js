@@ -24,6 +24,7 @@
   const VB = [14, 14, 876, 538];
 
   const svg = document.getElementById("svg"), lcd = document.getElementById("lcd"), panel = document.getElementById("panel");
+  if (!panel) return;                                  /* a page without the emulator (the installer) */
   const lg = lcd.getContext("2d"), img = lg.createImageData(240, 240);
   const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); (p || svg).appendChild(e); return e; };
   const label = (x, y, s, size = 11, fill = INK) => { const t = el("text", { x, y, "text-anchor": "middle", fill, "font-size": size, "font-family": "geist, sans-serif", "font-weight": 500 }); t.textContent = s; return t; };
@@ -236,7 +237,8 @@
 
   // the rings (border-image) and the sprites (six frames, one under another)
   for (const r of [24, 12]) for (let k = 0; k < 6; k++) new Image().src = `img/bits/ring${r}_${k}.png`;
-  for (let k = 0; k < 6; k++) new Image().src = `img/bits/spark_${k}.png`;
+  for (let k = 0; k < 6; k++) { new Image().src = `img/bits/spark_${k}.png`; new Image().src = `img/bits/glint_${k}.png`; }
+  const glinted = [...document.querySelectorAll(".nav, .foot a")], here = document.querySelector(".nav[aria-current]");
   const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .page")];
   const visible = new Set();
   const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));
@@ -293,12 +295,13 @@
 
   // what the pointer is on heats: its bits run every 60 ms
   const hot = new Set();
-  ringed.forEach((el) => { el.addEventListener("pointerenter", () => hot.add(el)); el.addEventListener("pointerleave", () => hot.delete(el)); });
+  [...ringed, ...glinted].forEach((el) => { el.addEventListener("pointerenter", () => hot.add(el)); el.addEventListener("pointerleave", () => hot.delete(el)); });
   if (!still) setInterval(() => {
     for (const el of hot) {
       const k = rnd(6), j = rnd(6);
       el.style.setProperty("--ring24", `url(img/bits/ring24_${k}.png)`); el.style.setProperty("--ring12", `url(img/bits/ring12_${k}.png)`);
       el.style.setProperty("--spark", `url(img/bits/spark_${j}.png)`); el.style.setProperty("--spark2", `url(img/bits/spark_${(j + 3) % 6}.png)`);
+      el.style.setProperty("--glint", `url(img/bits/glint_${j}.png)`);
     }
   }, 60);
 
@@ -308,6 +311,7 @@
     for (const el of sprites) if (visible.has(el) && Math.random() < 0.5) { const k = rnd(6, +el.dataset.k); el.dataset.k = k; el.style.backgroundPositionY = k * 20 + "%"; }
     for (const el of ringed) if (visible.has(el) && Math.random() < 0.5) { const k = rnd(6); el.style.setProperty("--ring24", `url(img/bits/ring24_${k}.png)`); el.style.setProperty("--ring12", `url(img/bits/ring12_${k}.png)`); }
     for (const h of heats) if (visible.has(h.cv) && Math.random() < 0.5) { h.pat = rnd(6, h.pat); draw(h); }
+    if (here && !hot.has(here) && Math.random() < 0.5) here.style.setProperty("--glint", `url(img/bits/glint_${rnd(6)}.png)`);
   }, 140);
 
   // the screens: a page pressed is shown, lit in the index; the five marks belong to Home's anatomy

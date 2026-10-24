@@ -248,8 +248,11 @@ owner's recording.
 | all 64, the same cuts | | **542 KiB** |
 | all 64, tight (11,025 Hz, a 1.0 s cut, one-shots at 1.5 s) | | **379 KiB** |
 
-Bank A, in the app slot, ships with the package: about 240 KiB, so ~32 sounds at their best cuts, the 16 above
-first. Bank B goes in the data area (2.6), loaded from the website: ~116 KiB, so ~16–20 more. About 50 of the 64 fit
+**The 64 are the machine's core, as in a rompler** (the owner, 2026-10-24): every one is a factory sound, built in;
+the player never loads a sample, and there is no user-sample feature. Bank A, in the app slot, ships with the
+package: about 240 KiB, so ~32 sounds at their best cuts, the 16 above first. Bank B, in the data area (2.6), holds
+the factory sounds the app slot has no room for (~116 KiB, so ~16–20 more), written by the installer right after the
+firmware, never by the player. About 50 of the 64 fit
 as cut; all 64 fit only cut tight, and then just. The owner picks which sounds make bank A, from WAVs of the cut and
 encoded samples (phase 1).
 
@@ -277,7 +280,7 @@ under that licence, with `PROCESSING.md`.
 
 | Data area region | Use |
 | --- | --- |
-| `0x93000..0xB0000` (116 KiB) | bank B: the owner's extra samples, written by the website's editor over the link (header, CRC, loop points, as the store) |
+| `0x93000..0xB0000` (116 KiB) | bank B: the factory sounds the app slot has no room for, written by the installer over the link after the firmware (header, CRC, loop points, as the store); the player never loads samples |
 | `0xB0000..0xC0000` (64 KiB) | Demake's store: the songs (a typical one of 8 patterns packs to ~3–4 KB, so ~15 fit), 32 USER sounds, settings; written as MONO2K writes (4 KiB sectors, the header with its CRC last) |
 | `0xC0000..0xE0000` | left alone: MONO2K's store (and Felucca's projects), so switching firmware keeps both firmwares' saves |
 
@@ -790,7 +793,7 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 | --- | --- |
 | home | the D and the index, the wordmark, the emulator (power, volume as a meter, the keys), the machine's cards, the sound, the light, the screens, the band, the footer |
 | manual | one article at a time on the same canvas; screens from the host's tour; every page, layer and combo from the core's own tables |
-| install | the installer (Felucca's files, as MONO2K's site uses them): what an install may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware |
+| install | the installer, `web/install.html` (built in phase 1; Felucca's `fm1ota.js` and `fm1pkg.js` unchanged, as MONO2K's site uses them): connect, install a published package or a `.fwsc` from the computer, what an install may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware. A package is published there (`web/firmware/demake.json`) only once it has run on the owner's FM-1 |
 | changes | the change log, an entry a day, written for the player |
 
 Phase 0 has the home page; the rest come in phase 5. The design is also in the owner's Figma (the MONO2K file's
@@ -858,7 +861,7 @@ the counts. Next: ROLL, PLAY and REC, SAVE.
 
 **Phase 5: release.**
 - The website (section 6): home, play, manual, install, changes.
-- Factory songs and sounds (the owner picks), the Patch Editor (songs, sounds, user samples into the data area).
+- Factory songs and sounds (the owner picks), the Patch Editor (songs and sounds; no samples: the 64 are the machine's own).
 - A package tried on the owner's FM-1 before anything is published.
 
 ## Appendix A. Sources, notices and references

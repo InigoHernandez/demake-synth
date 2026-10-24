@@ -7,7 +7,7 @@
   <title>Demake</title>
   <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths, a chord machine, eight patterns a song.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <main class="canvas">
@@ -15,10 +15,11 @@
   <!-- the header: the D in its module, the index, the two actions -->
   <header class="g head">
     <a href="./" class="iso bits" style="--src: url(img/iso.png)" aria-label="Demake"></a>
-    <a href="#play" class="nav n1"><b>Play</b><span>The emulator</span><span>Keys and knobs</span></a>
-    <a href="#machine" class="nav n2"><b>Machine</b><span>Three synths</span><span>Eight patterns</span></a>
-    <a href="#screens" class="nav n3"><b>Screens</b><span>The display</span><span>Twelve pages</span></a>
-    <a href="https://github.com/InigoHernandez" class="nav n4"><b>Source</b><span>GitHub</span><span>GPL-3.0</span></a>
+    <a href="#play" class="nav n1"><b>Play</b><span>Emulator</span></a>
+    <a href="#machine" class="nav n2"><b>Machine</b><span>3 synths</span></a>
+    <a href="#screens" class="nav n3"><b>Screens</b><span>12 pages</span></a>
+    <a href="install.html" class="nav n4"><b>Install</b><span>Over USB</span></a>
+    <a href="https://github.com/InigoHernandez/demake-synth" class="nav n5"><b>Source</b><span>GitHub</span></a>
     <a href="https://ko-fi.com/sequencist" class="kofi pill" target="_blank" rel="noopener">Support on Ko&#8209;fi</a>
     <a href="#play" class="cta lit">Play it</a>
   </header>
@@ -27,8 +28,8 @@
   <section class="g hero">
     <h1 class="mark bits" style="--src: url(img/wordmark.png)" role="img" aria-label="Demake"></h1>
     <p class="say">An ambient lofi machine for the M&#8209;VAVE&nbsp;FM&#8209;1.</p>
-    <p class="meta">Firmware for the FM&#8209;1 on the open platform of CS&#8209;1 and Felucca. Phase 0: the shell, the
-      screen and the core, here in the browser.</p>
+    <p class="meta">Firmware for the FM&#8209;1 on the open platform of CS&#8209;1 and Felucca. Phase 1: its 64 recorded
+      sounds through a filter, an envelope, tape, a room and an echo, here in the browser.</p>
   </section>
 
   <!-- 01 play: the device on its light -->
@@ -83,8 +84,8 @@
   <!-- 03 the sound: a statement, then a word of it in line and in light -->
   <section class="g strip"><span class="no">03</span><span class="lb">Sound</span></section>
   <section class="g text">
-    <p class="say">Your own recordings under every synth, worn by tape, codec and a room.</p>
-    <p class="meta">A layer from your samples under each sound. Crush, codec smear, tape, cassette, VHS and chorus, then
+    <p class="say">Sixty-four pedal recordings at its core, worn by tape, codec and a room.</p>
+    <p class="meta">Built in, as in a rompler: nothing to load. A second one layers under each sound. Crush, codec smear, tape, cassette, VHS and chorus, then
       reverbs voiced after console rooms and halls. Integer DSP, on both of the FM&#8209;1's cores.</p>
     <div class="plate bits" style="--src: url(img/plate.png)" role="img" aria-label="Ambient, in line and in light"></div>
   </section>
@@ -92,11 +93,11 @@
   <!-- 04 the engines: what each one is, each in its light -->
   <section class="g strip" id="engines"><span class="no">04</span><span class="lb">Engines</span></section>
   <section class="g art">
-    <figure class="eng e1"><div class="img"><canvas class="heat" data-heat="img/art/flow.png"></canvas></div><figcaption><b>Sample</b><span>Your recordings, 4-bit ADPCM read from flash as they play. START trims the attack; a short loop in the sustain turns any sample into a pad.</span></figcaption></figure>
+    <figure class="eng e1"><div class="img"><canvas class="heat" data-heat="img/art/flow.png"></canvas></div><figcaption><b>Sample</b><span>The 64 factory recordings, 4-bit ADPCM read from flash as they play. START trims the attack; a short loop in the sustain turns any sample into a pad.</span></figcaption></figure>
     <figure class="eng e2"><div class="img"><canvas class="heat" data-heat="img/art/pool.png"></canvas></div><figcaption><b>Pad</b><span>Three wavetable oscillators on your own single cycles, detuned; MORPH drifts to the next wave and back.</span></figcaption></figure>
     <figure class="eng e3"><div class="img"><canvas class="heat" data-heat="img/art/drift.png"></canvas></div><figcaption><b>Pluck</b><span>A tuned string, damped. BODY adds two resonances: kalimba, glass, bell.</span></figcaption></figure>
     <figure class="eng e4"><div class="img"><canvas class="heat" data-heat="img/art/rise.png"></canvas></div><figcaption><b>Drone</b><span>Four partials a voice: root, fifth, octave, ninth. Each pair beats, each level wanders: a long note never repeats.</span></figcaption></figure>
-    <figure class="eng e5"><div class="img"><canvas class="heat" data-heat="img/art/twin.png"></canvas></div><figcaption><b>Layer</b><span>Under any engine, one of your samples: blend, tune, loop, tone.</span></figcaption></figure>
+    <figure class="eng e5"><div class="img"><canvas class="heat" data-heat="img/art/twin.png"></canvas></div><figcaption><b>Layer</b><span>Under any engine, one of the 64: blend, tune, loop, tone.</span></figcaption></figure>
     <figure class="eng e6"><div class="img"><canvas class="heat" data-heat="img/art/wave.png"></canvas></div><figcaption><b>Grit</b><span>The console's rate and grain, per synth: 22K, 22K with ADPCM, 11K with ADPCM.</span></figcaption></figure>
   </section>
 
@@ -162,6 +163,6 @@
       Geist: SIL OFL 1.1. Kiloy: Marvadesign.</span>
   </footer>
 </main>
-<script src="app.js?v=5"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>

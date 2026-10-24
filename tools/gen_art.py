@@ -20,7 +20,7 @@ rainbow). Our own, generated; the references were a bought gradient pack and are
 - Every lit thing in six frames, one under another, its dither in the six arrangements of T_BAYER6: the site steps
   through them at random, as the screen does (the bits move, the light stays).
 - web/img/bits/ring24_0..5.png, ring12_0..5.png: the lit state for any box, a 12 px ring of the ramp for
-  border-image round a pale core (the action, the playing tile, a hover).
+  border-image round a pale core (the action, the playing tile, a hover); glint_0..5.png, a link's letters lit.
 """
 import os
 from pathlib import Path
@@ -346,6 +346,7 @@ def graphics():
         f[u < 0.03, :3] = PAL[4]
         f[u < 0.10, 3] = 255
         Image.fromarray(big(f), "RGBA").save(BITS / f"spark_{k}.png", optimize=True)
+    glints()
     # the emulator's lit keys and buttons, in the panel's own units (2 a cell): a white key, a black key, a button,
     # an octave button, each lit from its edge in, six arrangements, for the SVG to show when the core lights them
     for name, w, h, r in (("keyw", 44, 112, 10), ("keyb", 38, 70, 10), ("btn", 40, 34, 12), ("oct", 48, 26, 12)):
@@ -358,6 +359,24 @@ def graphics():
             f[mask, 3] = 255
             Image.fromarray(big(f), "RGBA").save(BITS / f"{name}_{k}.png", optimize=True)
     print("web/img/plate.png, band.png (%d cells tall), seal.png, frame288.png, frame528.png, frame432.png: six frames each" % H)
+
+
+def glints():
+    """a link's light: a 48 px tile of the body's bits (magenta, with violet, blue and pink cells), six frames at random,
+    clipped to the link's letters while the pointer is on it, so its words light as the screen lights thin text"""
+    r = np.random.default_rng(13)
+    for k in range(6):
+        u = r.random((24, 24))
+        idx = np.full((24, 24), 4)
+        idx[u < 0.30] = 3
+        idx[u < 0.16] = 2
+        idx[u < 0.07] = 0
+        idx[u > 0.90] = 5
+        f = np.zeros((24, 24, 4), np.uint8)
+        f[..., :3] = PAL[idx]
+        f[..., 3] = 255
+        Image.fromarray(big(f), "RGBA").save(BITS / f"glint_{k}.png", optimize=True)
+    print("web/img/bits/glint_0..5.png: 48 px")
 
 
 def main():
