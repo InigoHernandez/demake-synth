@@ -33,6 +33,7 @@ enum { FT_LP24, FT_LP12, FT_BP, FT_HP, FT_OFF };
 typedef struct {
     uint8_t smp, loops, ftype, tape;
     int16_t tune, cut, fenv;       /* semitones; the cutoff's index 0..255 (255: open); the envelope's reach in indexes */
+    int8_t fine;                   /* cents, -50..50 */
     uint16_t start, resq, dec, rel;   /* blocks; damping Q14; decay and release factors Q16 a block */
     uint32_t atk;                  /* the attack's step a block, Q24 */
     int32_t sus, level, gl, gr, vsend, esend;   /* Q24; Q15 ... */
@@ -107,7 +108,7 @@ static void note_on_s(int sy, int n)
     s = &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0];
     k = clampi(n - s->root + p->tune, -48, 48);
     inc = (uint32_t)(((uint64_t)s->rate_q16 * T_SEMI[k + 48]) >> 16);
-    o->inc = (uint32_t)(((uint64_t)inc * T_CENT[50 - s->cents]) >> 16);
+    o->inc = (uint32_t)(((uint64_t)inc * T_CENT[clampi(50 - s->cents + p->fine, 0, 100)]) >> 16);
     o->s = s;
     o->loop = (uint8_t)(s->loops && p->loops);          /* LOOP OFF: a looped sample plays through once */
     o->end = o->loop ? s->loop1 : s->blocks;

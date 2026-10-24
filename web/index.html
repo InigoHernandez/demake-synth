@@ -7,7 +7,7 @@
   <title>Demake</title>
   <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths, a chord machine, eight patterns a song.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
   <script>
     /* the splash, once a visit and never for less motion; if anything fails, the page shows after 4 s regardless */
     try {
@@ -129,6 +129,7 @@
       <div class="frame f432 bits" style="--src: url(img/frame432.png)" aria-hidden="true"></div>
       <div class="frame f288 bits" style="--src: url(img/frame288.png)" aria-hidden="true"></div>
       <img id="shown" src="img/screens/01_home.png" width="360" height="360" alt="Home: the three synths">
+      <canvas id="live" width="240" height="240" hidden aria-label="The screen, live"></canvas>
       <i class="mk m1">1</i><i class="mk m2">2</i><i class="mk m3">3</i><i class="mk m4">4</i><i class="mk m5">5</i>
     </figure>
     <p class="shown" id="shownname"><b>Home</b> The synths, the one sounding lit</p>
@@ -141,17 +142,17 @@
     </ol>
     <div class="index" id="pages" aria-label="The pages">
       <p class="ih"><b>Pages</b> <span>Press one to see it</span></p>
-      <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-say="The synths, the one sounding lit"><kbd>HOME</kbd><b>Home</b><span></span></button>
-      <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-say="A sequence, the cursor lit"><kbd>SEQ</kbd><b>Roll</b><span></span></button>
-      <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-say="The chord now, the progression"><kbd>ARP</kbd><b>Chord</b><span></span></button>
-      <button class="page" data-src="img/screens/16_home_held.png" data-name="Patterns" data-say="The playing one lit, the next a ring"><kbd>HOME</kbd><b>Patterns</b><span>held</span></button>
-      <button class="page" data-src="img/screens/03_sound.png" data-name="Sound" data-say="The sample, its loop lit"><kbd>EDIT</kbd><b>Sound</b><span></span></button>
-      <button class="page" data-src="img/screens/04_filter.png" data-name="Filter" data-say="The response, its cutoff a point"><kbd>SEL</kbd><b>Filter</b><span></span></button>
-      <button class="page" data-src="img/screens/05_amp.png" data-name="Amp" data-say="The envelope, its points round"><kbd>ENV</kbd><b>Amp</b><span></span></button>
-      <button class="page" data-src="img/screens/06_fx.png" data-name="FX" data-say="Colour, media, motion, space"><kbd>FX</kbd><b>FX</b><span></span></button>
-      <button class="page" data-src="img/screens/08_global.png" data-name="Global" data-say="The sends, the song, the setup"><kbd>GLO</kbd><b>Global</b><span></span></button>
-      <button class="page" data-src="img/screens/09_lfo.png" data-name="LFO" data-say="Its shape and its target"><kbd>LFO</kbd><b>LFO</b><span></span></button>
-      <button class="page" data-src="img/screens/18_discs.png" data-name="Songs" data-say="The songs, a pill each"><kbd>SAVE</kbd><b>Songs</b><span>held</span></button>
+      <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-b="6" data-say="The synths, the one sounding lit"><kbd>HOME</kbd><b>Home</b><span></span></button>
+      <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-b="9" data-say="A sequence, the cursor lit"><kbd>SEQ</kbd><b>Roll</b><span></span></button>
+      <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-b="8" data-say="The chord now, the progression"><kbd>ARP</kbd><b>Chord</b><span></span></button>
+      <button class="page" data-src="img/screens/16_home_held.png" data-name="Patterns" data-b="6" data-hold="2500" data-say="The playing one lit, the next a ring"><kbd>HOME</kbd><b>Patterns</b><span>held</span></button>
+      <button class="page" data-src="img/screens/03_sound.png" data-name="Sound" data-b="4" data-say="The sound&#39;s shape, its loop"><kbd>EDIT</kbd><b>Sound</b><span></span></button>
+      <button class="page" data-src="img/screens/04_filter.png" data-name="Filter" data-b="1" data-say="The response, its cutoff a point"><kbd>SEL</kbd><b>Filter</b><span></span></button>
+      <button class="page" data-src="img/screens/05_amp.png" data-name="Amp" data-b="2" data-say="The envelope, its points round"><kbd>ENV</kbd><b>Amp</b><span></span></button>
+      <button class="page" data-src="img/screens/06_fx.png" data-name="FX" data-b="0" data-say="Colour, media, motion, space"><kbd>FX</kbd><b>FX</b><span></span></button>
+      <button class="page" data-src="img/screens/08_global.png" data-name="Global" data-b="5" data-say="The sends, the song, the setup"><kbd>GLO</kbd><b>Global</b><span></span></button>
+      <button class="page" data-src="img/screens/09_lfo.png" data-name="LFO" data-b="3" data-say="Its shape and its target"><kbd>LFO</kbd><b>LFO</b><span></span></button>
+      <button class="page" data-src="img/screens/18_discs.png" data-name="Songs" data-b="7" data-hold="1300" data-say="The songs, a pill each"><kbd>SAVE</kbd><b>Songs</b><span>held</span></button>
       <button class="page" data-src="img/screens/19_home_night.png" data-name="Night" data-say="The same pages, the night theme"><kbd>GLO</kbd><b>Night</b><span>Setup</span></button>
     </div>
   </section>
@@ -173,6 +174,6 @@
       Geist: SIL OFL 1.1. Kiloy: Marvadesign.</span>
   </footer>
 </main>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

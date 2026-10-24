@@ -143,6 +143,7 @@
       d[i * 4] = c >> 16; d[i * 4 + 1] = (c >> 8) & 255; d[i * 4 + 2] = c & 255; d[i * 4 + 3] = 255;
     }
     lg.putImageData(img, 0, 0);
+    window.dispatchEvent(new Event("demake-frame"));    /* the screens' section shows it too */
     for (let k = 0; k < 27; k++) { const on = m.leds[k] >= 64; if (on !== keyEls[k].lit) { keyEls[k].lit = on; light(keyEls[k], on, on || isBlack(k) ? INK : PAPER); } }
     for (let b = 0; b < 14; b++) { const on = m.leds[27 + b] >= 64, r = btnEls[b].r; if (on !== r.lit) { r.lit = on; light(r, on, on ? INK : PAPER); } }
   }
@@ -184,6 +185,9 @@
     ev.preventDefault();
     turn(+g.dataset.e, ev.deltaY < 0 ? 1 : -1);
   }, { passive: false });
+
+  /* the running machine, for the screens' section: on, start, press a button, turn a knob, its screen */
+  window.demakeLive = { on: () => !!node, start: () => power.click(), btn: (b, d) => send({ t: "btn", b, d }), turn: (e, d) => turn(e, d), lcd };
 
   function turn(e, d) {
     const k = encEls[e];
@@ -314,13 +318,52 @@
     if (here && !hot.has(here) && Math.random() < 0.5) here.style.setProperty("--glint", `url(img/bits/glint_${rnd(6)}.png)`);
   }, 140);
 
-  // the screens: a page pressed is shown, lit in the index; the five marks belong to Home's anatomy
+  // the screens: a page pressed is shown, lit in the index; the five marks belong to Home's anatomy. Once the machine
+  // runs (Power on, or a page pressed here starts it), the screen is the machine's own, live: a page pressed presses
+  // its button, and a value scrolled (or dragged) under the pointer turns its knob, as on the panel above
   const pages = [...document.querySelectorAll(".page")], shown = document.getElementById("shown"), name = document.getElementById("shownname");
-  const main = document.querySelector(".main");
-  pages.forEach((p) => { new Image().src = p.dataset.src; p.addEventListener("click", () => {
+  const main = document.querySelector(".main"), live = document.getElementById("live"), ih = document.querySelector(".ih span");
+  if (!shown || !live) return;
+  const lctx = live.getContext("2d");
+  let liveOn = false, pictured = false;
+  const frame = () => new Promise((res) => { const f = () => { window.removeEventListener("demake-frame", f); res(); }; window.addEventListener("demake-frame", f); setTimeout(f, 4000); });
+  window.addEventListener("demake-frame", () => {
+    const E = window.demakeLive;
+    if (!liveOn) { liveOn = true; ih.textContent = "Live: scroll a value to turn it"; }
+    live.hidden = pictured; shown.hidden = !pictured;
+    if (!pictured) { lctx.imageSmoothingEnabled = false; lctx.drawImage(E.lcd, 0, 0); }
+  });
+  pages.forEach((p) => { new Image().src = p.dataset.src; p.addEventListener("click", async () => {
+    const E = window.demakeLive;
     pages.forEach((q) => q.classList.toggle("on", q === p));
     shown.src = p.dataset.src; shown.alt = p.dataset.name;
     name.innerHTML = `<b>${p.dataset.name}</b> ${p.dataset.say}`;
     main.classList.toggle("home", p === pages[0]);
+    pictured = p.dataset.b === undefined;               /* the night theme: its picture */
+    if (!E || pictured) { if (liveOn) { live.hidden = true; shown.hidden = false; } return; }
+    if (!E.on()) { E.start(); await frame(); }
+    const b = +p.dataset.b;
+    E.btn(b, 1);
+    setTimeout(() => E.btn(b, 0), +(p.dataset.hold || 60));
   }); });
+  // a knob under the pointer: the head SELECT, the four fields K1-K4, the foot ALGORITHM
+  const knobAt = (ev) => {
+    const r = live.getBoundingClientRect(), x = (ev.clientX - r.left) * 240 / r.width, y = (ev.clientY - r.top) * 240 / r.height;
+    return y < 40 ? 0 : y < 102 ? 3 + Math.min(3, Math.max(0, Math.floor(x / 60))) : y > 218 ? 1 : -1;
+  };
+  live.addEventListener("wheel", (ev) => {
+    const E = window.demakeLive, e = knobAt(ev);
+    if (!E || !E.on() || e < 0) return;
+    ev.preventDefault();
+    E.turn(e, ev.deltaY < 0 ? 1 : -1);
+  }, { passive: false });
+  live.addEventListener("pointerdown", (ev) => {
+    const E = window.demakeLive, e = knobAt(ev);
+    if (!E || !E.on() || e < 0) return;
+    let y0 = ev.clientY;
+    live.setPointerCapture(ev.pointerId);
+    const mv = (m) => { const st = Math.trunc((y0 - m.clientY) / 6); if (st) { E.turn(e, st); y0 -= st * 6; } };
+    live.addEventListener("pointermove", mv);
+    live.addEventListener("pointerup", () => live.removeEventListener("pointermove", mv), { once: true });
+  });
 })();

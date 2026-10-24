@@ -38,8 +38,8 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Level 1", "Level 2", "Level 3", "Verb"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
     {"Roll", 1, {"Roll"}, {"Zoom"}, {{"Cursor", "View", "Length", "Steps"}}},
-    {"Sound", 2, {"Engine", "Layer"}, {"Engine", "Sample"},
-     {{"Sample", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}}},
+    {"Sound", 2, {"Main", "Layer"}, {"Fine", "Sound"},
+     {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drift"}}},
     {"Amp", 1, {"Amp"}, {"Level"}, {{"Attack", "Decay", "Sustain", "Release"}}},
     {"FX", 4, {"Colour", "Media", "Motion", "Space"}, {"Effect", "Effect", "Effect", ""},
@@ -64,18 +64,19 @@ static const char *const LAYER_NAME[B_COUNT] = {"the four amounts", "help", "hel
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
-static const char *const ENGINES[] = {"Sample", "Pad", "Drone", "Pluck"};
 static const char *const FILTERS[] = {"LP24", "LP12", "BP", "HP", "Off"};
 static const char *const ZOOMS[] = {"16", "32", "64"};
 static const char *const OFF[] = {"Off"};
+static const char *const LFOS[] = {"Sine", "Triangle", "Ramp", "Square", "Random"};
+static const char *const TARGETS[] = {"Pitch", "Cutoff", "Level", "Pan"};
 static const char *const LOOPS[] = {"Off", "Full"};
 static const char *const MEDIA[] = {"Off", "Tape"};
 static const char *const VERBS[] = {"Room"};
 static const char *const ECHOS[] = {"Tape"};
 static const choice_t CHOICE[] = {
-    {PG_SOUND, 0, 4, 1, ENGINES}, {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 5, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
+    {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 5, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, 1, OFF}, {PG_FX, 1, 4, 2, MEDIA}, {PG_FX, 2, 4, 1, OFF}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
-    {PG_GLOBAL, 0, 4, 1, VERBS}, {PG_GLOBAL, 1, 4, 1, ECHOS},
+    {PG_GLOBAL, 0, 4, 1, VERBS}, {PG_GLOBAL, 1, 4, 1, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
 };
 
 static struct {
@@ -137,6 +138,7 @@ static void sp_sync(void)
         p->start = (uint16_t)(VS(s, PG_SOUND, 0, 1) * ((sm->loops ? sm->loop0 : sm->blocks) / 2) / 127);
         p->loops = (uint8_t)(VS(s, PG_SOUND, 0, 2) >= 64);
         p->tune = (int16_t)((VS(s, PG_SOUND, 0, 3) - 64) * 24 / 64);
+        p->fine = (int8_t)((VS(s, PG_SOUND, 0, 4) - 64) * 50 / 64);
         p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 5 / 128);
         p->cut = (int16_t)(VS(s, PG_FILTER, 0, 0) >= 127 ? 255 : VS(s, PG_FILTER, 0, 0) * 2);
         p->resq = T_RESQ[VS(s, PG_FILTER, 0, 1)];
@@ -198,7 +200,7 @@ static void ui_init(void)
         ui.val[s][PG_SOUND][0][0] = (uint8_t)smp_named(FIRST[s]);
         ui.val[s][PG_SOUND][0][1] = 0;
         ui.val[s][PG_SOUND][0][2] = 127;                /* the loop on */
-        ui.val[s][PG_SOUND][0][4] = 0;
+        ui.val[s][PG_SOUND][0][4] = 64;                 /* in tune */
         ui.val[s][PG_AMP][0][0] = t[0]; ui.val[s][PG_AMP][0][1] = t[1]; ui.val[s][PG_AMP][0][2] = t[2];
         ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
         ui.val[s][PG_FILTER][0][0] = t[4]; ui.val[s][PG_FILTER][0][1] = t[5]; ui.val[s][PG_FILTER][0][2] = t[6];
@@ -241,6 +243,12 @@ static void val_text(char *o, int page, int row, int k)
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
+        return;
+    }
+    if (page == PG_SOUND && row == 0 && k == 4) {       /* the fine tune, in cents */
+        int t = (v - 64) * 50 / 64;
+        if (t > 0) *o++ = '+';
+        fmt_int(o, t);
         return;
     }
     if (page == PG_SOUND && row == 0 && k == 3) {       /* the tune, in semitones */
@@ -536,16 +544,12 @@ static void stage_sound(void)
 {
     int16_t ya[DMK_W], yb[DMK_W];
     const dmk_sample_t *sm = &DMK_SAMPLES[*vp(PG_SOUND, 0, 0) < DMK_SAMPLES_N ? *vp(PG_SOUND, 0, 0) : 0];
-    int i, mid = SY + 78, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, n = sm->blocks;
+    int i, mid = SY + 76, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, n = sm->blocks;
     card(SX, SY, SW, SH, C_LINE, 1);
     if (ui.row[PG_SOUND]) card_title(SX, SY, SW, "No layer", "Layer", 0);
-    else {                                              /* the sound's name, and its mark in the corner, lit */
-        char ini[2] = {(char)(sm->name[0] | 0x20), 0};
-        card_title(SX, SY, SW, sm->name, sm->loops ? "Sample, looped" : "Sample, one-shot", 0);
-        text_r(SX + SW - PAD - 2, SY + 8, ini, &FK, HOLO);
-    }
-    for (i = 0; i < w; i++) {                           /* the sample's own shape: its body lit, its edge in ink */
-        int h = sm->env[i * 48 / w] * 26 / 255;
+    else card_title(SX, SY, SW, sm->name, sm->loops && *vp(PG_SOUND, 0, 2) >= 64 ? "Looped" : "One-shot", 0);
+    for (i = 0; i < w; i++) {                           /* the sound's own shape: its body lit, its edge in ink */
+        int h = sm->env[i * 48 / w] * 34 / 255;
         if (h < 1) h = 1;
         ya[i] = (int16_t)(mid - h); yb[i] = (int16_t)(mid + h + 1);
     }
@@ -553,48 +557,94 @@ static void stage_sound(void)
     for (i = 0; i < w; i++) { px_put(x0 + i, ya[i], C_INK); px_put(x0 + i, yb[i] - 1, C_INK); }
     if (sm->loops && *vp(PG_SOUND, 0, 2) >= 64)         /* the loop's ends, as tall as the sample is there */
         for (i = 0; i < 2; i++) {
-            int lx = (i ? sm->loop1 : sm->loop0) * (w - 1) / n, lh = mid - ya[lx] + 6;
+            int lx = (i ? sm->loop1 : sm->loop0) * (w - 1) / n, lh = mid - ya[lx] + 5;
             round_fill(x0 + lx - 2, mid - lh, 4, 2 * lh, 2, C_INK);
         }
     if (syn[ui.synth].start) {                          /* where it starts */
         int sx = syn[ui.synth].start * (w - 1) / n;
-        vline(x0 + sx, mid - 30, 61, C_INK);
+        vline(x0 + sx, mid - 38, 77, C_INK);
     }
 }
 
-static void stage_curve(int amp)
+/* the filter's response: the passband lit, the cutoff where K1 puts it (a log axis across the card), the resonance a
+ * peak there, the slope of its type (ALGORITHM: LP24 steep, LP12 gentle, BP both sides, HP mirrored, Off flat); the
+ * envelope's reach a ring along the floor (K3, either way) */
+static void stage_filter(void)
 {
     int16_t ys[DMK_W], yb[DMK_W];
-    int i, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, base = SY + SH - 14, top = SY + 14;
+    int x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, base = SY + SH - 14, top = SY + 12, ly = top + 34, i;
+    int cut = *vp(PG_FILTER, 0, 0), q = *vp(PG_FILTER, 0, 1) * 30 / 127, env = *vp(PG_FILTER, 0, 2) - 64;
+    int type = *vp(PG_FILTER, 0, 4) * 5 / 128, fc = x0 + cut * (w - 1) / 127, ex;
     card(SX, SY, SW, SH, C_LINE, 1);
-    for (i = 0; i < w; i++) yb[i] = (int16_t)(base + 1);
-    if (!amp) {                                         /* the response: its body lit under the curve */
-        int fc = x0 + *vp(PG_FILTER, 0, 0) * w / 127, q = *vp(PG_FILTER, 0, 1) / 4, ly = top + 40;
-        for (i = 0; i < w; i++) {
-            int x = x0 + i, y;
-            if (x < fc - 12) y = ly;
-            else if (x < fc) y = ly - q * (x - fc + 12) / 12;
-            else y = ly - q + (x - fc) * 3;
-            if (y > base) y = base;
-            if (y < top) y = top;
-            ys[i] = (int16_t)y;
+    for (i = 0; i < w; i++) {
+        int x = x0 + i, dx = x - fc, ad = dx < 0 ? -dx : dx, y = ly;
+        if (type == 4) y = ly;                          /* off: all of it passes */
+        else {
+            if ((type == 0 || type == 1 || type == 2) && dx > 0) y = ly + dx * (type == 0 ? 4 : type == 1 ? 2 : 3);
+            if ((type == 3 || type == 2) && dx < 0) y = ly + ad * (type == 3 ? 4 : 3);
+            if (ad < 16) y -= q * (16 - ad) / 16;       /* the resonance: a peak at the cutoff */
         }
-        lit_band(x0, w, ys, yb);
-        ink_line(x0, w, ys);
-        round_fill(fc - 4, base - 4, 9, 9, 4, lit(0) ? HOLO : C_INK);
-    } else {                                            /* the envelope: its body lit under the line */
-        int a = *vp(PG_AMP, 0, 0) / 3 + 4, d = *vp(PG_AMP, 0, 1) / 3 + 4, s = *vp(PG_AMP, 0, 2);
-        int r = *vp(PG_AMP, 0, 3) / 3 + 4, hold = w - a - d - r, sy = base - (s * (base - top)) / 127;
-        int pts[5][2] = {{x0, base}, {x0 + a, top}, {x0 + a + d, sy}, {x0 + a + d + hold, sy}, {x0 + w - 1, base}};
-        for (i = 0; i < 4; i++) {
-            int k, n = pts[i + 1][0] - pts[i][0];
-            for (k = 0; k <= n && pts[i][0] + k - x0 < w; k++)
-                ys[pts[i][0] + k - x0] = (int16_t)(pts[i][1] + (n ? (pts[i + 1][1] - pts[i][1]) * k / n : 0));
-        }
-        lit_band(x0, w, ys, yb);
-        ink_line(x0, w, ys);
-        for (i = 1; i < 4; i++) round_fill(pts[i][0] - 4, pts[i][1] - 4, 9, 9, 4, lit(i - 1) ? HOLO : C_INK);
+        ys[i] = (int16_t)(y < top ? top : y > base ? base : y);
+        yb[i] = (int16_t)(base + 1);
     }
+    lit_band(x0, w, ys, yb);
+    ink_line(x0, w, ys);
+    ex = fc + env * (w - 1) / 127;                      /* where the envelope takes the cutoff */
+    if (ex < x0) ex = x0;
+    if (ex > x0 + w - 1) ex = x0 + w - 1;
+    if (env) { hline(ex < fc ? ex : fc, base - 2, (ex < fc ? fc - ex : ex - fc) + 1, C_INK); round_line(ex - 4, base - 6, 9, 9, 4, 1, lit(2) ? HOLO : C_INK); }
+    round_fill(fc - 4, (type == 4 ? ly : ys[fc - x0]) - 4, 9, 9, 4, lit(0) || lit(1) ? HOLO : C_INK);
+}
+
+/* the envelope: attack, decay, sustain, release as their own widths (each up to a quarter of the card), the peak as
+ * high as the level (ALGORITHM); its body lit under the line, a point at each knob's corner */
+static void stage_amp(void)
+{
+    int16_t ys[DMK_W], yb[DMK_W];
+    int x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, base = SY + SH - 14, top = SY + 14, i;
+    int peak = base - (base - top) * *vp(PG_AMP, 0, 4) / 127;
+    int a = 2 + *vp(PG_AMP, 0, 0) * 56 / 127, d = 2 + *vp(PG_AMP, 0, 1) * 56 / 127, r = 2 + *vp(PG_AMP, 0, 3) * 56 / 127;
+    int sy = base - (base - peak) * *vp(PG_AMP, 0, 2) / 127, hold = w - 1 - a - d - r;
+    int pts[5][2];
+    pts[0][0] = x0; pts[0][1] = base; pts[1][0] = x0 + a; pts[1][1] = peak; pts[2][0] = x0 + a + d; pts[2][1] = sy;
+    pts[3][0] = x0 + a + d + hold; pts[3][1] = sy; pts[4][0] = x0 + w - 1; pts[4][1] = base;
+    card(SX, SY, SW, SH, C_LINE, 1);
+    for (i = 0; i < w; i++) { ys[i] = (int16_t)base; yb[i] = (int16_t)(base + 1); }
+    for (i = 0; i < 4; i++) {
+        int k, n = pts[i + 1][0] - pts[i][0];
+        for (k = 0; k <= n && pts[i][0] + k - x0 < w; k++)
+            ys[pts[i][0] + k - x0] = (int16_t)(pts[i][1] + (n ? (pts[i + 1][1] - pts[i][1]) * k / n : 0));
+    }
+    lit_band(x0, w, ys, yb);
+    ink_line(x0, w, ys);
+    for (i = 1; i < 4; i++) round_fill(pts[i][0] - 4, pts[i][1] - 4, 9, 9, 4, lit(i - 1) || (i == 3 && lit(3)) ? HOLO : C_INK);
+}
+
+/* the LFO: its wave across the card, as many cycles as the rate (1..8), as tall as the depth, of its shape (sine,
+ * triangle, ramp, square, random), rising from nothing over the fade; its body lit from the middle to the wave */
+static void stage_lfo(void)
+{
+    int16_t ya[DMK_W], yb[DMK_W], ys[DMK_W];
+    int x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, mid = SY + SH / 2, i;
+    int cyc = 1 + *vp(PG_LFO, 0, 0) * 7 / 127, amp = 3 + *vp(PG_LFO, 0, 1) * 44 / 127;
+    int shape = *vp(PG_LFO, 0, 2) * 5 / 128, fade = *vp(PG_LFO, 0, 3) * (w - 1) / 127;
+    card(SX, SY, SW, SH, C_LINE, 1);
+    for (i = 0; i < w; i++) {
+        int ph = i * cyc * 256 / w, p = ph & 255, v, g;   /* v: -128..128 */
+        if (shape == 0) { int t = p & 127; v = 4 * t * (128 - t) / 128; if (p >= 128) v = -v; }   /* sine, near enough */
+        else if (shape == 1) v = p < 128 ? -128 + p * 2 : 384 - p * 2;
+        else if (shape == 2) v = 128 - p;
+        else if (shape == 3) v = p < 128 ? 128 : -128;
+        else { uint32_t hsh = (uint32_t)(ph >> 8) * 2654435761u; v = (int)(hsh >> 24) - 128; }
+        g = fade && i < fade ? i * 256 / fade : 256;    /* the fade: from nothing to its depth */
+        ys[i] = (int16_t)(mid - v * amp / 128 * g / 256);
+        ya[i] = ys[i] < mid ? ys[i] : (int16_t)mid;
+        yb[i] = (int16_t)((ys[i] > mid ? ys[i] : mid) + 1);
+    }
+    hline(x0, mid, w, C_LINE);
+    lit_band(x0, w, ya, yb);
+    ink_line(x0, w, ys);
+    if (fade) round_fill(x0 + fade - 4, mid - 4, 9, 9, 4, lit(3) ? HOLO : C_INK);
 }
 
 /* four rows, a pill each: its name, its switch (off), the open one framed in ink */
@@ -624,12 +674,12 @@ static void stage_chord(void)
     int i, y = SY + SH - 30;
     card(SX, SY, SW, SH, C_LINE, 1);
     card_title(SX, SY, SW, "A minor", "Key", 0);
-    text_c(DMK_W / 2, SY + 40, "Am(add9)", &FN, HOLO);
-    for (i = 0; i < 4; i++) {                           /* the progression: now, a pill */
+    text_c(DMK_W / 2, SY + 40, "Am(add9)", &FN, C_INK);   /* the chord now, in ink as every value */
+    for (i = 0; i < 4; i++) {                           /* the progression: now, a lit pill (as the site's), ink on it */
         int x = cell_x(SX + 4, SW - 8, 4, i), w = cell_w(SX + 4, SW - 8, 4, i), tw = text_w(CH[i], &FS);
-        if (i == 0) round_fill(x, y, w, 24, 12, C_INK);
-        if (tw <= w - 8) text_c(x + w / 2, y + 6, CH[i], &FS, i == 0 ? C_PAPER : C_LABEL);
-        else text_fit(x + 4, y + 6, w - 8, CH[i], &FS, i == 0 ? C_PAPER : C_LABEL);
+        if (i == 0) round_fill(x, y, w, 24, 12, HOLO);
+        if (tw <= w - 8) text_c(x + w / 2, y + 6, CH[i], &FS, i == 0 ? C_INK : C_LABEL);
+        else text_fit(x + 4, y + 6, w - 8, CH[i], &FS, i == 0 ? C_INK : C_LABEL);
     }
 }
 
@@ -749,12 +799,12 @@ static const uint8_t *ui_frame(uint32_t ms)
     case PG_HOME: stage_home(); break;
     case PG_ROLL: stage_roll(); break;
     case PG_SOUND: stage_sound(); break;
-    case PG_FILTER: stage_curve(0); break;
-    case PG_AMP: stage_curve(1); break;
+    case PG_FILTER: stage_filter(); break;
+    case PG_AMP: stage_amp(); break;
     case PG_FX: stage_rows(PG_FX, PAGE[PG_FX].row, 4, ui.row[PG_FX]); break;
     case PG_CHORD: stage_chord(); break;
     case PG_GLOBAL: stage_rows(PG_GLOBAL, PAGE[PG_GLOBAL].row, 4, ui.row[PG_GLOBAL]); break;
-    case PG_LFO: stage_curve(1); break;
+    case PG_LFO: stage_lfo(); break;
     default: stage_songs(); break;
     }
     foot();
