@@ -803,7 +803,7 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
 | Page | What is on it |
 | --- | --- |
 | home | the D and the index, the wordmark, the emulator (power, volume as a meter, the keys), the machine's cards, the sound, the light, the screens, the band, the footer |
-| manual | one article at a time on the same canvas; screens from the host's tour; every page, layer and combo from the core's own tables |
+| manual | `web/manual.html` (built 2026-10-24): one page on the same canvas, nine sections (the panel, the rules, the pages with their screens from the tour, playing and the rolls, chords, effects, sounds, the emulator's keys, installing), a line a control; what is not built says so. The header's links: Play, Manual, Install, Source |
 | install | the installer, `web/install.html` (built in phase 1; Felucca's `fm1ota.js` and `fm1pkg.js` unchanged, as MONO2K's site uses them): connect, install a published package or a `.fwsc` from the computer, what an install may overwrite in the FM-1's data area, and the way back to M-VAVE's firmware. A package is published there (`web/firmware/demake.json`) only once it has run on the owner's FM-1 |
 | changes | the change log, an entry a day, written for the player |
 

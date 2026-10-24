@@ -1,0 +1,192 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Demake's manual: the panel, the rules, the pages, playing and the rolls, chords, effects, sounds, the emulator's
+     keys, installing. A line a control, on the site's 48 px grid (docs/plan.md, 6). What is not built yet says so. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Demake manual</title>
+  <meta name="description" content="How to play Demake on the M-VAVE FM-1 and in the emulator: the panel, the pages, the rolls, chords and effects.">
+  <link rel="icon" href="img/icon.png">
+  <link rel="stylesheet" href="style.css?v=12">
+</head>
+<body>
+<main class="canvas">
+
+  <header class="g head">
+    <a href="./" class="iso bits" style="--src: url(img/iso.png)" aria-label="Demake"></a>
+    <a href="./#play" class="nav n1"><b>Play</b><span>Emulator</span></a>
+    <a href="manual.html" class="nav n2" aria-current="page"><b>Manual</b><span>How it works</span></a>
+    <a href="install.html" class="nav n3"><b>Install</b><span>Over USB</span></a>
+    <a href="https://github.com/InigoHernandez/demake-synth" class="nav n4"><b>Source</b><span>GitHub</span></a>
+    <a href="https://ko-fi.com/sequencist" class="kofi pill" target="_blank" rel="noopener">Support on Ko&#8209;fi</a>
+    <a href="./#play" class="cta lit">Play it</a>
+  </header>
+
+  <section class="g ihero">
+    <p class="say">The manual, a page at a time.</p>
+    <p class="meta">For the FM&#8209;1 and the emulator alike. What is not built yet says so.</p>
+  </section>
+
+  <!-- 01 the panel -->
+  <section class="g strip" id="panel"><span class="no">01</span><span class="lb">The panel</span></section>
+  <section class="g ms">
+    <p class="lede">Twelve buttons, eight knobs, 27 keys.</p>
+    <p class="body">Each button opens its page. K1 to K4 turn the four values under them; ALGORITHM the one at the foot.
+      SELECT picks the synth, PRESETS its sound, on every page.</p>
+    <div class="mt" style="--n: 14; --np: 28">
+      <p><b>FX</b><span>Effects: colour, media, motion, space</span></p>
+      <p><b>SEL</b><span>Filter</span></p>
+      <p><b>ENV</b><span>Amp: the envelope and the level</span></p>
+      <p><b>LFO</b><span>LFO (drawn; its sound comes later)</span></p>
+      <p><b>EDIT</b><span>Sound: which recording, start, loop, tune</span></p>
+      <p><b>GLO</b><span>Global: the reverb, the echo, the theme</span></p>
+      <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
+      <p><b>ARP</b><span>Chord: the progression, chords on the keys</span></p>
+      <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
+      <p><b>SAVE</b><span>Held: the songs (saving comes later)</span></p>
+      <p><b>PLAY</b><span>All three rolls and the chords, from the top</span></p>
+      <p><b>REC</b><span>Records the keys; stopped on Chord, writes chords</span></p>
+      <p><b>OCT&minus; OCT+</b><span>The keys' octave; with a note held, delete or copy</span></p>
+      <p><b>MASTER</b><span>The volume</span></p>
+    </div>
+  </section>
+
+  <!-- 02 the rules -->
+  <section class="g strip" id="rules"><span class="no">02</span><span class="lb">The rules</span></section>
+  <section class="g flow mrules">
+    <div class="rule r1"><i class="mk">1</i><b>Tap, again, hold</b><p>Tap a page button to open it, again for its next row, hold it for its layer.</p></div>
+    <div class="rule r2"><i class="mk">2</i><b>ALGORITHM moves</b><p>On FX and GLO it moves through the rows. Hold the page's button and turn it to change a row's type.</p></div>
+    <div class="rule r3"><i class="mk">3</i><b>Hold, then act</b><p>Hold a key on the Roll or a chord on Chord: the knobs change it, OCT&minus; takes it away, OCT+ copies it.</p></div>
+  </section>
+
+  <!-- 03 the pages -->
+  <section class="g strip" id="pages"><span class="no">03</span><span class="lb">The pages</span></section>
+  <section class="g mpages">
+    <figure class="pg"><img src="img/screens/01_home.png" alt="Home" width="240" height="240"><figcaption><b>Home</b><span>The three levels, sends, tempo; a scene by the sound</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/02_roll.png" alt="Roll" width="240" height="240"><figcaption><b>Roll</b><span>Each synth's own notes and length</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/07_chord.png" alt="Chord" width="240" height="240"><figcaption><b>Chord</b><span>The progression; the keys play chords</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/03_sound.png" alt="Sound" width="240" height="240"><figcaption><b>Sound</b><span>The recording, where it starts, its loop</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/04_filter.png" alt="Filter" width="240" height="240"><figcaption><b>Filter</b><span>Eight types; cutoff, resonance, envelope</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/05_amp.png" alt="Amp" width="240" height="240"><figcaption><b>Amp</b><span>Attack, decay, sustain, release, level</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/06_fx.png" alt="FX" width="240" height="240"><figcaption><b>FX</b><span>Four rows of effects, a synth each</span></figcaption></figure>
+    <figure class="pg"><img src="img/screens/08_global.png" alt="Global" width="240" height="240"><figcaption><b>Global</b><span>The shared reverb and echo, the theme</span></figcaption></figure>
+  </section>
+
+  <!-- 04 playing and the rolls -->
+  <section class="g strip" id="rolls"><span class="no">04</span><span class="lb">Playing and the rolls</span></section>
+  <section class="g ms">
+    <p class="lede">The keys play the synth SELECT picks.</p>
+    <p class="body">Each synth has its own roll and length (32, 16 and 12 steps in the first song), so the three loop
+      against each other. On the Roll, stopped, a key writes a note at the cursor.</p>
+    <div class="mt" style="--n: 9; --np: 18">
+      <p><b>A key</b><span>Stopped: writes at the cursor, then moves it on</span></p>
+      <p><b>Held + K1</b><span>Moves the note</span></p>
+      <p><b>Held + K2</b><span>Its pitch, a scale step at a time</span></p>
+      <p><b>Held + K3</b><span>Its length; ALGORITHM its velocity</span></p>
+      <p><b>Held + OCT&minus;</b><span>Deletes it; OCT+ copies it after itself</span></p>
+      <p><b>K1 K2 K3</b><span>The cursor, the view, the pen's length</span></p>
+      <p><b>K4</b><span>This synth's length, 1 to 64 steps</span></p>
+      <p><b>PLAY</b><span>Plays; the keys play along, not written</span></p>
+      <p><b>PLAY + REC</b><span>Records the keys from their nearest step</span></p>
+    </div>
+  </section>
+
+  <!-- 05 chords -->
+  <section class="g strip" id="chords"><span class="no">05</span><span class="lb">Chords</span></section>
+  <section class="g ms">
+    <p class="lede">On Chord, a key is a chord.</p>
+    <p class="body">Each key plays the chord of the song's key built on it: A gives Am7, F gives Fmaj7. PLAY runs the
+      progression: the pad plays it, the piano follows the key, the third synth the root.</p>
+    <div class="mt" style="--n: 10; --np: 20">
+      <p><b>ALGORITHM</b><span>The progression: 16 presets, then User 1 to 4</span></p>
+      <p><b>Voice row</b><span>Voicing, inversion (Auto moves least), spread, strum</span></p>
+      <p><b>Key row</b><span>Key, mode, chord length, rhythm (hold, pulse, arp)</span></p>
+      <p><b>SEQ + ALGO</b><span>How this synth follows: plays chords, key, chord, root, free</span></p>
+      <p><b>REC, stopped</b><span>Keys write chords into the slots, the cursor moving on</span></p>
+      <p><b>Held + K1</b><span>Moves the chord; K2 its quality, K3 its bars</span></p>
+      <p><b>Held + K4</b><span>Its bass: the root, or the key's pedal</span></p>
+      <p><b>Held + OCT&minus;</b><span>Deletes it; OCT+ copies it after itself</span></p>
+      <p><b>ARP + K1</b><span>The slot cursor</span></p>
+      <p><b>ARP + OCT+</b><span>Prints the progression into this synth's roll</span></p>
+    </div>
+  </section>
+
+  <!-- 06 effects -->
+  <section class="g strip" id="effects"><span class="no">06</span><span class="lb">Effects</span></section>
+  <section class="g ms">
+    <p class="lede">Four rows a synth, two shared spaces.</p>
+    <p class="body">On FX and GLO, ALGORITHM moves through the rows; hold FX or GLO and turn it to change the row's effect.
+      Each effect names its own four knobs.</p>
+    <div class="mt" style="--n: 7; --np: 14">
+      <p><b>Colour</b><span>Saturate, crush, lossy (a codec's smear), noise</span></p>
+      <p><b>Media</b><span>Tape, cassette, VHS</span></p>
+      <p><b>Motion</b><span>Chorus, vibrato, drift</span></p>
+      <p><b>Space</b><span>The sends to the reverb and the echo, the pan</span></p>
+      <p><b>Reverb</b><span>Room, hall, space, haze, bloom, lofi (on GLO)</span></p>
+      <p><b>Echo</b><span>Tape, or grains: a cloud of what you played</span></p>
+      <p><b>Filter</b><span>LP24, LP12, HP, BP, notch, peak, vowel; hold SEL to change</span></p>
+    </div>
+  </section>
+
+  <!-- 07 sounds -->
+  <section class="g strip" id="sounds"><span class="no">07</span><span class="lb">Sounds</span></section>
+  <section class="g ms">
+    <p class="lede">Sixty-four recordings, built in.</p>
+    <p class="body">Nothing to load. PRESETS steps through them on any page; Home shows a landscape for the kind of sound:
+      peaks, a lake, a coast or the night.</p>
+    <div class="mt" style="--n: 5; --np: 10">
+      <p><b>Sound</b><span>Which recording (K1), or PRESETS anywhere</span></p>
+      <p><b>Start</b><span>Where it starts: past its attack, for a soft one</span></p>
+      <p><b>Loop</b><span>Full, or once through</span></p>
+      <p><b>Tune</b><span>In semitones; ALGORITHM fine, in cents</span></p>
+      <p><b>Layer</b><span>A second recording under it (comes later)</span></p>
+    </div>
+  </section>
+
+  <!-- 08 the emulator's keys -->
+  <section class="g strip" id="keys"><span class="no">08</span><span class="lb">The emulator's keys</span></section>
+  <section class="g ms">
+    <p class="lede">The computer plays the panel.</p>
+    <p class="body">Press Power on first. A knob turns by dragging it up or down, or with the wheel over it; in the
+      screens' section, over a value.</p>
+    <div class="mt" style="--n: 6; --np: 12">
+      <p><b>Z to /, S to '</b><span>The lower keys, F3 to A4</span></p>
+      <p><b>Q to O</b><span>The upper keys, B4 to G5</span></p>
+      <p><b>1 to =</b><span>The twelve buttons, FX to REC</span></p>
+      <p><b>[ ]</b><span>OCT&minus; and OCT+</span></p>
+      <p><b>Arrows</b><span>Up and down SELECT, left and right ALGORITHM</span></p>
+      <p><b>Shift click</b><span>Holds a button down</span></p>
+    </div>
+  </section>
+
+  <!-- 09 installing -->
+  <section class="g strip" id="installing"><span class="no">09</span><span class="lb">Installing</span></section>
+  <section class="g ms">
+    <p class="lede">From the installer page, over USB.</p>
+    <p class="body">Chrome or Edge on a computer: connect, choose the .fwsc, install. If the screen stays dark, hold OCT&minus;
+      while switching on: a rescue mode the installer works from.</p>
+    <div class="mt" style="--n: 2; --np: 4">
+      <p><b>Installer</b><span><a href="install.html">Demake onto the FM&#8209;1 &rarr;</a></span></p>
+      <p><b>The way back</b><span>M&#8209;VAVE's own V15, from the same page</span></p>
+    </div>
+  </section>
+
+  <nav class="g foot links" aria-label="Sequencist, the author">
+    <span>By Sequencist</span>
+    <a href="https://github.com/InigoHernandez" target="_blank" rel="noopener">GitHub ↗</a>
+    <a href="https://sequencist.bandcamp.com/" target="_blank" rel="noopener">Bandcamp ↗</a>
+    <a href="https://www.youtube.com/@sequencist" target="_blank" rel="noopener">YouTube ↗</a>
+    <a href="https://www.instagram.com/sequencist.fm" target="_blank" rel="noopener">Instagram ↗</a>
+    <a href="https://soundcloud.com/sequencist" target="_blank" rel="noopener">SoundCloud ↗</a>
+  </nav>
+  <footer class="g foot fin">
+    <span>Demake</span><span class="w2">An ambient lofi machine</span>
+    <a class="w2" href="https://ko-fi.com/sequencist" target="_blank" rel="noopener">Support on Ko&#8209;fi ↗</a><span class="r">2026</span>
+    <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
+  </footer>
+</main>
+<script src="app.js?v=10"></script>
+</body>
+</html>
