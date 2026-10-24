@@ -458,7 +458,7 @@ code { font: inherit; color: var(--ink); }
   .legend li { grid-auto-rows: auto; }
   .index { grid-row: 21 / span 13; grid-template-columns: 1fr; }
   .bandrow { grid-template-rows: repeat(6, var(--m)); }
-  .band { grid-row: 2 / span 4; align-self: center; }
+  .band { grid-row: 2 / span 4; align-self: start; }   /* 3.5 rows tall: its corner on the lines */
   .links { grid-template-rows: repeat(6, var(--m)); }
   .links > * { grid-column: 1 / -1; }
   .fin { grid-template-rows: repeat(7, var(--m)); }

@@ -147,7 +147,7 @@ static void tour(const char *dir)
     tap(B_HOME); dmk_encoder(E_SELECT, 1); shot(dir, "home_synth2");
     dmk_button(B_HOME, 1); wait_ms(500); shot(dir, "home_held"); dmk_button(B_HOME, 0); wait_ms(60);
     tap(B_OCTU); wait_ms(300); shot(dir, "notice");
-    tap(B_SAVE); wait_ms(100); shot(dir, "saved");     /* SAVE: the song into its slot */
+    tap(B_SAVE); wait_ms(100); shot(dir, "saved"); wait_ms(1500);   /* SAVE: the song into its slot */
     dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); dmk_encoder(E_K1, 1); wait_ms(60); shot(dir, "discs");
     tap(B_GLO); tap(B_GLO);                             /* to SETUP */
     for (int t = 1; t < DMK_THEMES; t++) {
