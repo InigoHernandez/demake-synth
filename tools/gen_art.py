@@ -260,9 +260,9 @@ def graphics():
                 out[rim, 3] = 255
         frames.append(out)
     sprite(frames, IMG / "plate.png")
-    # the band: the machine's words in three rows of eight letters, all of one size (the widest row's ink from line to
+    # the band: what it is, "ambient lofi machine", a word a row, all of one size (the widest row's ink from line to
     # line), every letter whole, ink on paper, one letter lit a row (after Kiloy's specimen of rows of letters)
-    rows = [("lofisnow", 3), ("tapeecho", 5), ("chordpad", 1)]
+    rows = [("ambient", 3), ("lofi", 1), ("machine", 4)]     # what it is, a word a row
     f4 = ImageFont.truetype(str(KILOY), 800)
     nat = [f4.getbbox(w) for w, _ in rows]
     widest = max(b[2] - b[0] for b in nat)

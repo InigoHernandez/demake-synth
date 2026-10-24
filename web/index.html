@@ -44,14 +44,14 @@
     <button class="power lit" id="power">Power on</button>
     <div class="vol"><span class="lb">Volume</span><span class="ticks" id="vol" role="slider" aria-label="Volume"
       aria-valuemin="0" aria-valuemax="100" aria-valuenow="80" tabindex="0"></span></div>
-    <p class="keys">
-      <span><kbd>Z</kbd>–<kbd>/</kbd> <kbd>S</kbd>–<kbd>'</kbd> <kbd>Q</kbd>–<kbd>O</kbd> Keys</span>
-      <span><kbd>1</kbd>–<kbd>=</kbd> FX … REC</span>
-      <span><kbd>[</kbd> <kbd>]</kbd> OCT</span>
-      <span><kbd>↑</kbd> <kbd>↓</kbd> Select</span>
-      <span><kbd>←</kbd> <kbd>→</kbd> Algorithm</span>
-      <span><kbd>Shift</kbd>-click holds a button</span>
-    </p>
+    <ul class="keys" aria-label="The computer's keys">
+      <li><span><kbd>Z</kbd>–<kbd>/</kbd> <kbd>S</kbd>–<kbd>'</kbd></span>The lower keys, F3 to A4</li>
+      <li><span><kbd>Q</kbd>–<kbd>O</kbd></span>The upper keys, B4 to G5</li>
+      <li><span><kbd>1</kbd>–<kbd>=</kbd></span>The twelve buttons, FX to REC</li>
+      <li><span><kbd>[</kbd> <kbd>]</kbd></span>OCT− and OCT+</li>
+      <li><span><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></span>Select, then Algorithm</li>
+      <li><span><kbd>Shift</kbd> click</span>Holds a button down</li>
+    </ul>
   </section>
 
   <!-- 02 the machine: cards of the sizes their content asks, linked as nodes -->
@@ -89,21 +89,22 @@
     <div class="plate bits" style="--src: url(img/plate.png)" role="img" aria-label="Ambient, in line and in light"></div>
   </section>
 
-  <!-- 04 the light: the art on the grid, each piece its own proportion, 8-bit -->
-  <section class="g strip"><span class="no">04</span><span class="lb">Light</span></section>
+  <!-- 04 the sounds: each one's light, as it glows on the screen while it plays -->
+  <section class="g strip"><span class="no">04</span><span class="lb">Sounds</span></section>
   <section class="g art">
-    <figure class="a1 hov"><canvas class="heat" data-heat="img/art/flow.png"></canvas><figcaption><b>Image</b> Flow</figcaption></figure>
-    <figure class="a2 hov"><canvas class="heat" data-heat="img/art/pool.png"></canvas><figcaption><b>Image</b> Pool</figcaption></figure>
-    <figure class="a3 seal"><div class="bits" style="--src: url(img/seal.png)" role="img" aria-label="The seal: a ring of ticks round the D"></div><figcaption><b>Seal</b> Phase 0</figcaption></figure>
-    <figure class="a4 hov"><canvas class="heat" data-heat="img/art/rise.png"></canvas><figcaption><b>Image</b> Rise</figcaption></figure>
-    <figure class="a5 hov"><canvas class="heat" data-heat="img/art/drift.png"></canvas><figcaption><b>Image</b> Drift</figcaption></figure>
-    <figure class="a6 hov"><canvas class="heat" data-heat="img/art/twin.png"></canvas><figcaption><b>Image</b> Twin</figcaption></figure>
-    <figure class="a7 hov"><canvas class="heat" data-heat="img/art/wave.png"></canvas><figcaption><b>Image</b> Wave</figcaption></figure>
+    <p class="say">Every sound has its light: the glow the screen gives it while it plays.</p>
+    <figure class="a1 hov"><canvas class="heat" data-heat="img/art/flow.png"></canvas><figcaption><b>Snow pad</b><span>Pad. Slow, wide, a long tail</span></figcaption></figure>
+    <figure class="a2 hov"><canvas class="heat" data-heat="img/art/pool.png"></canvas><figcaption><b>Felt piano</b><span>Sample. Soft hammers, close</span></figcaption></figure>
+    <figure class="a3 seal"><div class="bits" style="--src: url(img/seal.png)" role="img" aria-label="The seal: a ring of ticks round the D"></div><figcaption><b>Phase 0</b><span>Shell, screen, core</span></figcaption></figure>
+    <figure class="a4 hov"><canvas class="heat" data-heat="img/art/rise.png"></canvas><figcaption><b>Glass pluck</b><span>Pluck. Short and bright</span></figcaption></figure>
+    <figure class="a5 hov"><canvas class="heat" data-heat="img/art/drift.png"></canvas><figcaption><b>Tape drone</b><span>Drone. It never stops</span></figcaption></figure>
+    <figure class="a6 hov"><canvas class="heat" data-heat="img/art/twin.png"></canvas><figcaption><b>Echo</b><span>Two repeats, apart</span></figcaption></figure>
+    <figure class="a7 hov"><canvas class="heat" data-heat="img/art/wave.png"></canvas><figcaption><b>Night drive</b><span>A song: eight patterns, live</span></figcaption></figure>
   </section>
 
   <!-- 05 the screens: the display's anatomy, then its pages, one press each -->
-  <section class="g strip dark" id="screens"><span class="no">05</span><span class="lb">Screens</span></section>
-  <section class="g screens dark">
+  <section class="g strip" id="screens"><span class="no">05</span><span class="lb">Screens</span></section>
+  <section class="g screens">
     <figure class="main home">
       <div class="frame f432 bits" style="--src: url(img/frame432.png)" aria-hidden="true"></div>
       <div class="frame f288 bits" style="--src: url(img/frame288.png)" aria-hidden="true"></div>
@@ -119,7 +120,7 @@
       <li><i class="mk">5</i><b>Light</b><span>A blue rim, a magenta body, a pale core</span></li>
     </ol>
     <div class="index" id="pages" aria-label="The pages">
-      <p class="ih"><b>Pages</b> <span>Press one to see it</span></p>
+      <p class="ih"><b>Pages</b> <span>Twelve, each with the button that opens it. Press one to see it.</span></p>
       <button class="page on" data-src="img/screens/01_home.png" data-name="Home" data-say="The synths, the one sounding lit"><kbd>HOME</kbd><b>Home</b><span></span></button>
       <button class="page" data-src="img/screens/02_roll.png" data-name="Roll" data-say="A sequence, the cursor lit"><kbd>SEQ</kbd><b>Roll</b><span></span></button>
       <button class="page" data-src="img/screens/07_chord.png" data-name="Chord" data-say="The chord now, the progression"><kbd>ARP</kbd><b>Chord</b><span></span></button>
@@ -136,7 +137,7 @@
   </section>
 
   <!-- the footer: the words, whole; the links -->
-  <div class="g bandrow"><div class="band bits" style="--src: url(img/band.png)" role="img" aria-label="Lofi, snow, tape, echo, chord, pad"></div></div>
+  <div class="g bandrow"><div class="band bits" style="--src: url(img/band.png)" role="img" aria-label="Ambient lofi machine"></div></div>
   <nav class="g foot links" aria-label="Sequencist, the author">
     <span>By Sequencist</span>
     <a href="https://github.com/InigoHernandez" target="_blank" rel="noopener">GitHub ↗</a>

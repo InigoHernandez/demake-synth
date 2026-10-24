@@ -287,6 +287,13 @@
     h.ctx.putImageData(h.data, 0, 0);
   }
 
+  // what the pointer is on heats: its bits run every 60 ms
+  const hot = new Set();
+  ringed.forEach((el) => { el.addEventListener("pointerenter", () => hot.add(el)); el.addEventListener("pointerleave", () => hot.delete(el)); });
+  if (!still) setInterval(() => {
+    for (const el of hot) { const k = rnd(6); el.style.setProperty("--ring24", `url(img/bits/ring24_${k}.png)`); el.style.setProperty("--ring12", `url(img/bits/ring12_${k}.png)`); }
+  }, 60);
+
   // the clock: every 140 ms, about half of what shows takes a new arrangement
   if (!still) setInterval(() => {
     if (document.hidden) return;
