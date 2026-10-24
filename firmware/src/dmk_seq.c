@@ -20,6 +20,8 @@ static seq_t sq[DMK_SYNTHS];
 static uint8_t seq_on, seq_rec;
 static int seq_bpm = 72;
 static uint8_t seq_stop_req;                            /* the song ended inside a step: stopped after it */
+static uint32_t clk_acc;                                /* MIDI out: Q8 samples into the clock's 24th of a beat */
+static uint32_t seq_frames;                             /* samples rendered: a MIDI clock in's pace is measured on it */
 static uint32_t seq_per_q8(void);
 static uint32_t seq_acc, seq_ticks;                     /* Q8 samples into the step; steps since PLAY */
 
@@ -295,6 +297,8 @@ static void seq_play(int on)
     if (on == seq_on) return;
     if (!on && song_rec) { rec_close(); song_rec = 0; song_mode = (uint8_t)(song_n > 0); }   /* a take ended: the song */
     if (!on) { mix_g = 32768; mix_dg = 0; }
+    if (midi_out & 2u) mq_put(on ? 0xFA : 0xFC, 0, 0);   /* MIDI out: start, stop */
+    clk_acc = 0;
     seq_on = (uint8_t)on;
     for (s = 0; s < DMK_SYNTHS; s++) { seq_quiet(s); sq[s].pos = 0; }
     chord_quiet();
@@ -308,9 +312,12 @@ static void seq_play(int on)
 static void seq_render(int frames)
 {
     uint32_t per;
+    seq_frames += (uint32_t)frames;
     later_tick(frames);                                 /* the strum's notes, playing or not */
-    if (!seq_on) return;
+    if (!seq_on || clock_ext) return;                   /* an outside clock steps it instead (dmk_midi) */
     per = seq_per();
+    if (midi_out & 2u)                                  /* MIDI out: the clock, 24 a beat, 6 a step */
+        for (clk_acc += (uint32_t)frames * 256u; clk_acc >= per / 6u; clk_acc -= per / 6u) mq_put(0xF8, 0, 0);
     seq_acc += (uint32_t)frames * 256u;
     while (seq_acc >= per && seq_on) {
         seq_acc -= per; seq_step();

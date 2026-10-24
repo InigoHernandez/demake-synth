@@ -114,6 +114,7 @@ static void take_panel(void)
     }
     uint8_t st, d1, d2;
     while (midi_get(&st, &d1, &d2)) dmk_midi(st, d1, d2);
+    while (dmk_midi_take(&st, &d1, &d2)) midi_send(st, d1, d2);   /* MIDI out, over USB: the synths' notes, the clock */
 }
 
 /* ---- a test build's meter (DMK_FM1_DIAG): over the top 16 lines, in red, shares of real time in %: CPU the first

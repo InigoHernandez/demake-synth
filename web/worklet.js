@@ -41,6 +41,9 @@ class Demake extends AudioWorkletProcessor {
       o[0][i] = a[i * 2] / 32768;
       if (o[1]) o[1][i] = a[i * 2 + 1] / 32768;
     }
+    let mo = null;                                      /* MIDI out: what the synths played, for the page's ports */
+    for (let v; mo === null || mo.length < 64;) { v = x.w_midi_take(); if (v < 0) break; (mo = mo || []).push(v); }
+    if (mo) this.port.postMessage({ t: "midiout", mo });
     if (x.w_store_gen() !== this.storeGen) {            /* a save: the store to the page, which keeps it */
       this.storeGen = x.w_store_gen();
       const st = new Uint8Array(x.memory.buffer, x.w_store(), 65536).slice();

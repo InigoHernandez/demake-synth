@@ -82,6 +82,18 @@ static uint32_t vc_clock;
  * chord change never cuts a note the hands hold, nor the reverse) */
 enum { SRC_KEY, SRC_ROLL, SRC_CHORD };
 static int32_t vc_tail[DMK_SYNTHS];                     /* a stolen voice's last level, fading out (~1.5 ms) */
+/* MIDI out (dmk_midi_take; GLO's MIDI row): the notes each synth starts and ends on its channel (1-3), and the clock
+ * while playing, queued for the platform to send from its loop */
+#define MQ_LEN 128u
+static uint8_t mq[MQ_LEN][3];
+static uint32_t mq_w, mq_r;
+static uint8_t midi_out, midi_chans, clock_ext;         /* out: bit 0 notes, bit 1 the clock; in: by channel; the clock in */
+static void mq_put(int st, int d1, int d2)
+{
+    if (mq_w - mq_r >= MQ_LEN) return;                  /* nobody reading: dropped, not blocking */
+    mq[mq_w % MQ_LEN][0] = (uint8_t)st; mq[mq_w % MQ_LEN][1] = (uint8_t)(d1 & 127); mq[mq_w % MQ_LEN][2] = (uint8_t)(d2 & 127);
+    mq_w++;
+}
 /* the song's fades (dmk_seq.c sets them): the synths' share of the mix, Q15, and its step a block; the spaces' tails
  * are left to ring */
 static int32_t mix_g = 32768, mix_dg;
@@ -154,11 +166,13 @@ static void note_on_src(int sy, int n, int src)
     o->env = 0; o->stage = 1;
     o->lp = o->bp = o->lp2 = o->bp2 = 0;
     o->note = (uint8_t)n; o->sy = (uint8_t)sy; o->on = 1; o->age = vc_clock++; o->src = (uint8_t)src; o->lastv = 0;
+    if (midi_out & 1u) mq_put(0x90 | sy, n, 100);
 }
 
 static void note_off_src(int sy, int n, int src)
 {
     int i;
+    if (midi_out & 1u && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     for (i = 0; i < DMK_VOICES; i++)
         if (vc[i].on && vc[i].note == n && vc[i].sy == sy && vc[i].src == src) { vc[i].on = 0; if (vc[i].stage) vc[i].stage = 3; }
 }

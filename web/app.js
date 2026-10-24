@@ -121,14 +121,15 @@
     if (ctx) { ctx.resume(); return; }
     try {
       ctx = new AudioContext({ sampleRate: 44100 });
-      await ctx.audioWorklet.addModule("worklet.js?v=6");
+      await ctx.audioWorklet.addModule("worklet.js?v=7");
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=6")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=7")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       power.textContent = "On";
+      midiOn();
     } catch (e) { power.textContent = "No sound: " + e.message; }
   });
 
@@ -154,8 +155,33 @@
     window.addEventListener("pointerup", () => window.removeEventListener("pointermove", go), { once: true });
   });
 
+  // ---- MIDI: the computer's ports, in and out, as the FM-1's USB (GLO's MIDI row says what goes where)
+  let midiOuts = [];
+  function midiOn() {
+    if (!navigator.requestMIDIAccess) return;
+    navigator.requestMIDIAccess().then((acc) => {
+      const wire = () => {
+        midiOuts = [...acc.outputs.values()];
+        acc.inputs.forEach((inp) => {
+          inp.onmidimessage = (ev) => {
+            const [s, a = 0, b = 0] = ev.data;
+            if (s >= 0x80 && s !== 0xF0) send({ t: "midi", s, a, b });
+          };
+        });
+      };
+      wire();
+      acc.onstatechange = wire;
+    }).catch(() => {});
+  }
   function onmsg(m) {
     if (m.t === "store") { storeKeep(m.st); return; }
+    if (m.t === "midiout") {
+      for (const v of m.mo) {
+        const s = v & 255, msg = s >= 0xF8 ? [s] : [s, (v >> 8) & 127, (v >> 16) & 127];
+        midiOuts.forEach((o) => { try { o.send(msg); } catch (e) { /* a port gone */ } });
+      }
+      return;
+    }
     if (m.t !== "frame") return;
     const d = img.data, fb = m.fb, pal = m.pal;
     for (let i = 0; i < 240 * 240; i++) {

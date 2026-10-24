@@ -31,9 +31,10 @@ dithered, for what is lit.
   - The keys play chords on any page: sevenths, triads, ninths, add9, sus2, sus4, 6/9 or power.
   - Each synth can play the chords, follow the key, the chord or the root, or harmonize another synth's notes.
 - **The rest.**
+  - MIDI in and out over USB (and in on the TRS jack): notes by synth channel, the clock in or out.
   - Fourteen songs and 32 of your own sounds are saved on the FM-1.
-  - Each start shows one of four pixel landscapes, and Home keeps one moving while you play; OCT− and OCT+ held show
-    it full screen.
+  - Each start shows one of six pixel landscapes (peaks, a lake, a coast, the night, a city from a bedroom, a 2000s
+    desk), and Home keeps one moving while you play; OCT− and OCT+ held show it full screen.
   - Each sound is named after a plant of its landscape, in Latin, one word.
 
 ## Build

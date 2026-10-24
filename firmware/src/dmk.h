@@ -34,7 +34,8 @@ void dmk_render(int16_t *lr, int frames);           /* interleaved stereo, frame
 void dmk_key(int k, int down);
 void dmk_button(int b, int down);
 void dmk_encoder(int e, int delta);
-void dmk_midi(int status, int d1, int d2);
+void dmk_midi(int status, int d1, int d2);          /* MIDI in: notes (by GLO's MIDI row), the clock, start, stop */
+int dmk_midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2);   /* MIDI out, a message at a time: 1 one taken */
 const uint8_t *dmk_frame(uint32_t ms);              /* draws the screen: 240 x 240, 4 bits a pixel (DMK_FB_BYTES) */
 const uint8_t *dmk_update_frame(uint32_t step, int32_t code);   /* the screen while a firmware goes in: steps 1..5,
                                                                    9 the end (code 1: a trial run; else it stopped) */

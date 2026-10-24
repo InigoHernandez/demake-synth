@@ -48,9 +48,9 @@ static const page_t PAGE[PG_COUNT] = {
       {"Amount", "Tone", "Time", "Spice"}, {"Verb", "Echo", "Pan", "Width"}}},
     {"Chord", 3, {"Voice", "Key", "Keys"}, {"Prog", "Prog", "Prog"},
      {{"Voicing", "Invert", "Spread", "Strum"}, {"Key", "Mode", "Change", "Rhythm"}, {"Keys", "Type", "", ""}}},
-    {"Global", 4, {"Verb", "Echo", "Song", "Theme"}, {"Type", "Type", "", ""},
+    {"Global", 4, {"Verb", "Echo", "MIDI", "Theme"}, {"Type", "Type", "", ""},
      {{"Return", "Tone", "Size", "Mod"}, {"Return", "Tone", "Time", "Regen"},
-      {"Swing", "Switch", "Click", "Rec"}, {"Theme", "", "", ""}}},
+      {"In", "Out", "Clock", ""}, {"Theme", "", "", ""}}},
     {"LFO", 1, {"LFO"}, {"Target"}, {{"Rate", "Depth", "Shape", "Fade"}}},
     {"Songs", 1, {"Songs"}, {""}, {{"Slot", "", "", ""}}},
     {"Song", 2, {"Scene", "Steps"}, {"", ""}, {{"Synth 1", "Synth 2", "Synth 3", "Chords"}, {"Step", "Scene", "Bars", "End"}}},
@@ -87,7 +87,10 @@ static const char *const KEYS[] = {"C", "C\xE2\x99\xAF", "D", "E\xE2\x99\xAD", "
 static const char *const MODENAMES[] = {"Aeolian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Ionian"};
 static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\xC3\x97" "2"), ("\xC3\x97" "4")};
 static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Arp up", "Arp down"};
-static const char *const KEYMODES[] = {"Chord", "All"};   /* the keys play chords on CHORD, or on every page but the roll */
+static const char *const KEYMODES[] = {"Chord", "All"};
+static const char *const MIDI_INS[] = {"Synth", "Ch 1-3"};   /* MIDI in: the synth selected, or synth n on channel n */
+static const char *const MIDI_OUTS[] = {"Off", "Notes", "Clock", "All"};
+static const char *const CLOCKS[] = {"Own", "Ext"};   /* the keys play chords on CHORD, or on every page but the roll */
 static const char *const KTYPES[] = {"Sevenths", "Triads", "Ninths", "Add9", "Sus2", "Sus4", "6/9", "Power"};
 static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords",
                                       "Harmony of 1", "Harmony of 2", "Harmony of 3"};
@@ -106,6 +109,7 @@ static const choice_t CHOICE[] = {
     {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 20, PROGS}, {PG_CHORD, 1, 4, 20, PROGS},
     {PG_CHORD, 1, 0, 12, KEYS}, {PG_CHORD, 1, 1, 6, MODENAMES}, {PG_CHORD, 1, 2, 4, CHANGES}, {PG_CHORD, 1, 3, 5, RHYTHMS},
     {PG_CHORD, 2, 0, 2, KEYMODES}, {PG_CHORD, 2, 1, 8, KTYPES}, {PG_CHORD, 2, 4, 20, PROGS},
+    {PG_GLOBAL, 2, 0, 2, MIDI_INS}, {PG_GLOBAL, 2, 1, 4, MIDI_OUTS}, {PG_GLOBAL, 2, 2, 2, CLOCKS},
 };
 
 static struct {
@@ -302,7 +306,10 @@ static void sp_sync(void)
     gp.glen = 441 + VS(0, PG_GLOBAL, 1, 1) * 62;        /* GRAINS: 20..380 ms */
     gp.gdens = 6 + VS(0, PG_GLOBAL, 1, 2) * 113 / 127;  /* 2..40 a second */
     gp.gtex = VS(0, PG_GLOBAL, 1, 3);
-    seq_bpm = VS(0, PG_HOME, 0, 4) < 20 ? 20 : VS(0, PG_HOME, 0, 4);
+    midi_chans = (uint8_t)(VS(0, PG_GLOBAL, 2, 0) * 2 / 128);
+    midi_out = (uint8_t)(VS(0, PG_GLOBAL, 2, 1) * 4 / 128);
+    clock_ext = (uint8_t)(VS(0, PG_GLOBAL, 2, 2) * 2 / 128);
+    if (!clock_ext) seq_bpm = VS(0, PG_HOME, 0, 4) < 20 ? 20 : VS(0, PG_HOME, 0, 4);   /* outside, the clock's tempo */
     ch.voicing = (uint8_t)(VS(0, PG_CHORD, 0, 0) * 5 / 128);
     ch.invert = (uint8_t)(VS(0, PG_CHORD, 0, 1) * 5 / 128);
     ch.spread = (uint8_t)(VS(0, PG_CHORD, 0, 2) * 4 / 128);
@@ -368,6 +375,8 @@ static void ui_init(void)
     ui.val[0][PG_GLOBAL][1][4] = 0;                     /* the echo: tape */
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
+    ui.val[0][PG_GLOBAL][2][0] = choice_val(0, 2); ui.val[0][PG_GLOBAL][2][1] = choice_val(1, 4);   /* MIDI: the synth, notes out */
+    ui.val[0][PG_GLOBAL][2][2] = choice_val(0, 2);      /* its own clock */
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* each roll on its own pattern: its notes in view */
         ui.roll_cur[s] = 0;
         ui.roll_pen[s] = 2;
@@ -477,7 +486,7 @@ static int lit(int k) { return ui.touch_k == k && ui.now - ui.touch_ms < 1000u; 
 /* a row not built yet (COLOUR and MOTION in phase 4, the LAYER, the song): shown, marked soon, passed over */
 static int row_soon(int page, int row)
 {
-    return (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
+    return page == PG_SOUND && row == 1;
 }
 static int row_next(int page, int row)                  /* the page's next row that is built */
 {
@@ -491,7 +500,7 @@ static int rows_built(int page) { int r, n = 0; for (r = 0; r < PAGE[page].rows;
 static int row_off(int page, int row)
 {
     if (page == PG_FX && row < 3) return choice_index(choice_of(PG_FX, row, 4), *vp(PG_FX, row, 4)) == 0;
-    return (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
+    return page == PG_SOUND && row == 1;
 }
 
 /* ---- the parts */
@@ -1375,6 +1384,12 @@ static void stage_rows(int page, const char *const *names, int n, int open)
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
         text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, row_soon(page, i) ? C_LABEL : C_INK);
         if (row_soon(page, i)) { text_r(SX + SW - PAD - 4, y + (h - 12) / 2, "Soon", &FS, C_LABEL); continue; }
+        if (page == PG_GLOBAL && i == 2) {              /* MIDI: what goes out, at a glance */
+            char v[24];
+            str_cat(str_cat(v, "Out: "), MIDI_OUTS[choice_index(choice_of(PG_GLOBAL, 2, 1), ui.val[0][PG_GLOBAL][2][1])]);
+            text_r(SX + SW - PAD - 4, y + (h - 12) / 2, v, &FS, C_LABEL);
+            continue;
+        }
         if (page != PG_FX && i >= 2) continue;              /* the setup is not an effect: no switch */
         if ((page == PG_FX && i < 3) || page == PG_GLOBAL) {   /* the row's effect, by name, left of its switch */
             char v[16];
@@ -2277,3 +2292,39 @@ static const uint8_t *ui_leds(void)
     leds[DMK_KEYS + B_OCTU] = ui.octave > 0 ? 255 : 0;
     return leds;
 }
+
+/* ---- MIDI in (dmk_midi): notes on the synth selected, or synth n on channel n (GLO's MIDI row, In: Ch 1-3), the
+ * synths in harmony with it along; with the clock outside (Clock: Ext), its start and stop play and stop, and each six
+ * of its 24 a beat step the sequences, its pace taken as the tempo */
+static uint8_t mi_hn[DMK_SYNTHS][128][DMK_SYNTHS];      /* a note's harmony on each follower, + 1 */
+static uint32_t mi_clk, mi_last, mi_per;                /* clocks since start; when the last came; samples between, Q4 */
+static void midi_in(int st, int d1, int d2)
+{
+    int ty = st & 0xF0, s, f;
+    if (st == 0xF8) {                                   /* a clock */
+        uint32_t now = seq_frames, dt = now - mi_last;
+        mi_last = now;
+        if (dt > 200u && dt < 20000u) mi_per = mi_per ? mi_per + (int32_t)(dt * 16u - mi_per) / 8 : dt * 16u;
+        if (clock_ext && mi_per) { int b = (int)(DMK_SR * 60u * 16u / (mi_per * 24u)); seq_bpm = b < 20 ? 20 : b > 300 ? 300 : b; }
+        if (clock_ext && seq_on && ++mi_clk % 6u == 0u) seq_step();
+        return;
+    }
+    if (st == 0xFA || st == 0xFB) {                     /* start, continue */
+        if (clock_ext && !seq_on) { mi_clk = 0; if (song_mode && song_n) song_start(0); seq_play(1); }
+        return;
+    }
+    if (st == 0xFC) { if (clock_ext) seq_play(0); return; }   /* stop */
+    if ((ty != 0x80 && ty != 0x90) || d1 < 0 || d1 > 127) return;
+    s = midi_chans && (st & 15) < DMK_SYNTHS ? st & 15 : ui.synth;
+    if (ty == 0x90 && d2) {
+        note_on_s(s, d1);
+        for (f = 0; f < DMK_SYNTHS; f++) {
+            mi_hn[s][d1][f] = 0;
+            if (f != s && harm_of(f) == s) { int h = harm_note(f, d1); note_on_s(f, h); mi_hn[s][d1][f] = (uint8_t)(h + 1); }
+        }
+    } else {
+        note_off_s(s, d1);
+        for (f = 0; f < DMK_SYNTHS; f++) if (mi_hn[s][d1][f]) { note_off_s(f, mi_hn[s][d1][f] - 1); mi_hn[s][d1][f] = 0; }
+    }
+}
+

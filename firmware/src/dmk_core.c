@@ -45,10 +45,13 @@ void dmk_render(int16_t *lr, int frames)
 void dmk_key(int k, int down) { ui_key(k, down); }
 void dmk_button(int b, int down) { ui_button(b, down); }
 void dmk_encoder(int e, int delta) { ui_encoder(e, delta); }
-void dmk_midi(int status, int d1, int d2)
+void dmk_midi(int status, int d1, int d2) { midi_in(status, d1, d2); }
+int dmk_midi_take(uint8_t *status, uint8_t *d1, uint8_t *d2)
 {
-    if ((status & 0xF0) == 0x90 && d2) note_on(d1);
-    else if ((status & 0xF0) == 0x80 || (status & 0xF0) == 0x90) note_off(d1);
+    if (mq_r == mq_w) return 0;
+    *status = mq[mq_r % MQ_LEN][0]; *d1 = mq[mq_r % MQ_LEN][1]; *d2 = mq[mq_r % MQ_LEN][2];
+    mq_r++;
+    return 1;
 }
 const uint8_t *dmk_frame(uint32_t ms) { return ui_frame(ms); }
 const uint8_t *dmk_update_frame(uint32_t step, int32_t code) { return ui_update(step, code); }

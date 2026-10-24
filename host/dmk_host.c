@@ -480,6 +480,36 @@ static void selftest(void)
         if (ui.full) { fails++; printf("selftest: a knob does not leave the landscape\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
+    /* MIDI: the synths' notes out on their channels; the clock out, 6 a step, with start and stop; in by channel; an
+     * outside clock's start, its steps, its stop */
+    {
+        uint8_t st, a, b;
+        int ons = 0, offs = 0, clocks = 0, start = 0, s1 = 0;
+        dmk_init(19); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        while (dmk_midi_take(&st, &a, &b)) {}
+        ui.synth = 1; tap(B_HOME); dmk_key(4, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30);
+        while (dmk_midi_take(&st, &a, &b)) { if (st == 0x91) ons++; if (st == 0x81) offs++; }
+        if (!ons || !offs) { fails++; printf("selftest: a key's note does not go out on its synth's channel (%d on, %d off)\n", ons, offs); }
+        ui.val[0][PG_GLOBAL][2][1] = choice_val(3, 4); sp_sync();   /* out: notes and the clock */
+        seq_play(1); wait_ms(16 * 60000 / 72 / 4 / 16 * 4);   /* four steps */
+        seq_play(0);
+        while (dmk_midi_take(&st, &a, &b)) { clocks += st == 0xF8; start += st == 0xFA; }
+        if (!start || clocks < 20 || clocks > 28) { fails++; printf("selftest: the clock out is not 6 a step (%d in 4 steps)\n", clocks); }
+        ui.val[0][PG_GLOBAL][2][0] = choice_val(1, 2); sp_sync();   /* in: by channel */
+        dmk_midi(0x92, 64, 100); wait_ms(30);
+        for (int v = 0; v < DMK_VOICES; v++) s1 += vc[v].on && vc[v].sy == 2;
+        dmk_midi(0x82, 64, 0); wait_ms(30);
+        if (!s1) { fails++; printf("selftest: MIDI channel 3 does not play synth 3\n"); }
+        ui.val[0][PG_GLOBAL][2][2] = choice_val(1, 2); sp_sync();   /* the clock outside */
+        dmk_midi(0xFA, 0, 0);
+        if (!seq_on) { fails++; printf("selftest: an outside start does not play\n"); }
+        { uint32_t t0 = seq_ticks; wait_ms(500); if (seq_ticks != t0) { fails++; printf("selftest: with the clock outside the steps run on their own\n"); }
+          for (int k = 0; k < 12; k++) { dmk_midi(0xF8, 0, 0); wait_ms(20); }
+          if (seq_ticks != t0 + 2) { fails++; printf("selftest: 12 clocks are not 2 steps (%u)\n", (unsigned)(seq_ticks - t0)); } }
+        dmk_midi(0xFC, 0, 0);
+        if (seq_on) { fails++; printf("selftest: an outside stop does not stop\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     /* the Keys row: chords everywhere (the roll's keys still notes), of the type it picks; released whole */
     {
         int on;
