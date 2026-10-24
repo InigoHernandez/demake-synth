@@ -50,6 +50,7 @@
       <a href="#spaces">Reverbs and echo</a>
       <a href="#filter">Filter and envelope</a>
       <a href="#sounds">The sounds</a>
+      <a href="#lfo">The LFO</a>
       <p class="mgroup">Reference</p>
       <a href="#midi">MIDI</a>
       <a href="#next">Not built yet</a>
@@ -105,19 +106,19 @@
           <p><b>FX</b><span>Effects: colour, media, motion, space</span></p>
           <p><b>SEL</b><span>Filter</span></p>
           <p><b>ENV</b><span>Amp: the envelope and the level</span></p>
-          <p><b>LFO</b><span>LFO (drawn; its sound comes later)</span></p>
-          <p><b>EDIT</b><span>Sound: the recording, start, loop, tune</span></p>
+          <p><b>LFO</b><span>LFO: a slow wave on the pitch, cutoff, level, pan or start</span></p>
+          <p><b>EDIT</b><span>Sound: the recording; again, its layer; again, the voice</span></p>
           <p><b>GLO</b><span>Global: the reverb, the echo, the theme</span></p>
           <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
-          <p><b>SAVE</b><span>Held: the songs (saving comes later)</span></p>
+          <p><b>SAVE</b><span>The song into its slot; held, the songs</span></p>
           <p><b>PLAY, REC</b><span>Play the rolls and chords; record the keys</span></p>
-          <p><b>OCT&minus; OCT+</b><span>The octave; with a note held, delete or copy</span></p>
+          <p><b>OCT&minus; OCT+</b><span>The octave as you let go; with a note held, delete or copy</span></p>
         </div>
         <div class="mt">
           <p><b>SELECT</b><span>The synth</span></p>
-          <p><b>PRESETS</b><span>Its sound, on any page</span></p>
+          <p><b>PRESETS</b><span>Its sound; on FX, Filter and GLO, the row's type</span></p>
           <p><b>ALGORITHM</b><span>The rows on FX and GLO; the foot's value</span></p>
           <p><b>K1 to K4</b><span>The four values on top</span></p>
           <p><b>MASTER</b><span>The volume</span></p>
@@ -129,7 +130,7 @@
         <p class="msub">Three, the same on every page.</p>
         <div class="mt">
           <p><b>Tap, again</b><span>A page button opens its page; again, its next row</span></p>
-          <p><b>Hold + ALGO</b><span>Holding the page's button, ALGORITHM changes a row's type</span></p>
+          <p><b>Hold + ALGO</b><span>Holding the page's button, ALGORITHM changes a row's type; PRESETS does too</span></p>
           <p><b>Hold, then act</b><span>A held key or chord: the knobs change it, OCT&minus; deletes, OCT+ copies</span></p>
         </div>
       </article>
@@ -152,11 +153,11 @@
         <p class="msub">The keys play the synth SELECT picks; PRESETS steps through its sounds.</p>
         <div class="mt">
           <p><b>SELECT</b><span>Synth 1, 2 or 3; the head shows S F G, the current boxed</span></p>
-          <p><b>PRESETS</b><span>The next recording, then your saved sounds, on any page</span></p>
-          <p><b>OCT&minus; OCT+</b><span>Two octaves down or up</span></p>
+          <p><b>PRESETS</b><span>The next recording, then your saved sounds (on FX, Filter and GLO: the type)</span></p>
+          <p><b>OCT&minus; OCT+</b><span>Two octaves down or up, as you let go</span></p>
           <p><b>Both held</b><span>The landscape, full screen; a knob, a page or both again: back</span></p>
           <p><b>On Chord</b><span>Each key plays a chord instead</span></p>
-          <p><b>Keys: All</b><span>Chords on every page but the roll (Chord, its Keys row)</span></p>
+          <p><b>Keys: All</b><span>Chords on every page (Chord, its Keys row); on the roll they are written</span></p>
         </div>
       </article>
 
@@ -175,7 +176,9 @@
           <p><b>PLAY + REC</b><span>Records the keys from their nearest step</span></p>
           <p><b>SEQ + OCT&minus;</b><span>Twice: clears this synth's roll</span></p>
           <p><b>HOME + OCT&minus;</b><span>Twice: clears all three</span></p>
+          <p><b>Keys: All</b><span>A key writes its chord at the cursor; the foot names the chord there</span></p>
         </div>
+        <p class="note">A roll written to is heard: a synth that played the chords plays its roll from then (SEQ + ALGORITHM puts it back). A roll cleared is silent, the chords it played too.</p>
       </article>
 
       <article id="chords" data-group="Playing">
@@ -269,7 +272,7 @@
 
       <article id="effects" data-group="Sound">
         <h1>Effects</h1>
-        <p class="msub">Four rows a synth. ALGORITHM moves through them; hold FX and turn it to change a row's effect.</p>
+        <p class="msub">Four rows a synth. ALGORITHM moves through them; PRESETS, or FX held and ALGORITHM, changes a row's effect.</p>
         <figure class="mfig"><img src="img/screens/06_fx.png" alt="FX" width="240" height="240"><figcaption>Each row names its effect.</figcaption></figure>
         <div class="mt">
           <p><b>Colour</b><span>Saturate, crush, lossy (a codec's smear), noise</span></p>
@@ -282,8 +285,9 @@
 
       <article id="spaces" data-group="Sound">
         <h1>Reverbs and echo</h1>
-        <p class="msub">Shared by the three, on GLO. Hold GLO and turn ALGORITHM to change the type.</p>
+        <p class="msub">Shared by the three, on GLO. PRESETS, or GLO held and ALGORITHM, changes the type.</p>
         <div class="mt">
+          <p><b>Off</b><span>The first of each: none of it, nothing returned</span></p>
           <p><b>Room</b><span>Short, close</span></p>
           <p><b>Hall</b><span>Wide, long</span></p>
           <p><b>Space</b><span>Bright, nearly endless</span></p>
@@ -297,10 +301,11 @@
 
       <article id="filter" data-group="Sound">
         <h1>Filter and envelope</h1>
-        <p class="msub">Every voice has both. Hold SEL and turn ALGORITHM for the filter's type.</p>
+        <p class="msub">Every voice has both. PRESETS, or SEL held and ALGORITHM, for the filter's type.</p>
         <div class="mt">
           <p><b>Types</b><span>LP24, LP12, HP, BP, notch, peak, vowel, off</span></p>
-          <p><b>Filter knobs</b><span>Cutoff, resonance, envelope, drift</span></p>
+          <p><b>Filter knobs</b><span>Cutoff, resonance, envelope, drive</span></p>
+          <p><b>Drive</b><span>Into the filter: thicker, its resonance rounded</span></p>
           <p><b>Vowel</b><span>The cutoff glides through u, o, a, e, i</span></p>
           <p><b>Amp knobs</b><span>Attack, decay, sustain, release; ALGORITHM the level</span></p>
         </div>
@@ -314,8 +319,22 @@
           <p><b>Start</b><span>Where it starts: past its attack, for a soft one</span></p>
           <p><b>Loop</b><span>Full, or once through</span></p>
           <p><b>Tune</b><span>In semitones; ALGORITHM fine, in cents</span></p>
+          <p><b>Layer</b><span>EDIT again: a second recording under it, blend, tune (octaves and fifths), loop, tone; ALGORITHM which</span></p>
+          <p><b>Voice</b><span>EDIT again: glide from the last note, velocity (soft notes quieter and darker), track (the cutoff follows the key), grit (22 or 11 kHz)</span></p>
           <p><b>Scenes</b><span>Peaks, a lake, a coast, the night, a city from a bedroom, a 2000s desk</span></p>
           <p><b>Names</b><span>A plant of each sound's landscape, in Latin: Soldanella on the peaks, Nymphaea on the lake</span></p>
+        </div>
+      </article>
+
+      <article id="lfo" data-group="Sound">
+        <h1>The LFO</h1>
+        <p class="msub">One a synth, a slow wave on what ALGORITHM picks: pitch, cutoff, level, pan, or where a note starts.</p>
+        <div class="mt">
+          <p><b>Rate</b><span>0.05 to 20 Hz</span></p>
+          <p><b>Depth</b><span>Off, to nearly four octaves on the cutoff</span></p>
+          <p><b>Shape</b><span>Sine, triangle, ramp, square, random</span></p>
+          <p><b>Fade</b><span>From nothing to its depth, from a phrase's first note</span></p>
+          <p><b>Sync row</b><span>LFO again: free, or 4 bars to 1/16 on the tempo; restarted by a phrase's first note, or free</span></p>
         </div>
       </article>
 
@@ -335,11 +354,11 @@
 
       <article id="next" data-group="Reference">
         <h1>Not built yet</h1>
-        <p class="msub">On the pages already, coming in the next versions.</p>
+        <p class="msub">Coming in the next versions.</p>
         <div class="mt">
-          <p><b>LFO</b><span>Its sound (the page draws it already)</span></p>
-          <p><b>Layer</b><span>A second recording under a sound</span></p>
           <p><b>Undo</b><span>GLO and OCT&minus;, sixteen steps back</span></p>
+          <p><b>Short loops</b><span>A shorter loop inside a sound's own</span></p>
+          <p><b>More effects</b><span>New types on the rows and the spaces</span></p>
         </div>
       </article>
 

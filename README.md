@@ -18,17 +18,21 @@ dithered, for what is lit.
 
 - **The sound.**
   - The 64 recordings are built in, like a rompler, with nothing to load.
-  - A filter with eight shapes, and an envelope.
+  - A filter with eight shapes and a drive, an envelope, and an LFO on the pitch, cutoff, level, pan or start, free
+    or on the tempo.
+  - A layer: a second recording under a sound. Glide, velocity, the cutoff following the key, and grit (the voice at
+    22 or 11 kHz).
   - Per synth: Colour (saturate, crush, codec, noise), Media (tape, cassette, VHS) and Motion (chorus, vibrato,
     drift).
-  - Shared spaces: six reverbs (room, hall, space, haze, bloom, lofi), and a tape echo or grains.
+  - Shared spaces: six reverbs (room, hall, space, haze, bloom, lofi), and a tape echo or grains; each can be off.
 - **The music.**
   - Three synths, each with a piano roll of up to 64 steps and eight patterns of its own.
   - Sixteen scenes say which pattern each synth plays, and switch on the bar with HOME held and a white key.
   - A song arranges the scenes, up to 128 steps of 1 to 8 bars, typed in or recorded live.
 - **The harmony.**
   - A chord machine with sixteen progressions and four of your own, voicings, strum and rhythms.
-  - The keys play chords on any page: sevenths, triads, ninths, add9, sus2, sus4, 6/9 or power.
+  - The keys play chords on any page: sevenths, triads, ninths, add9, sus2, sus4, 6/9 or power; on the roll they
+    write them.
   - Each synth can play the chords, follow the key, the chord or the root, or harmonize another synth's notes.
 - **The rest.**
   - MIDI in and out over USB (and in on the TRS jack): notes by synth channel, the clock in or out.
