@@ -42,8 +42,8 @@ enum { FT_LP24, FT_LP12, FT_HP, FT_BP, FT_NOTCH, FT_PEAK, FT_VOWEL, FT_OFF };
 enum { FC_OFF, FC_SAT, FC_CRUSH, FC_LOSSY, FC_NOISE };          /* COLOUR */
 enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS };                       /* MEDIA */
 enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT };                    /* MOTION */
-enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI };  /* the VERB's types */
-enum { ET_TAPE, ET_GRAINS };                                     /* the ECHO's */
+enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI, VB_OFF };   /* the VERB's types (off: nothing run) */
+enum { ET_TAPE, ET_GRAINS, ET_OFF };                                     /* the ECHO's */
 typedef struct {
     uint8_t smp, loops, ftype, tape;
     int16_t tune, cut, fenv;       /* semitones; the cutoff's index 0..255 (255: open); the envelope's reach in indexes */
@@ -51,12 +51,31 @@ typedef struct {
     uint16_t start, resq, dec, rel;   /* blocks; damping Q14; decay and release factors Q16 a block */
     uint32_t atk;                  /* the attack's step a block, Q24 */
     int32_t sus, level, gl, gr, vsend, esend;   /* Q24; Q15 ... */
+    int32_t pan;                   /* 0..127 as turned (the LFO swings it) */
     int32_t tdepth, tdrive;        /* the tape's wow depth (Q8 samples a unit of the sine), drive Q8 */
     uint16_t thl;                  /* its head loss, a one-pole Q15 */
     uint32_t twow, tflut;          /* its wow's and flutter's phase steps */
     uint8_t colour, media, motion; /* the rows' effects (FC_, FM_, FO_), 0 off */
     uint8_t ck[4], mk[4], ok[4];   /* their knobs, 0..127 as turned */
+    /* the LAYER: its recording, loop and tune (semitones), its share of the voice (Q15, 0: off) and tone (a one-pole) */
+    uint8_t lsmp, lloops;
+    int16_t ltune;
+    int32_t lblend, ltone;
+    /* VOICE: glide's factor a block (Q16, 0: none), velocity's reach (0..127), the cutoff's tracking of the key
+     * (indexes a semitone, Q8), the voices' rate (GRIT: 0 full, 1 half, 2 a quarter); FILTER's drive (Q8, 256 none)
+     * and the level it gives back (Q8) */
+    uint16_t glide;
+    uint8_t vel, grit;
+    int16_t track;
+    int32_t drive, dcomp;
+    /* the LFO: its shape, target, sync (sixteenths a cycle, 0 free) and retrigger; its free step a block, depth (Q15
+     * on a straight law; the pitch squares it) and fade (blocks to full) */
+    uint8_t lshape, ltarget, lsync, lretrig;
+    uint32_t lrate;
+    int32_t ldepth;
+    uint16_t lfade;
 } synth_t;
+enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's targets */
 static synth_t syn[DMK_SYNTHS];
 
 /* the shared buses' controls */
@@ -66,17 +85,28 @@ static uint8_t v_cur, e_cur;
 static int32_t v_g = 32768, e_g = 32768;
 
 /* ---- the voices */
+/* a recording as a voice reads it: its ADPCM blocks decoded 28 at a time, the predictor carried on; on until a
+ * one-shot ends */
 typedef struct {
     const dmk_sample_t *s;
-    uint32_t ph, inc, inc0, age, rng;
-    int32_t a, b, s1, s2, env, lp, bp, lp2, bp2, lastv;   /* lastv: its last sample out, for a steal's fade */
-    int16_t drift, dgoal, det;     /* MOTION's drift, its goal, the note's own detune (cents Q4) */
-    uint16_t blocks;               /* blocks since the note began: vibrato's fade-in */
+    uint32_t ph, inc, inc0;
+    int32_t a, b, s1, s2;
     uint16_t blk, end;
-    uint8_t bi, stage, note, sy, on, loop, src;   /* stage: 0 silent, 1 attack, 2 decay and sustain, 3 release */
+    uint8_t bi, loop, on;
     int16_t buf[28];
+} strm_t;
+typedef struct {
+    strm_t m, l;                   /* the sound's recording; its layer's (l.on: blended in) */
+    uint32_t age, rng;
+    int32_t env, lp, bp, lp2, bp2, lastv;   /* lastv: its last sample out, for a steal's fade */
+    int32_t ltp, gl, vg;           /* the layer's tone; glide's way still to go (cents Q4); velocity's level (Q15) */
+    int16_t drift, dgoal, det;     /* MOTION's drift, its goal, the note's own detune (cents Q4) */
+    int16_t kcut;                  /* the cutoff's offset for this note: velocity and the key's tracking, indexes */
+    uint16_t blocks;               /* blocks since the note began: vibrato's fade-in */
+    uint8_t stage, note, sy, on, src, vel;   /* stage: 0 silent, 1 attack, 2 decay and sustain, 3 release */
 } voice_t;
 static voice_t vc[DMK_VOICES];
+
 static uint32_t vc_clock;
 /* who started a voice: the keys, a roll, the chord machine; a note off ends only its own source's (the progression's
  * chord change never cuts a note the hands hold, nor the reverse) */
@@ -101,7 +131,7 @@ static int32_t mix_g = 32768, mix_dg;
 static const int8_t ADPCM_F[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
 
 /* a block of 28 samples from its 16 bytes, the predictor's state carried on */
-static void blk_decode(voice_t *o)
+static void blk_decode(strm_t *o)
 {
     const uint8_t *d = o->s->data + (uint32_t)o->blk * 16u;
     int f = d[0] >> 4, sh = d[0] & 15, i;
@@ -116,11 +146,25 @@ static void blk_decode(voice_t *o)
     o->s1 = s1; o->s2 = s2;
 }
 
-static int32_t smp_next(voice_t *o)
+static int32_t smp_next(strm_t *o)
 {
     if (o->bi >= 28) {
         if (++o->blk >= o->end) {
-            if (!o->loop) { o->stage = 0; o->env = 0; return 0; }
+            if (!o->loop) { o->on = 0; return 0; }
+            o->blk = o->s->loop0; o->s1 = o->s->ls1; o->s2 = o->s->ls2;
+        }
+        blk_decode(o);
+        o->bi = 0;
+    }
+    return o->buf[o->bi++];
+}
+/* the sound's own recording: as smp_next, and its end (a one-shot's) ends the voice */
+static int32_t smp_next_m(voice_t *v)
+{
+    strm_t *o = &v->m;
+    if (o->bi >= 28) {
+        if (++o->blk >= o->end) {
+            if (!o->loop) { o->on = 0; v->stage = 0; v->env = 0; return 0; }
             o->blk = o->s->loop0; o->s1 = o->s->ls1; o->s2 = o->s->ls2;
         }
         blk_decode(o);
@@ -129,15 +173,45 @@ static int32_t smp_next(voice_t *o)
     return o->buf[o->bi++];
 }
 
-static void note_on_src(int sy, int n, int src)
+/* a stream at the start of recording s, for note n moved by tune semitones and fine cents, from block start */
+static void strm_start(strm_t *t, const dmk_sample_t *s, int n, int tune, int fine, int loops, int start)
 {
-    int i, best = -1, k;
-    uint32_t oldest = 0xFFFFFFFFu, inc;
-    int32_t quiet = 0x7FFFFFFF;
+    int k = clampi(n - s->root + tune, -48, 48);
+    uint32_t inc = (uint32_t)(((uint64_t)s->rate_q16 * T_SEMI[k + 48]) >> 16);
+    t->inc = t->inc0 = (uint32_t)(((uint64_t)inc * T_CENT[clampi(50 - s->cents + fine, 0, 100)]) >> 16);
+    t->s = s;
+    t->loop = (uint8_t)(s->loops && loops);             /* LOOP OFF: a looped sample plays through once */
+    t->end = t->loop ? s->loop1 : s->blocks;
+    t->blk = (uint16_t)(start < t->end - 1 ? start : 0);
+    t->s1 = t->s2 = 0;
+    t->on = 1;
+    blk_decode(t);
+    t->bi = 0;
+    t->a = smp_next(t);
+    t->b = smp_next(t);
+    t->ph = 0;
+}
+
+/* the LFO, a synth's: its phase, its random value, its smoothed output, blocks since the phrase began; and each
+ * block's value with its depth and fade (lfo_c), and the depth alone (lfo_g), Q15, which both cores read */
+static struct { uint32_t ph, rng, sstep; int32_t hold, sm, fade, lv, pl, pr; } lfo[DMK_SYNTHS];
+static int16_t lfo_c[DMK_SYNTHS][16], lfo_g[DMK_SYNTHS][16];   /* VB_MAX / DMK_SUB blocks a run */
+static uint8_t syn_last[DMK_SYNTHS];                    /* each synth's last note + 1, for the glide (0: none yet) */
+
+static void note_on_vel(int sy, int n, int src, int vel)
+{
+    int i, best = -1, first = 1;
+    uint32_t oldest = 0xFFFFFFFFu;
+    int32_t quiet = 0x7FFFFFFF, st;
     const synth_t *p = &syn[sy];
-    const dmk_sample_t *s;
     voice_t *o;
     if (n < 0 || n > 127 || sy < 0 || sy >= DMK_SYNTHS) return;
+    vel = clampi(vel, 1, 127);
+    for (i = 0; i < DMK_VOICES; i++) if (vc[i].on && vc[i].sy == sy) first = 0;
+    if (first) {                                        /* a phrase begins: the LFO's fade from nothing, its phase too */
+        lfo[sy].fade = 0;
+        if (p->lretrig) lfo[sy].ph = 0;
+    }
     for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage == 0) { best = i; break; }   /* a silent voice */
     if (best < 0) {                                     /* else the quietest released one, else the oldest held */
         for (i = 0; i < DMK_VOICES; i++) if (!vc[i].on && vc[i].env < quiet) { quiet = vc[i].env; best = i; }
@@ -145,29 +219,32 @@ static void note_on_src(int sy, int n, int src)
         vc_tail[vc[best].sy] += vc[best].lastv;         /* what it was sounding fades out, not cut */
     }
     o = &vc[best];
-    s = &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0];
-    k = clampi(n - s->root + p->tune, -48, 48);
-    inc = (uint32_t)(((uint64_t)s->rate_q16 * T_SEMI[k + 48]) >> 16);
-    o->inc = o->inc0 = (uint32_t)(((uint64_t)inc * T_CENT[clampi(50 - s->cents + p->fine, 0, 100)]) >> 16);
+    st = p->start;
+    if (p->ltarget == LT_START && p->ldepth) {          /* the LFO moves where each note starts, around START */
+        const dmk_sample_t *sm = &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0];
+        st = clampi(st + ((lfo[sy].sm * (p->ldepth >> 7) >> 8) * ((sm->loops ? sm->loop0 : sm->blocks) / 2) >> 15), 0, 65535);
+    }
+    strm_start(&o->m, &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0], n, p->tune, p->fine, p->loops, st);
+    o->l.on = 0;
+    if (p->lblend) strm_start(&o->l, &DMK_SAMPLES[p->lsmp < DMK_SAMPLES_N ? p->lsmp : 0], n, p->tune + p->ltune, p->fine, p->lloops, 0);
+    o->ltp = 0;
     o->rng = o->rng * 1664525u + 1013904223u + (uint32_t)n;
     o->det = p->motion == FO_DRIFT ? (int16_t)((int32_t)((o->rng >> 16) % 801u) - 400) * p->ok[1] / 127 : 0;
     o->drift = o->dgoal = 0;
     o->blocks = 0;
-    o->s = s;
-    o->loop = (uint8_t)(s->loops && p->loops);          /* LOOP OFF: a looped sample plays through once */
-    o->end = o->loop ? s->loop1 : s->blocks;
-    o->blk = (uint16_t)(p->start < o->end - 1 ? p->start : 0);
-    o->s1 = o->s2 = 0;
-    blk_decode(o);
-    o->bi = 0;
-    o->a = smp_next(o);
-    o->b = smp_next(o);
-    o->ph = 0;
+    /* VOICE: glide from the synth's last note; velocity to the level (a square law) and the cutoff; the key's tracking */
+    o->gl = p->glide && syn_last[sy] ? clampi((syn_last[sy] - 1 - n) * 1600, -48 * 1600, 48 * 1600) : 0;
+    syn_last[sy] = (uint8_t)(n + 1);
+    o->vel = (uint8_t)vel;
+    o->vg = 32768 - p->vel * (32768 - vel * vel * 2) / 127;
+    o->kcut = (int16_t)(-(p->vel * (127 - vel) * 48 / 16129) + (((n - 60) * p->track) >> 8));
     o->env = 0; o->stage = 1;
     o->lp = o->bp = o->lp2 = o->bp2 = 0;
     o->note = (uint8_t)n; o->sy = (uint8_t)sy; o->on = 1; o->age = vc_clock++; o->src = (uint8_t)src; o->lastv = 0;
-    if (midi_out & 1u) mq_put(0x90 | sy, n, 100);
+    if (midi_out & 1u) mq_put(0x90 | sy, n, vel);
 }
+#define VEL_KEY 100                                     /* the keys' velocity, as the roll writes it */
+static void note_on_src(int sy, int n, int src) { note_on_vel(sy, n, src, VEL_KEY); }
 
 static void note_off_src(int sy, int n, int src)
 {
@@ -591,6 +668,7 @@ static void bus_step(int32_t vin, int32_t ein)
 {
     int32_t l, r;
     if (v_cur == VB_ROOM) room_step(vin);
+    if (e_cur == ET_OFF) { bus.el = bus.er = 0; return; }
     if (e_cur == ET_GRAINS) { grains_step(ein); return; }
     /* ECHO: the left read at the time, the right a little later; the loop through a low-pass and a soft clip */
     l = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime) & (EL_LEN - 1)]];
@@ -671,7 +749,29 @@ static void rows_run(int s, int32_t *x, int32_t *l, int32_t *r)
 static int32_t syn_peak[DMK_SYNTHS];
 static int32_t syn_dc[DMK_SYNTHS];                      /* each synth's DC blocker (a sample's loop can sit off zero) */
 
-/* the lines and the state, silent: mu-law's silence is 0xFF, not 0 (0 is its loudest negative) */
+/* the verb's lines and state silent (dsp_reset; a verb back from off) */
+static void verb_clear(void)
+{
+    uint32_t i;
+    for (i = 0; i < sizeof cb_buf / sizeof cb_buf[0]; i++) cb_buf[i] = 0;
+    for (i = 0; i < sizeof ap_buf / sizeof ap_buf[0]; i++) ap_buf[i] = 0;
+    for (i = 0; i < sizeof fd_buf / sizeof fd_buf[0]; i++) fd_buf[i] = 0;
+    for (i = 0; i < sizeof df_buf / sizeof df_buf[0]; i++) df_buf[i] = 0;
+    { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }
+    for (i = 0; i < 4; i++) bus.cb_lp[i] = 0;
+    bus.vl = bus.vr = 0;
+}
+/* the echo's line silent (mu-law's silence is 0xFF, not 0: 0 is its loudest negative), its grains gone */
+static void echo_clear(void)
+{
+    uint32_t i;
+    for (i = 0; i < EL_LEN; i++) el_buf[i] = 0xFF;
+    for (i = 0; i < GR_N; i++) gr[i].len = 0;
+    gr_clock = 0;
+    bus.el = bus.er = bus.elp = bus.ehp = 0;
+}
+
+/* the lines and the state, silent */
 static void dsp_reset(void)
 {
     uint32_t i;
@@ -692,7 +792,11 @@ static void dsp_reset(void)
     }
     { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }
     vq_w = vq_r = wq_w = wq_r = 0;
-    for (i = 0; i < DMK_SYNTHS; i++) vc_tail[i] = 0;
+    for (i = 0; i < DMK_SYNTHS; i++) {
+        vc_tail[i] = 0; syn_last[i] = 0;
+        lfo[i].ph = lfo[i].sm = lfo[i].hold = lfo[i].fade = 0;
+        lfo[i].rng = 0x2545F491u * (i + 3u); lfo[i].lv = 32768; lfo[i].pl = lfo[i].pr = 0;
+    }
     v_cur = gp.vtype; e_cur = gp.etype; v_g = e_g = 32768;
     for (i = 0; i < GR_N; i++) gr[i].len = 0;
     gr_clock = 0;
@@ -710,15 +814,54 @@ static int v_frames;
 /* the formants for VOWEL, as cutoff indexes (T_SVF): u, o, a, e, i; the cutoff glides through them */
 static const uint8_t VOW[5][2] = {{112, 164}, {132, 160}, {156, 175}, {140, 201}, {107, 211}};
 
+/* a step's rate moved by c cents Q4: within half a semitone by the cents table alone, past it (the LFO, the glide)
+ * by the semitones' too */
+static uint32_t inc_by(uint32_t inc0, int32_t c)
+{
+    int32_t ct = c / 16, st, r;
+    if (ct >= -50 && ct <= 50) return (uint32_t)(((uint64_t)inc0 * T_CENT[50 + ct]) >> 16);
+    st = clampi((ct + 4850) / 100 - 48, -48, 48);     /* the nearest semitone (ct >= -4850 after the clamp) */
+    r = clampi(ct - st * 100, -50, 50);
+    return (uint32_t)(((((uint64_t)inc0 * T_SEMI[st + 48]) >> 16) * T_CENT[50 + r]) >> 16);
+}
+
+/* a voice's filter, one sample: its type's response to x */
+static inline __attribute__((always_inline)) int32_t vfilt(voice_t *o, int ftype, int32_t x, int32_t f, int32_t f2, int32_t q, int32_t q1)
+{
+    int32_t y, hp;
+    switch (ftype) {
+    case FT_LP24: y = svf_step(&o->lp2, &o->bp2, svf_step(&o->lp, &o->bp, x, f, q1, &hp), f, q, &hp); break;
+    case FT_LP12: y = svf_step(&o->lp, &o->bp, x, f, q, &hp); break;
+    case FT_HP: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = hp; break;
+    case FT_BP: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = o->bp; break;
+    case FT_NOTCH: y = svf_step(&o->lp, &o->bp, x, f, q, &hp); y += hp; break;
+    case FT_PEAK: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = x + o->bp; break;
+    case FT_VOWEL: {
+        int32_t h2;
+        int32_t qv = 1500 + q / 4;                      /* the resonance narrows the formants */
+        svf_step(&o->lp, &o->bp, x, f, qv, &hp);
+        svf_step(&o->lp2, &o->bp2, x, f2, qv, &h2);
+        y = (o->bp + (o->bp2 * 3) / 4) * 3 / 2;
+        break;
+    }
+    default: y = x; break;
+    }
+    return y;
+}
+
 static void voices_run(int half)
 {
-    int v, i, s, b, nb = v_frames / DMK_SUB;
+    int v, i, j, s, b, nb = v_frames / DMK_SUB;
     for (s = 0; s < DMK_SYNTHS; s++) for (i = 0; i < v_frames; i++) vbuf[half][s][i] = 0;
     for (v = half * (DMK_VOICES / 2); v < (half + 1) * (DMK_VOICES / 2); v++) {
         voice_t *o = &vc[v];
         const synth_t *p = &syn[o->sy];
+        /* GRIT: the voice runs every gs-th sample, held for the ones between (the console's rate); its filter's
+         * coefficients an octave up for each halving */
+        int gs = 1 << p->grit, gi = p->grit * 34;
         for (b = 0; b < nb && o->stage; b++) {
-            int32_t e0 = o->env, e1, de, f, q, q1, open, hp, idx, f2 = 0, c = 0, *out = &vbuf[half][o->sy][b * DMK_SUB];
+            int32_t e0 = o->env, e1, de, f, q, q1, open, idx, f2 = 0, c = 0, *out = &vbuf[half][o->sy][b * DMK_SUB];
+            uint32_t inc, linc = 0;
             if (o->stage == 1) { e1 = e0 + (int32_t)p->atk; if (e1 >= FULL) { e1 = FULL; o->stage = 2; } }
             else if (o->stage == 2) e1 = p->sus + (int32_t)(((int64_t)(e0 - p->sus) * p->dec) >> 16);
             else { e1 = (int32_t)(((int64_t)e0 * p->rel) >> 16); if (e1 < 256) { e1 = 0; o->stage = 0; } }
@@ -733,52 +876,108 @@ static void voices_run(int half)
                 o->drift += (int16_t)((o->dgoal - o->drift) / (fast ? 64 : 256));
                 c = o->drift * p->ok[0] / 127 + o->det;
             }
+            if (o->gl) {                                /* the glide: the way still to go, shrinking */
+                c += o->gl;
+                {                                       /* toward zero (a negative one floored would stall) */
+                    int32_t a = o->gl < 0 ? -o->gl : o->gl;
+                    a = (int32_t)(((int64_t)a * p->glide) >> 16);
+                    o->gl = a < 16 ? 0 : o->gl < 0 ? -a : a;
+                }
+            }
+            if (p->ltarget == LT_PITCH) c += (((lfo_c[o->sy][b] * (p->ldepth >> 1)) >> 14) * 19200) >> 15;   /* to an octave either way, finer low (its depth squared) */
             if (o->blocks < 65535u) o->blocks++;
-            o->inc = c ? (uint32_t)(((uint64_t)o->inc0 * T_CENT[clampi(50 + c / 16, 0, 100)]) >> 16) : o->inc0;
-            idx = clampi(p->cut + (int32_t)(((int64_t)p->fenv * e0) >> 24), 0, 255);
-            f = T_SVF[idx]; q = p->resq;
+            o->m.inc = c ? inc_by(o->m.inc0, c) : o->m.inc0;
+            if (o->l.on) o->l.inc = c ? inc_by(o->l.inc0, c) : o->l.inc0;
+            inc = o->m.inc << p->grit;
+            if (o->l.on) linc = o->l.inc << p->grit;
+            idx = p->cut + (int32_t)(((int64_t)p->fenv * e0) >> 24) + o->kcut;
+            if (p->ltarget == LT_CUTOFF) idx += (lfo_c[o->sy][b] * 128) >> 15;   /* to 3.8 octaves either way: heard */
+            idx = clampi(idx, 0, 255);
+            f = T_SVF[gi ? clampi(idx + gi, 0, 255) : idx]; q = p->resq;
             q1 = q < 11469 ? 11469 : q;                 /* LP24: one stage resonates; two would square the peak */
             open = (p->ftype == FT_LP24 || p->ftype == FT_LP12) && idx >= 240 ? idx - 239 : 0;   /* 1..16: to the sample */
             if (p->ftype == FT_VOWEL) {                 /* the cutoff picks the vowel: two band-passes at its formants */
                 int pos = idx * 4, a = pos >> 8, t = pos & 255, z = a < 4 ? a + 1 : 4;
-                f = T_SVF[(VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8];
-                f2 = T_SVF[(VOW[a][1] * (256 - t) + VOW[z][1] * t) >> 8];
+                f = T_SVF[clampi(((VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8) + gi, 0, 255)];
+                f2 = T_SVF[clampi(((VOW[a][1] * (256 - t) + VOW[z][1] * t) >> 8) + gi, 0, 255)];
             }
-            for (i = 0; i < DMK_SUB; i++) {
+            if (gs == 1 && !o->l.on && p->drive <= 256 && o->vg >= 32768) {   /* the plain voice: as it was, no cost */
+                for (i = 0; i < DMK_SUB; i++) {
+                    int32_t x, y;
+                    o->m.ph += inc;
+                    while (o->m.ph >= 65536u) {
+                        o->m.ph -= 65536u; o->m.a = o->m.b; o->m.b = smp_next_m(o);   /* a one-shot's end ends it */
+                    }
+                    x = o->m.a + (((o->m.b - o->m.a) * (int32_t)(o->m.ph >> 1)) >> 15);
+                    y = vfilt(o, p->ftype, x, f, f2, q, q1);
+                    if (open) y += ((x - y) * open) >> 4;   /* the top: the sample as it is, reached gradually (a switch clicks) */
+                    METER(dmeter.clamp_v += y > 65536 || y < -65536);
+                    METER(dmeter.voice_max = (y < 0 ? -y : y) > dmeter.voice_max ? (y < 0 ? -y : y) : dmeter.voice_max);
+                    if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;   /* a resonance past full: bent, not cut */
+                    o->lastv = (int32_t)(((int64_t)y * ((e0 + de * i) >> 9)) >> 15);
+                    out[i] += o->lastv;
+                    if (!o->stage) { o->lastv = 0; break; }
+                }
+            } else for (i = 0; i < DMK_SUB; i += gs) {  /* with its layer, drive, velocity or grit */
                 int32_t x, y;
-                o->ph += o->inc;
-                while (o->ph >= 65536u) { o->ph -= 65536u; o->a = o->b; o->b = smp_next(o); }
-                x = o->a + (((o->b - o->a) * (int32_t)(o->ph >> 1)) >> 15);
-                switch (p->ftype) {
-                case FT_LP24: y = svf_step(&o->lp2, &o->bp2, svf_step(&o->lp, &o->bp, x, f, q1, &hp), f, q, &hp); break;
-                case FT_LP12: y = svf_step(&o->lp, &o->bp, x, f, q, &hp); break;
-                case FT_HP: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = hp; break;
-                case FT_BP: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = o->bp; break;
-                case FT_NOTCH: y = svf_step(&o->lp, &o->bp, x, f, q, &hp); y += hp; break;
-                case FT_PEAK: svf_step(&o->lp, &o->bp, x, f, q, &hp); y = x + o->bp; break;
-                case FT_VOWEL: {
-                    int32_t h2;
-                    int32_t qv = 1500 + q / 4;          /* the resonance narrows the formants */
-                    svf_step(&o->lp, &o->bp, x, f, qv, &hp);
-                    svf_step(&o->lp2, &o->bp2, x, f2, qv, &h2);
-                    y = (o->bp + (o->bp2 * 3) / 4) * 3 / 2;
-                    break;
+                o->m.ph += inc;
+                while (o->m.ph >= 65536u) {
+                    o->m.ph -= 65536u; o->m.a = o->m.b; o->m.b = smp_next_m(o);
                 }
-                default: y = x; break;
+                x = o->m.a + (((o->m.b - o->m.a) * (int32_t)(o->m.ph >> 1)) >> 15);
+                if (o->l.on) {                          /* the LAYER: its own recording, its tone, blended in */
+                    int32_t xl;
+                    o->l.ph += linc;
+                    while (o->l.ph >= 65536u) { o->l.ph -= 65536u; o->l.a = o->l.b; o->l.b = smp_next(&o->l); }
+                    xl = o->l.a + (((o->l.b - o->l.a) * (int32_t)(o->l.ph >> 1)) >> 15);
+                    o->ltp += ((xl - o->ltp) * p->ltone) >> 15;
+                    x += ((o->ltp - x) * p->lblend) >> 15;
                 }
-                if (open) y += ((x - y) * open) >> 4;   /* the top: the sample as it is, reached gradually (a switch clicks) */
-                METER(dmeter.clamp_v += y > 65536 || y < -65536);
-                METER(dmeter.voice_max = (y < 0 ? -y : y) > dmeter.voice_max ? (y < 0 ? -y : y) : dmeter.voice_max);
-                if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;   /* a resonance past full: bent, not cut */
-                o->lastv = (int32_t)(((int64_t)y * ((e0 + de * i) >> 9)) >> 15);
-                out[i] += o->lastv;
-                if (!o->stage) { o->lastv = 0; break; }   /* a one-shot ended */
+                if (p->drive > 256) x = (curve(T_SAT, (x * p->drive) >> 8) * p->dcomp) >> 8;   /* DRIVE: into the filter */
+                y = vfilt(o, p->ftype, x, f, f2, q, q1);
+                if (p->drive > 256) { o->bp = curve(T_LIM, o->bp); o->bp2 = curve(T_LIM, o->bp2); }   /* the resonance sings, held */
+                if (open) y += ((x - y) * open) >> 4;
+                if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;
+                for (j = 0; j < gs; j++) {              /* (held, under GRIT) */
+                    o->lastv = (int32_t)(((int64_t)y * ((e0 + de * (i + j)) >> 9)) >> 15);
+                    if (o->vg < 32768) o->lastv = (o->lastv * (o->vg >> 1)) >> 14;
+                    out[i + j] += o->lastv;
+                }
+                if (!o->stage) { o->lastv = 0; break; }
             }
             if (o->stage) o->env = e1;
         }
     }
 }
 static void voices_job(void) { voices_run(1); }
+
+/* a synth's LFO over the run's blocks: its shape from the phase (a random one held a cycle), smoothed over ~1.5 ms
+ * (a square's edge or a new random value would click), times its depth, faded in from the phrase's first note */
+static void lfo_run(int s, int nb)
+{
+    const synth_t *p = &syn[s];
+    int b;
+    if (!p->ldepth) { for (b = 0; b < nb; b++) lfo_c[s][b] = lfo_g[s][b] = 0; lfo[s].sm = 0; return; }
+    for (b = 0; b < nb; b++) {
+        uint32_t was = lfo[s].ph, t;
+        int32_t v, g = p->ldepth;
+        lfo[s].ph += p->lsync ? lfo[s].sstep : p->lrate;
+        if (lfo[s].ph < was) lfo[s].hold = (int32_t)(xs32(&lfo[s].rng) >> 16) - 32768;   /* a new cycle */
+        t = lfo[s].ph >> 16;
+        switch (p->lshape) {
+        case 0: v = sinp(lfo[s].ph); break;
+        case 1: v = t < 32768u ? (int32_t)t * 2 - 32767 : 98303 - (int32_t)t * 2; break;   /* triangle */
+        case 2: v = 32767 - (int32_t)t; break;          /* ramp, falling */
+        case 3: v = t < 32768u ? 32767 : -32767; break; /* square */
+        default: v = lfo[s].hold; break;                /* random, held a cycle */
+        }
+        lfo[s].sm += (v - lfo[s].sm) >> 2;
+        if (lfo[s].fade < 65535) lfo[s].fade++;
+        if (p->lfade && lfo[s].fade < p->lfade) g = g * lfo[s].fade / p->lfade;
+        lfo_c[s][b] = (int16_t)clampi((lfo[s].sm * g) >> 15, -32767, 32767);
+        lfo_g[s][b] = (int16_t)g;
+    }
+}
 
 /* a synth's chain over the run, in place: its voices' halves summed with a stolen voice's tail, its DC out, the
  * limiter's bend, then its rows; vbuf[0] holds its left after, vbuf[1] its right. Each synth's state is its own, so
@@ -804,7 +1003,7 @@ static void chain_run(int s)
 /* the second core's share of the mix: the network on the last run's input, and the last synth's chain */
 static void chains_job(void)
 {
-    if (v_cur != VB_ROOM) verb_job();
+    if (v_cur != VB_ROOM && v_cur != VB_OFF) verb_job();
     chain_run(DMK_SYNTHS - 1);
 }
 
@@ -817,6 +1016,7 @@ static void dsp_render(int16_t *lr, int frames)
         n = frames - at > VB_MAX ? VB_MAX : frames - at;
         v_frames = n;
         nb = n / DMK_SUB;
+        for (s = 0; s < DMK_SYNTHS; s++) lfo_run(s, nb);   /* the LFOs: both cores read them */
         for (s = 0; s < DMK_SYNTHS; s++)                /* the vibrato's LFO, a block at a time, before the split */
             for (b = 0; b < nb; b++) {
                 fx[s].vib += 3100000u + (uint32_t)syn[s].ok[2] * 74000u;   /* 2..8 Hz, a block at a time */
@@ -827,9 +1027,11 @@ static void dsp_render(int16_t *lr, int frames)
         if (par) dmk_par_end(); else voices_run(1);
         /* the chains, the last on the second core with the network (the last run's input: the mix takes what it
          * made), the rest here */
-        if (v_cur != gp.vtype && !v_g) v_cur = gp.vtype;   /* faded out: the new type, from the next run */
-        if (e_cur != gp.etype && !e_g) e_cur = gp.etype;
-        if (v_cur == VB_ROOM) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix: the queue stays empty */
+        if (v_cur != gp.vtype && !v_g) { if (v_cur == VB_OFF) verb_clear(); v_cur = gp.vtype; }   /* faded out: the new
+                                                           type, from the next run; out of off, from silence (not
+                                                           what was held when it went off) */
+        if (e_cur != gp.etype && !e_g) { if (e_cur == ET_OFF) echo_clear(); e_cur = gp.etype; }
+        if (v_cur == VB_ROOM || v_cur == VB_OFF) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix, off nothing: the queue stays empty */
         vfill = wq_w - wq_r;
         ch_nb = nb;
         par = dmk_par_begin && dmk_par_begin(chains_job);
@@ -847,7 +1049,26 @@ static void dsp_render(int16_t *lr, int frames)
                 const synth_t *p = &syn[s];
                 const int32_t *sl = &vbuf[0][s][b * DMK_SUB], *sr = &vbuf[1][s][b * DMK_SUB];
                 int32_t pk = 0, lvl = mix_g < 32768 ? (p->level * mix_g) >> 15 : p->level;
-                for (i = 0; i < DMK_SUB; i++) {
+                int32_t gl0 = p->gl, gr0 = p->gr, gl1 = p->gl, gr1 = p->gr, lv0 = 32768, lv1 = 32768, mod = 0;
+                if (p->ldepth && p->ltarget == LT_LEVEL) {  /* the LFO's tremolo: down by its depth at its lowest */
+                    lv0 = lfo[s].lv; lv1 = lfo[s].lv = 32768 - ((lfo_g[s][b] - lfo_c[s][b]) >> 1); mod = 1;
+                }
+                if (p->ldepth && p->ltarget == LT_PAN) {    /* or the pan, swung either way around PAN */
+                    int pn = clampi(p->pan + ((lfo_c[s][b] * 64) >> 15), 0, 127);
+                    gl0 = lfo[s].pl; gr0 = lfo[s].pr; gl1 = lfo[s].pl = T_PAN[127 - pn]; gr1 = lfo[s].pr = T_PAN[pn]; mod = 1;
+                } else { lfo[s].pl = p->gl; lfo[s].pr = p->gr; }
+                if (!mod) lfo[s].lv = 32768;
+                if (mod) for (i = 0; i < DMK_SUB; i++) {   /* the LFO's level and pan, glided across the block */
+                    int32_t xl = (sl[i] * lvl) >> 14, xr = (sr[i] * lvl) >> 14, x;
+                    int32_t lv = lv0 + (lv1 - lv0) * i / DMK_SUB;
+                    xl = (xl * lv) >> 15; xr = (xr * lv) >> 15;
+                    x = (xl + xr) / 2;
+                    L[i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
+                    R[i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
+                    vin[i] += (x * p->vsend) >> 15;
+                    ein[i] += (x * p->esend) >> 15;
+                    if (x > pk) pk = x; else if (-x > pk) pk = -x;
+                } else for (i = 0; i < DMK_SUB; i++) {
                     int32_t xl = (sl[i] * lvl) >> 14, xr = (sr[i] * lvl) >> 14, x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * p->gl) >> 15;
                     R[i] += (xr * p->gr) >> 15;
@@ -869,11 +1090,12 @@ static void dsp_render(int16_t *lr, int frames)
                 int32_t el, er;
                 el = e_g < 32768 ? (bus.el * e_g) >> 15 : bus.el;
                 er = e_g < 32768 ? (bus.er * e_g) >> 15 : bus.er;
-                if (v_cur != VB_ROOM) {                 /* the network's: what it made of the last run, in order */
+                if (v_cur != VB_ROOM && v_cur != VB_OFF) {   /* the network's: what it made of the last run, in order */
                     vq[vq_w++ & (VQ_LEN - 1)] = vin[i] + (e_cur == ET_GRAINS ? (el + er) / 2 : 0);   /* the grains, into the space */
                     wl = wr = 0;
                     if (vfill) { wl = wq[0][wq_r & (VQ_LEN - 1)]; wr = wq[1][wq_r & (VQ_LEN - 1)]; wq_r++; vfill--; }
-                } else { wl = bus.vl; wr = bus.vr; }
+                } else if (v_cur == VB_ROOM) { wl = bus.vl; wr = bus.vr; }
+                else wl = wr = 0;
                 if (v_g < 32768) { wl = (wl * v_g) >> 15; wr = (wr * v_g) >> 15; }
 #ifdef DMK_METER
                 { int32_t a = L[i] + wl + el, c = R[i] + wr + er; a = a < 0 ? -a : a; c = c < 0 ? -c : c; if (c > a) a = c;

@@ -249,7 +249,7 @@ static void seq_quiet(int s)                            /* every note the patter
 }
 
 /* a note of a roll on synth s for len steps, in its free slot (all sounding: the first gives way) */
-static void roll_on(int s, int note, int len)
+static void roll_on(int s, int note, int len, int vel)
 {
     seq_t *q = &sq[s];
     int k, slot = 0;
@@ -257,7 +257,7 @@ static void roll_on(int s, int note, int len)
     if (k == SEQ_LIVE) note_off_src(s, q->live[0], SRC_ROLL);
     q->live[slot] = (uint8_t)note;
     q->left[slot] = (uint8_t)(len < 1 ? 1 : len);
-    note_on_src(s, note, SRC_ROLL);
+    note_on_vel(s, note, SRC_ROLL, vel);
 }
 
 static void seq_step(void)                              /* every synth one step on */
@@ -279,9 +279,9 @@ static void seq_step(void)                              /* every synth one step 
             if (n->step != q->pos || plays_chords(s) || harm_of(s) >= 0 || pat_mute >> s & 1u) continue;   /* a follower leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
             note = follow_note(s, n->note);
-            roll_on(s, note, len);
+            roll_on(s, note, len, n->vel);
             for (k = 0; k < DMK_SYNTHS; k++)            /* the synths in harmony with this one: its note, moved */
-                if (k != s && harm_of(k) == s && !(pat_mute >> k & 1u)) roll_on(k, harm_note(k, note), len);
+                if (k != s && harm_of(k) == s && !(pat_mute >> k & 1u)) roll_on(k, harm_note(k, note), len, n->vel);
         }
         q->pos = (uint8_t)((q->pos + 1) % q->steps);
     }
@@ -309,9 +309,25 @@ static void seq_play(int on)
     if (on) seq_step();                                 /* the first step sounds at once */
 }
 
+static uint32_t seq_now(void);
+/* the LFOs synced to the tempo: their step a block from it; playing on the own clock, their phase from where the
+ * playing is, so a cycle starts on the bar */
+static void lfo_sync(void)
+{
+    int s;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        uint32_t n = syn[s].lsync, blocks;
+        if (!n) continue;
+        blocks = 165375u * n / ((uint32_t)(seq_bpm > 0 ? seq_bpm : 120) * 4u);   /* 44100 * 60 / 16 / 4: a sixteenth's */
+        lfo[s].sstep = 0xFFFFFFFFu / (blocks ? blocks : 1u);
+        if (seq_on && !clock_ext) { uint32_t len = n << 8; lfo[s].ph = seq_now() % len * (0xFFFFFFFFu / len); }
+    }
+}
+
 static void seq_render(int frames)
 {
     uint32_t per;
+    lfo_sync();
     seq_frames += (uint32_t)frames;
     later_tick(frames);                                 /* the strum's notes, playing or not */
     if (!seq_on || clock_ext) return;                   /* an outside clock steps it instead (dmk_midi) */

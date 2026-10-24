@@ -121,11 +121,11 @@
     if (ctx) { ctx.resume(); return; }
     try {
       ctx = new AudioContext({ sampleRate: 44100 });
-      await ctx.audioWorklet.addModule("worklet.js?v=7");
+      await ctx.audioWorklet.addModule("worklet.js?v=8");
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=7")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=8")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       power.textContent = "On";
@@ -225,11 +225,23 @@
   };
   svg.addEventListener("pointerup", up);
   svg.addEventListener("pointercancel", up);
+  /* a wheel: a mouse's notch one step; a trackpad's run of small moves (and its glide after) one step every 40 px,
+     not one an event, which flew through the values */
+  const wacc = {};
+  const wheelSteps = (e, ev) => {
+    const px = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaMode === 2 ? ev.deltaY * 400 : ev.deltaY;
+    if (Math.abs(px) >= 50) { wacc[e] = 0; return px < 0 ? 1 : -1; }
+    wacc[e] = (wacc[e] || 0) - px;
+    const n = Math.trunc(wacc[e] / 40);
+    wacc[e] -= n * 40;
+    return n;
+  };
   svg.addEventListener("wheel", (ev) => {
     const g = ev.target.closest && ev.target.closest("g");
     if (!g || g.dataset.e === undefined) return;
     ev.preventDefault();
-    turn(+g.dataset.e, ev.deltaY < 0 ? 1 : -1);
+    const n = wheelSteps(+g.dataset.e, ev);
+    if (n) turn(+g.dataset.e, n);
   }, { passive: false });
 
   /* the running machine, for the screens' section: on, start, press a button, turn a knob, its screen */
@@ -401,7 +413,8 @@
     const E = window.demakeLive, e = knobAt(ev);
     if (!E || !E.on() || e < 0) return;
     ev.preventDefault();
-    E.turn(e, ev.deltaY < 0 ? 1 : -1);
+    const n = wheelSteps(e, ev);
+    if (n) E.turn(e, n);
   }, { passive: false });
   live.addEventListener("pointerdown", (ev) => {
     const E = window.demakeLive, e = knobAt(ev);

@@ -155,6 +155,10 @@ def main():
     # the envelope, per control block of 16 samples: the attack's step (Q24) for 2 ms .. 8 s; the decay's and the
     # release's factor (Q16) for a fall of 60 dB in 30 ms .. 18 s
     arr("T_ATK", "uint32_t", [round((1 << 24) * 16 / (0.002 * 4000 ** (v / 127) * SR)) for v in range(128)])
+    # the LFO's free rate: its phase step a 16-sample block, 0.05 .. 20 Hz on an exponential law
+    arr("T_LFO", "uint32_t", [round(0.05 * 400 ** (v / 127) * 2 ** 32 * 16 / SR) for v in range(128)])
+    # T_EXP's times in ms (to -60 dB), for the screen: 30 ms .. 18 s
+    arr("T_EXPMS", "uint16_t", [round(1000 * 0.03 * 600 ** (v / 127)) for v in range(128)])
     arr("T_EXP", "uint16_t", [min(65535, round(65536 * math.exp(-16 * 6.9078 / (0.03 * 600 ** (v / 127) * SR)))) for v in range(128)])
     # mu-law, for the echo's line (8 bits a sample: its memory and its grain)
     def mulaw_dec(b):

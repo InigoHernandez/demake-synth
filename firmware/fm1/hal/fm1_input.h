@@ -300,9 +300,11 @@ static void fm1__frame(void)
         } else if ((0x2814u >> idx) & 1u) {
             (*sub)--;
             fm1_in.enc_dir[e] = -1;
-        } else {                                   /* both lines changed: a state skipped (a flick) */
-            *sub = (int8_t)(*sub + 2 * fm1_in.enc_dir[e]);   /* two more the way it was going */
         }
+        /* Demake: both lines changed in one scan counts nothing. It was taken as a state skipped (a flick, two
+         * more the way it was going), but the common contact bouncing opens both lines at once: 00, 11, 00 read
+         * as two skips, a whole phantom step the way the knob went (the owner's FM-1: SELECT went from the first
+         * synth to the third, knobs jumped). A real turn is seen state by state: 1.1 ms a scan */
         fm1_in.enc_prev[e] = (uint8_t)cur;
         if ((fm1_in.enc_rest[e] >> cur) & 1u) {    /* back on a detent */
             if (*sub >= 2)

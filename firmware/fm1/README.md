@@ -40,6 +40,8 @@ the image within the app slot (581 KB), `.data + .bss` within 96 KiB, the pool w
 ## Changed from the platform (MONO2K's changes, kept)
 
 - `hal/fm1_lcd_hw.h` `fm1_lcd_done`, `src/lcd.c` `lcd_idle`: a transfer's end without waiting for it.
+- `hal/fm1_input.h`, the encoders: both lines changing in one scan counts nothing (it counted two steps the way the
+  knob went, so a bouncing common contact made phantom steps: one click of SELECT moved two synths).
 - `src/platform.c`: `BANK_AT` / `BANK_LEN` and `CV_MAX` can be set by the app; an app's SysEx hook (`APP_SYSEX`)
   sees each frame before the update entry does. Demake's: the app may draw the update's screen (`APP_OTA_SHOW`) and
   refresh it while the update waits (`APP_OTA_IDLE`); the rescue mode keeps the platform's own.

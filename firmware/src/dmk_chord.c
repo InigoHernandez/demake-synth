@@ -234,7 +234,8 @@ static int voice_x(int root, const int8_t *iv, int pedal, uint8_t *out, int lead
     sort_notes(t, n);
     for (i = 1, k = 1; i < n; i++) if (t[i] != t[k - 1]) t[k++] = t[i];   /* folded onto another: once */
     n = k;
-    while (t[0] < 33) for (i = 0; i < n; i++) t[i] = (uint8_t)(t[i] + 12);
+    while (t[0] < 28) for (i = 0; i < n; i++) t[i] = (uint8_t)(t[i] + 12);   /* nothing under E1 (the keys' lowest
+                                                                                  bass, wide from F3: F1) */
     if (pedal && n < 7 && (36 + seq_key) % 12 != t[0] % 12) {   /* the tonic under it: the lowest, whatever the voicing */
         int pd = 36 + seq_key;
         while (pd >= t[0]) pd -= 12;
@@ -278,6 +279,27 @@ static void chord_name_bass(char *o, int root, int q, int pedal)   /* and its ba
 {
     chord_name(o, root, q);
     if (pedal && (int)(seq_key % 12) != root % 12) { while (*o) o++; str_cat(str_cat(o, "/"), pc_name(seq_key)); }
+}
+
+/* the chord some notes make, by its name (its bass after a slash when another tone is under it); 0: none. The more
+ * common reading first (Am7 before C6) */
+static int chord_of(const uint8_t *notes, int n, char *o)
+{
+    uint16_t m = 0;
+    int i, q, r, lo = 127;
+    if (n < 2) return 0;
+    for (i = 0; i < n; i++) { m |= (uint16_t)(1u << (notes[i] % 12)); if (notes[i] < lo) lo = notes[i]; }
+    for (q = 0; q < Q_COUNT; q++)
+        for (r = 0; r < 12; r++) {
+            uint16_t qm = 0;
+            if (!(m >> r & 1u)) continue;
+            for (i = 0; i < 7 && QI[q][i] >= 0; i++) qm |= (uint16_t)(1u << ((r + QI[q][i]) % 12));
+            if (qm != m) continue;
+            chord_name(o, r, q);
+            if (lo % 12 != r) { while (*o) o++; str_cat(str_cat(o, "/"), pc_name(lo % 12)); }
+            return 1;
+        }
+    return 0;
 }
 
 /* the mode's chord on a scale tone, of the keys' type (the CHORD page's Keys row), named by what it turns out to be:
@@ -401,15 +423,19 @@ static void chord_step(void)
     ch_left--;
 }
 
-/* the CHORD page's keys: a key, the mode's chord on it, voiced as the page says, on the current synth, in the
- * progression's own register (its roots C3-B3) moved by OCT: a chord written from a key plays back as it sounded.
- * Stopped, the page shows it; playing, the progression keeps the page, the followers and its voice leading */
+/* the CHORD page's keys: a key, the mode's chord on it, voiced as the page says, on the current synth, its root an
+ * octave under the key: a lower key a lower chord (the owner heard B under C go up, when every root was folded into
+ * C3-B3). The middle octave (C4-B4) is the progression's own register, so a chord written from it plays back as it
+ * sounded. Voiced as built, not led from the last key's. Stopped, the page shows it; playing, the progression keeps
+ * the page, the followers and its voice leading */
 static int chord_key(int n, int oct, uint8_t *notes)
 {
     int8_t iv[6];
-    int q = diatonic(n, iv), r = note_of(degree_of(snap(n))), c, i;
-    r = 48 + r % 12 + oct * 12;
-    c = voice_x(r, iv, 0, notes, !seq_on);
+    int q = diatonic(n, iv), r = note_of(degree_of(snap(n))) - 12, c, i, pn = ch_pn;
+    (void)oct;                                          /* (n has the octave in it) */
+    ch_pn = 0;                                          /* as it is built: no inversion that moves least from the last */
+    c = voice_x(r, iv, 0, notes, 0);
+    ch_pn = (uint8_t)pn;
     if (!seq_on) {
         ch_name[0] = 0;
         chord_name(ch_name, r, q);
