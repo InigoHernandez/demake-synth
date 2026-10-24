@@ -785,7 +785,7 @@ static void foot(void)
         return;
     }
     if (ui.page == PG_DISCS) {                          /* SONGS: what PLAY and SAVE do here */
-        text(PAD + 1, Y_FOOT + 2, store_on() ? "PLAY: load" : "No store here", &FS, C_LABEL);
+        text(PAD + 1, Y_FOOT + 2, store_on() ? "PLAY twice: open" : "No store here", &FS, C_LABEL);
         if (store_on()) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "SAVE: save here", &FS, C_LABEL);
         return;
     }
@@ -2446,8 +2446,15 @@ static void ui_button(int b, int down)
         notice(t);
         return;
     }
-    if (b == B_PLAY && ui.page == PG_DISCS) {           /* SONGS, PLAY: the slot picked loaded (empty: a new song) */
+    if (b == B_PLAY && ui.page == PG_DISCS) {           /* SONGS, PLAY twice: the slot picked loaded (empty: a new song),
+                                                           the song open left (what it had unsaved too) */
         int at = ui.song_pick, s;
+        if (!(ui.clear_arm == 5 && ui.copy_to == at && ui.now - ui.clear_at < 2000u)) {
+            ui.clear_arm = 5; ui.copy_to = (uint8_t)at; ui.clear_at = ui.now;
+            notice(song_used(at) ? "PLAY again: open it" : "PLAY again: a new song");
+            return;
+        }
+        ui.clear_arm = 0;
         if (song_used(at)) { if (song_load(at)) { notice("Not loaded"); return; } notice("Loaded"); }
         else { song_new(); notice("A new song"); }
         ui.song = (uint8_t)at;

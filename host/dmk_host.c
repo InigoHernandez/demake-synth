@@ -345,14 +345,16 @@ static void selftest(void)
         if (ui.page != PG_DISCS) { fails++; printf("selftest: SAVE held does not open SONGS\n"); }
         dmk_encoder(E_K1, 1); tap(B_SAVE);
         if (!song_used(1) || ui.song != 1) { fails++; printf("selftest: SAVE on SONGS does not save into the slot picked\n"); }
-        dmk_encoder(E_K1, -1); tap(B_PLAY);             /* slot 1: the first song back */
+        dmk_encoder(E_K1, -1); tap(B_PLAY);             /* slot 1: the first song back, PLAY twice (once asks) */
+        if (ui.page != PG_DISCS || strcmp(ui.note, "PLAY again: open it")) { fails++; printf("selftest: one PLAY on SONGS opens the song without asking\n"); }
+        tap(B_PLAY);
         if (ui.page != PG_HOME || ui.val[1][PG_AMP][0][0] == 5 || sq[0].count != notes) { fails++; printf("selftest: PLAY on SONGS does not load\n"); }
         dmk_button(B_SAVE, 1); wait_ms(1100); dmk_button(B_SAVE, 0); wait_ms(30); dmk_encoder(E_K1, 1);
         tap(B_SAVE);                                    /* over song 2, once: asks */
         if (strcmp(ui.note, "SAVE again: over it")) { fails++; printf("selftest: saving over another song does not ask\n"); }
         tap(B_OCTD); tap(B_OCTD);
         if (song_used(1)) { fails++; printf("selftest: OCT- twice on SONGS does not empty the slot\n"); }
-        dmk_encoder(E_K1, 1); tap(B_PLAY);              /* an empty slot: a new song */
+        dmk_encoder(E_K1, 1); tap(B_PLAY); tap(B_PLAY); /* an empty slot: a new song */
         if (sq[0].count == notes && seq_find(0, 5, 62) >= 0) { fails++; printf("selftest: an empty slot does not start a new song\n"); }
         ui.synth = 1; ui.val[1][PG_FILTER][0][1] = 99; sp_sync();
         dmk_button(B_EDIT, 1); wait_ms(30); dmk_button(B_SAVE, 1); dmk_button(B_SAVE, 0); dmk_button(B_EDIT, 0); wait_ms(30);

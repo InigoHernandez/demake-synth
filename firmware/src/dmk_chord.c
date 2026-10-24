@@ -308,6 +308,13 @@ static int chord_of(const uint8_t *notes, int n, char *o)
     return 0;
 }
 
+/* QUARTAL stacks fourths on the root, whatever the quality: named as it sounds, or as fourths on its root */
+static void quartal_name(char *o, int root, const uint8_t *notes, int n)
+{
+    o[0] = 0;
+    if (!chord_of(notes, n, o)) str_cat(str_cat(o, pc_name(root)), " in 4ths");
+}
+
 /* the mode's chord on a scale tone, of the keys' type (the CHORD page's Keys row), named by what it turns out to be:
  * its seventh, its triad, its ninth (the seventh where the mode's ninth has no name here), the triad and its ninth, or
  * a fixed shape on the scale tone (sus2, sus4, 6/9 by the mode's third, the fifth alone) */
@@ -404,6 +411,7 @@ static void chord_step(void)
         ch_q = (uint8_t)(c->q < Q_COUNT ? c->q : 0);
         ch_name[0] = 0;
         chord_name_bass(ch_name, root, ch_q, c->pedal);
+        if (ch.voicing == VO_QUART) quartal_name(ch_name, root, ch_notes, ch_n);
         ch_shown = ch_slot % pr->n;
         len = ch.change == 0 ? len / 2 : ch.change == 2 ? len * 2 : ch.change == 3 ? len * 4 : len;
         ch_left = (uint16_t)(len < 1 ? 1 : len);
@@ -478,6 +486,7 @@ static int chord_key(int n, int oct, uint8_t *notes)
     if (!seq_on) {
         ch_name[0] = 0;
         chord_name(ch_name, r, q);
+        if (ch.voicing == VO_QUART) quartal_name(ch_name, r, notes, c);
         ch_shown = -2;
         ch_root = (uint16_t)r; ch_q = (uint8_t)q;
         ch_cmask = 0;
