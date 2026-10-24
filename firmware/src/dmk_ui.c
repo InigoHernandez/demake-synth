@@ -358,10 +358,14 @@ static void head(void)
     const page_t *pg = &PAGE[ui.page];
     int x = text(PAD + 1, 6, pg->name, &FH, C_INK), i;
     if (pg->rows > 1) text(x + 7, 6, pg->row[ui.row[ui.page]], &FH, C_LABEL);
-    for (i = 0; i < DMK_SYNTHS; i++) {
-        int sx = DMK_W - PAD - 1 - (DMK_SYNTHS - i) * 13 + 4;
-        if (i == ui.synth) round_fill(sx, 14, 9, 9, 4, C_INK);
-        else round_line(sx, 14, 9, 9, 4, 1, C_LINE);
+    {                                                   /* the synths by their sounds' initials: S F G, the current in ink */
+        int rx = DMK_W - PAD - 1, y = 6 + FH.ascent - FM.ascent;
+        for (i = DMK_SYNTHS - 1; i >= 0; i--) {
+            char ini[2] = {DMK_SAMPLES[VS(i, PG_SOUND, 0, 0)].name[0], 0};
+            if (ini[0] >= 'a' && ini[0] <= 'z') ini[0] = (char)(ini[0] - 32);
+            text_r(rx, y, ini, &FM, i == ui.synth ? C_INK : C_LABEL);
+            rx -= text_w(ini, &FM) + 8;
+        }
     }
 }
 
