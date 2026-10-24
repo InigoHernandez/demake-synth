@@ -141,6 +141,48 @@ def main():
             lines.append("        {" + ",".join(str(c1 | c2 << 4) for c1, c2 in t[fg]) + "},")
         lines.append("    },")
     lines.append("};")
+    # ---- the sound's laws (docs/plan.md, 1 and 2): every one a table, the core integer only
+    SR = 44100
+    arr = lambda name, typ, vals: lines.append(f"static const {typ} {name}[{len(vals)}] = {{" + ",".join(map(str, vals)) + "};")
+    # the filter: a Chamberlin state-variable, its frequency coefficient 2 sin(pi fc / fs) Q15 for 256 cutoffs from
+    # 30 Hz to 5.6 kHz on an exponential law (stable while f^2 + 2fq < 4: at f 0.79 and q 2, 3.8; the samples end at
+    # 5.5 kHz, and the top index is the filter open); its damping from the resonance, Q14 (2: none, 0.05: ringing)
+    arr("T_SVF", "uint16_t", [round(32767 * 2 * math.sin(math.pi * 30 * (5600 / 30) ** (i / 255) / SR)) for i in range(256)])
+    arr("T_RESQ", "uint16_t", [round(16384 * (2 - 1.95 * (v / 127) ** 0.7)) for v in range(128)])
+    # pitch: 2^(k/12) for k = -48..48 and 2^(c/1200) for c = -50..50, Q16
+    arr("T_SEMI", "uint32_t", [round(65536 * 2 ** ((k - 48) / 12)) for k in range(97)])
+    arr("T_CENT", "uint32_t", [round(65536 * 2 ** ((c - 50) / 1200)) for c in range(101)])
+    # the envelope, per control block of 16 samples: the attack's step (Q24) for 2 ms .. 8 s; the decay's and the
+    # release's factor (Q16) for a fall of 60 dB in 30 ms .. 18 s
+    arr("T_ATK", "uint32_t", [round((1 << 24) * 16 / (0.002 * 4000 ** (v / 127) * SR)) for v in range(128)])
+    arr("T_EXP", "uint16_t", [min(65535, round(65536 * math.exp(-16 * 6.9078 / (0.03 * 600 ** (v / 127) * SR)))) for v in range(128)])
+    # mu-law, for the echo's line (8 bits a sample: its memory and its grain)
+    def mulaw_dec(b):
+        b = ~b & 0xFF
+        sign, exp, man = b & 0x80, (b >> 4) & 7, b & 15
+        v = ((man << 3) + 0x84) << exp
+        v -= 0x84
+        return -v if sign else v
+    arr("T_MULAW", "int16_t", [max(-32767, min(32767, mulaw_dec(b))) for b in range(256)])
+    # the master's limiter (straight to 3/4 of full scale, then a tanh knee) and the tape's saturation (tanh), both
+    # over -131072..131072 in 257 points
+    def lim(x):
+        k = 0.75 * 32767
+        a = abs(x)
+        y = a if a < k else k + (32767 - k) * math.tanh((a - k) / (32767 - k))
+        return round(math.copysign(min(y, 32767), x))
+    pts = [-131072 + i * 1024 for i in range(257)]
+    arr("T_LIM", "int16_t", [lim(x) for x in pts])
+    arr("T_SAT", "int16_t", [round(32767 * math.tanh(x / 32767)) for x in pts])
+    # one-pole low-pass coefficients 1 - exp(-2 pi fc / fs), Q15, fc 20 Hz .. 20 kHz, at the voices' rate and at the
+    # buses' half rate
+    arr("T_OP", "uint16_t", [round(32767 * (1 - math.exp(-2 * math.pi * min(20 * 1000 ** (v / 127), 19000) / SR))) for v in range(128)])
+    arr("T_OPH", "uint16_t", [round(32767 * (1 - math.exp(-2 * math.pi * min(20 * 1000 ** (v / 127), 10000) / (SR / 2)))) for v in range(128)])
+    # equal-power pan, Q15: the right's gain at v, the left's at 127 - v
+    arr("T_PAN", "uint16_t", [round(32767 * math.sin(v / 127 * math.pi / 2)) for v in range(128)])
+    # the echo's time, half-rate samples: 30 ms .. 1.45 s on an exponential law
+    arr("T_ETIME", "uint16_t", [round(SR / 2 * 0.03 * (1.45 / 0.03) ** (v / 127)) for v in range(128)])
+    lines.append("")
     bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
     lines.append("static const uint8_t T_BAYER[16] = {" + ",".join(map(str, bayer)) + "};")
     lines.append("/* the bits' six patterns: the ordered dither moved, mirrored and turned, the same share of each tone in every")

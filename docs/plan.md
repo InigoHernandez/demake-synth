@@ -253,6 +253,11 @@ first. Bank B goes in the data area (2.6), loaded from the website: ~116 KiB, so
 as cut; all 64 fit only cut tight, and then just. The owner picks which sounds make bank A, from WAVs of the cut and
 encoded samples (phase 1).
 
+**As encoded [M]:** all 64 in 541,920 B, SNR 31-57 dB; most at 11,025 Hz, four bright ones at 22,050 Hz.
+Sustained sounds are cut at 1.25 s with a loop over their last 0.35-0.6 s (an 80 ms equal-power crossfade baked
+in); sounds that die are one-shots, cut at -50 dB or 1.6 s. Bank A, the first 32 (keys, plucks and basses first,
+then pads), is 266,400 B. The names are provisional until the owner names them.
+
 **Licence of the sounds:** the owner's to choose (decision 3). The originals and the encoded bank sit in the repo
 under that licence, with `PROCESSING.md`.
 
@@ -819,6 +824,16 @@ first, as on MONO2K).
 - SAVE: one song in flash.
 - Tests: every gesture of 3.7 in the host self-test; the CPU on the FM-1; the owner writes a 4-bar melody without
   reading anything.
+
+*Built so far (2026-10-24): the sound, all three synths at once.* SAMPLE on all 64 recordings
+(`tools/gen_samples.py`; bank A is the first 32 in the package, `-DDMK_SAMPLES_N=32`, all 64 in the browser), its
+voices (12, a Q16 phase, linear interpolation, the loop's decoder state stored), FILTER (a two-stage state-variable
+filter, LP12 / LP24 / HP / BP), AMP (ADSR, 16-sample blocks), TAPE per synth on the MEDIA row (wow, flutter, head
+loss, saturation), the ROOM verb and a TAPE echo as shared buses, a DC blocker per synth and a soft limiter on the
+master. Measured [M]: SNR 31-57 dB against the cut originals; 1,375 host instructions a sample with 12 voices, TAPE
+on every synth, ROOM and ECHO, 83% of one core's yardstick (idle 426, 12 voices dry 1,159); the FM-1 package
+385 KB of 581 KB, pool 149 KB of 336 KB. `dmk_host --demo DIR` renders every sound dry and with its FX, `--cpu`
+the counts. Next: ROLL, PLAY and REC, SAVE.
 
 **Phase 2: chords.**
 - KEY and MODE, the 16 presets, slots, VOICING, INVERSION (AUTO), SPREAD, STRUM, RHYTHM, CHANGE, BASS; step your own;

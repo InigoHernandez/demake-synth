@@ -3,6 +3,7 @@
 #include "dmk.h"
 #include "dmk_tables.h"
 #include "dmk_font.h"
+#include "dmk_samples.h"
 
 int (*dmk_par_begin)(void (*job)(void));
 void (*dmk_par_end)(void);
@@ -16,7 +17,9 @@ static uint32_t samples;
 void dmk_init(uint32_t seed)
 {
     int i;
-    for (i = 0; i < DMK_VOICES; i++) { vc[i].on = 0; vc[i].env = 0; vc[i].ph = seed * 2654435761u + (uint32_t)i; }
+    (void)seed;
+    for (i = 0; i < DMK_VOICES; i++) { vc[i].on = 0; vc[i].env = 0; vc[i].stage = 0; }
+    dsp_reset();
     samples = 0;
     theme = 0;
     ui_init();

@@ -28,13 +28,16 @@ song, a chain of colour, media, motion and space effects per synth. The plan, an
 
 ## Build, test
 
-- Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_font.py [--sheet build/fonts.png]`,
+- Generators: `.venv/bin/python tools/gen_tables.py`, `tools/gen_samples.py [--wav build/samples]` (the owner's 64
+  WAVs from `DMK_SAMPLES` into `firmware/gen/dmk_samples.h` and `assets/samples/PROCESSING.md`; `DMK_SAMPLES_N`
+  picks how many are built in: 32, bank A, on the FM-1, all 64 elsewhere), `tools/gen_font.py [--sheet build/fonts.png]`,
   `tools/gen_art.py` (the site's art, wordmark, D, icon, plate, band, seal and the screens' frames; Kiloy from
   `DMK_KILOY`).
 - Host: `cc -std=c99 -D_DARWIN_C_SOURCE -O2 -Wall -Wextra -Wno-unused-function -Ifirmware/src -Ifirmware/gen -o
   build/host/dmk_host host/dmk_host.c`, then `build/host/dmk_host build/host/tour` (every screen as a PNG, the text
   audit over each) and `.venv/bin/python tools/montage.py build/host/tour build/screens.png 4`.
-  `build/host/dmk_host --selftest`, `--wav FILE`. With `-DDMK_BENCH` and the FM-1's flags (`-fno-builtin
+  `build/host/dmk_host --selftest`, `--wav FILE`, `--demo DIR [N...]` (each sound dry and with its FX, 11 s of
+  Am(add9) and a line), `--cpu` (host instructions a sample, built with the FM-1's flags below). With `-DDMK_BENCH` and the FM-1's flags (`-fno-builtin
   -fno-vectorize -fno-slp-vectorize`): `--bench`, the bench's instructions a sample (27 + 6.0 a level).
 - Web: `sh web/build.sh`, then the `demake-web` preview (port 8761, in `../.claude/launch.json`). After a layout
   change, measure every card, pill and image against the 48 px lines in the browser at 24, 16 and 7 modules.

@@ -39,7 +39,7 @@ static const page_t PAGE[PG_COUNT] = {
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
     {"Roll", 1, {"Roll"}, {"Zoom"}, {{"Cursor", "View", "Length", "Fine"}}},
     {"Sound", 2, {"Engine", "Layer"}, {"Engine", "Sample"},
-     {{"Source", "Shape", "Move", "Grit"}, {"Blend", "Tune", "Loop", "Tone"}}},
+     {{"Sample", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drift"}}},
     {"Amp", 1, {"Amp"}, {"Level"}, {{"Attack", "Decay", "Sustain", "Release"}}},
     {"FX", 4, {"Colour", "Media", "Motion", "Space"}, {"Effect", "Effect", "Effect", ""},
@@ -61,7 +61,6 @@ static const char *const BTN_NAME[B_COUNT] = {"FX", "SEL", "ENV", "LFO", "EDIT",
                                               "PLAY", "REC", "OCT−", "OCT+"};
 static const char *const LAYER_NAME[B_COUNT] = {"the four amounts", "help", "help", "help", "the sound", "the history",
                                                 "", "songs", "the progression", "the sequence", "", "", "", ""};
-static const char *const SYNTH_SOUND[DMK_SYNTHS] = {"Snow pad", "Felt piano", "Glass pluck"};
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
@@ -69,20 +68,26 @@ static const char *const ENGINES[] = {"Sample", "Pad", "Drone", "Pluck"};
 static const char *const FILTERS[] = {"LP24", "LP12", "BP", "HP", "Off"};
 static const char *const ZOOMS[] = {"16", "32", "64"};
 static const char *const OFF[] = {"Off"};
+static const char *const LOOPS[] = {"Off", "Full"};
+static const char *const MEDIA[] = {"Off", "Tape"};
+static const char *const VERBS[] = {"Room"};
+static const char *const ECHOS[] = {"Tape"};
 static const choice_t CHOICE[] = {
-    {PG_SOUND, 0, 4, 4, ENGINES}, {PG_FILTER, 0, 4, 5, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
-    {PG_FX, 0, 4, 1, OFF}, {PG_FX, 1, 4, 1, OFF}, {PG_FX, 2, 4, 1, OFF}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
+    {PG_SOUND, 0, 4, 1, ENGINES}, {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 5, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
+    {PG_FX, 0, 4, 1, OFF}, {PG_FX, 1, 4, 2, MEDIA}, {PG_FX, 2, 4, 1, OFF}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
+    {PG_GLOBAL, 0, 4, 1, VERBS}, {PG_GLOBAL, 1, 4, 1, ECHOS},
 };
 
 static struct {
     uint8_t page, row[PG_COUNT], synth, boot_done;
     int8_t octave;
-    uint8_t val[PG_COUNT][4][5];                        /* [page][row][K1..K4, ALGORITHM] 0..127 */
+    uint8_t val[DMK_SYNTHS][PG_COUNT][4][5];            /* [synth][page][row][K1..K4, ALGORITHM] 0..127 (the global
+                                                           pages keep theirs in synth 0's) */
     uint32_t now, btn_down_at[B_COUNT], note_ms, touch_ms;
     int8_t touch_k;                                     /* the field turned last (lit for a second) */
     uint16_t btn_held, btn_used;                        /* bit per button */
     char note[32];                                      /* a notice, shown for 1.5 s from note_ms */
-    uint8_t keys_down[DMK_KEYS];
+    uint8_t keys_down[DMK_KEYS], key_sy[DMK_KEYS], key_note[DMK_KEYS];
 } ui;
 
 static uint8_t leds[DMK_KEYS + B_COUNT];
@@ -95,19 +100,114 @@ static void notice(const char *s)
     ui.note_ms = ui.now ? ui.now : 1;
 }
 
+/* a control's value: a synth's own on its pages, the song's on Home's last column and Global; Home's rows are views of
+ * each synth's level (AMP), sends and pan (FX, SPACE) */
+static int per_synth(int page) { return page == PG_SOUND || page == PG_FILTER || page == PG_AMP || page == PG_FX || page == PG_LFO; }
+static uint8_t *vp(int page, int row, int k)
+{
+    if (page == PG_HOME && k < 3) {
+        static const uint8_t PG[4] = {PG_AMP, PG_FX, PG_FX, PG_FX}, RW[4] = {0, 3, 3, 3}, KK[4] = {4, 0, 1, 2};
+        return &ui.val[k][PG[row]][RW[row]][KK[row]];
+    }
+    if (page == PG_HOME && k == 3) {                    /* the song's: verb return, verb size, echo regen, width */
+        static const uint8_t RW[4] = {0, 0, 1, 3}, KK[4] = {0, 2, 3, 0};
+        return row == 3 ? &ui.val[0][PG_HOME][3][3] : &ui.val[0][PG_GLOBAL][RW[row]][KK[row]];
+    }
+    return &ui.val[per_synth(page) ? ui.synth : 0][page][row][k];
+}
+#define VS(sy, page, row, k) (ui.val[sy][page][row][k])
+
+/* the controls to the sound's units (dmk_dsp.c): called on every change */
+static void sp_sync(void)
+{
+    int s;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        synth_t *p = &syn[s];
+        const dmk_sample_t *sm;
+        int v;
+        p->smp = (uint8_t)(VS(s, PG_SOUND, 0, 0) < DMK_SAMPLES_N ? VS(s, PG_SOUND, 0, 0) : 0);
+        sm = &DMK_SAMPLES[p->smp];
+        p->start = (uint16_t)(VS(s, PG_SOUND, 0, 1) * ((sm->loops ? sm->loop0 : sm->blocks) / 2) / 127);
+        p->loops = (uint8_t)(VS(s, PG_SOUND, 0, 2) >= 64);
+        p->tune = (int16_t)((VS(s, PG_SOUND, 0, 3) - 64) * 24 / 64);
+        p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 5 / 128);
+        p->cut = (int16_t)(VS(s, PG_FILTER, 0, 0) >= 127 ? 255 : VS(s, PG_FILTER, 0, 0) * 2);
+        p->resq = T_RESQ[VS(s, PG_FILTER, 0, 1)];
+        p->fenv = (int16_t)((VS(s, PG_FILTER, 0, 2) - 64) * 4);
+        p->atk = T_ATK[VS(s, PG_AMP, 0, 0)];
+        p->dec = T_EXP[VS(s, PG_AMP, 0, 1)];
+        p->sus = (int32_t)((uint32_t)VS(s, PG_AMP, 0, 2) * (FULL / 127));
+        p->rel = T_EXP[VS(s, PG_AMP, 0, 3)];
+        v = VS(s, PG_AMP, 0, 4);
+        p->level = v * v * 2;                           /* Q15 on a square law: 64 is -12 dB */
+        p->tape = (uint8_t)(VS(s, PG_FX, 1, 4) >= 64);
+        p->tdepth = VS(s, PG_FX, 1, 0) * 800;           /* the wow: up to ~40 cents at its slowest */
+        p->tdrive = 256 + VS(s, PG_FX, 1, 0) * 3;
+        p->thl = T_OP[64 + VS(s, PG_FX, 1, 1) / 2];     /* head loss: 600 Hz .. open */
+        p->twow = 19480u + (uint32_t)VS(s, PG_FX, 1, 2) * 1500u;   /* 0.2 .. 2.2 Hz */
+        p->tflut = 620000u + (uint32_t)VS(s, PG_FX, 1, 3) * 2000u; /* 6.3 .. 7.7 Hz */
+        p->vsend = VS(s, PG_FX, 3, 0) * 258;
+        p->esend = VS(s, PG_FX, 3, 1) * 258;
+        v = VS(s, PG_FX, 3, 2);
+        p->gl = T_PAN[127 - v]; p->gr = T_PAN[v];
+    }
+    gp.vret = VS(0, PG_GLOBAL, 0, 0) * 258;
+    gp.vdamp = T_OPH[VS(0, PG_GLOBAL, 0, 1)];
+    gp.vfb = 22938 + VS(0, PG_GLOBAL, 0, 2) * 72;
+    gp.eret = VS(0, PG_GLOBAL, 1, 0) * 258;
+    gp.elp = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
+    gp.etime = T_ETIME[VS(0, PG_GLOBAL, 1, 2)];
+    gp.efb = VS(0, PG_GLOBAL, 1, 3) * 240;
+    cur_synth = ui.synth;
+}
+
+static int smp_named(const char *n)
+{
+    int i, j;
+    for (i = 0; i < DMK_SAMPLES_N; i++) {
+        for (j = 0; n[j] && DMK_SAMPLES[i].name[j] == n[j]; j++) {}
+        if (!n[j] && !DMK_SAMPLES[i].name[j]) return i;
+    }
+    return 0;
+}
+
 static void ui_init(void)
 {
-    int p, r, k;
-    for (p = 0; p < PG_COUNT; p++)
-        for (r = 0; r < 4; r++)
-            for (k = 0; k < 5; k++) ui.val[p][r][k] = 64;
-    ui.val[PG_HOME][0][4] = 72;                         /* tempo 72 */
-    ui.val[PG_SOUND][0][4] = 0;                         /* sample */
-    ui.val[PG_FILTER][0][4] = 0;                        /* lp24 */
-    ui.val[PG_ROLL][0][4] = 0;                          /* 16 */
-    ui.val[PG_ROLL][0][0] = 24;
+    /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
+     * env, level, tape, wow, verb, echo, pan] */
+    static const char *const FIRST[DMK_SYNTHS] = {"Snow pad", "Felt piano", "Glass pluck"};
+    static const uint8_t SET[DMK_SYNTHS][13] = {
+        {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
+        {0, 80, 56, 72, 96, 12, 76, 96, 1, 24, 60, 52, 72},
+        {0, 60, 0, 64, 112, 24, 80, 92, 0, 0, 72, 76, 40}};
+    int s, p, r, k;
+    for (s = 0; s < DMK_SYNTHS; s++)
+        for (p = 0; p < PG_COUNT; p++)
+            for (r = 0; r < 4; r++)
+                for (k = 0; k < 5; k++) ui.val[s][p][r][k] = 64;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        const uint8_t *t = SET[s];
+        ui.val[s][PG_SOUND][0][0] = (uint8_t)smp_named(FIRST[s]);
+        ui.val[s][PG_SOUND][0][1] = 0;
+        ui.val[s][PG_SOUND][0][2] = 127;                /* the loop on */
+        ui.val[s][PG_SOUND][0][4] = 0;
+        ui.val[s][PG_AMP][0][0] = t[0]; ui.val[s][PG_AMP][0][1] = t[1]; ui.val[s][PG_AMP][0][2] = t[2];
+        ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
+        ui.val[s][PG_FILTER][0][0] = t[4]; ui.val[s][PG_FILTER][0][1] = t[5]; ui.val[s][PG_FILTER][0][2] = t[6];
+        ui.val[s][PG_FILTER][0][4] = 0;                 /* LP24 */
+        ui.val[s][PG_FX][1][4] = t[8] ? 96 : 0;         /* tape */
+        ui.val[s][PG_FX][1][0] = t[9]; ui.val[s][PG_FX][1][1] = 90;
+        ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
+    }
+    ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
+    ui.val[0][PG_ROLL][0][4] = 0;                       /* 16 */
+    ui.val[0][PG_ROLL][0][0] = 24;
+    ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the room */
+    ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
+    ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
     ui.page = PG_HOME;
     ui.touch_k = -1;
+    sp_sync();
 }
 
 static const choice_t *choice_of(int page, int row, int k)
@@ -123,14 +223,30 @@ static int choice_index(const choice_t *c, int v) { int i = v * c->n / 128; retu
 static void val_text(char *o, int page, int row, int k)
 {
     const choice_t *c = choice_of(page, row, k);
-    int v = ui.val[page][row][k];
+    int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 0) { str_cat(o, THEME_NAME[theme]); return; }
+    if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
+        if (v < 9) *o++ = '0';
+        fmt_int(o, v + 1);
+        return;
+    }
+    if (page == PG_SOUND && row == 0 && k == 3) {       /* the tune, in semitones */
+        int t = (v - 64) * 24 / 64;
+        if (t > 0) *o++ = '+';
+        fmt_int(o, t);
+        return;
+    }
     if (c) { str_cat(o, c->name[choice_index(c, v)]); return; }
     fmt_int(o, v);
 }
 
 static int lit(int k) { return ui.touch_k == k && ui.now - ui.touch_ms < 1000u; }
-static int row_off(int page, int row) { return page == PG_FX && row < 3; }   /* (phase 0: every effect is off) */
+/* a row with nothing behind it yet: COLOR and MOTION (phase 4), MEDIA while its effect is off, the LAYER, the song */
+static int row_off(int page, int row)
+{
+    if (page == PG_FX) return row == 0 || row == 2 || (row == 1 && *vp(PG_FX, 1, 4) < 64);
+    return (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
+}
 
 /* ---- the parts */
 
@@ -191,7 +307,8 @@ static void field(int i, const char *label, int page, int row)
     }
     val_text(v, page, row, i);
     text_mfit(x, Y_FIELDS + 16, w, v, on ? HOLO : C_INK);
-    meter(x, Y_FIELDS + 44, w, ui.val[page][row][i], choice_of(page, row, i), on, 0);
+    meter(x, Y_FIELDS + 44, w, page == PG_SOUND && row == 0 && i == 0 ? *vp(page, row, i) * 127 / (DMK_SAMPLES_N - 1)
+          : *vp(page, row, i), choice_of(page, row, i), on, 0);
 }
 
 /* the title, its row as the grey half (one size, one line), and the synths at the right: the current one filled */
@@ -234,12 +351,12 @@ static void foot(void)
 
 static void stage_home(void)                            /* the synths: a card each, its initial lit while it sounds */
 {
-    static const uint8_t ENGINE[DMK_SYNTHS] = {0, 1, 3};
     int i;
     for (i = 0; i < DMK_SYNTHS; i++) {
-        int x = cell_x(SX, SW, DMK_SYNTHS, i), w = cell_w(SX, SW, DMK_SYNTHS, i), sounding = i != 2, cx = x + w / 2;
+        int x = cell_x(SX, SW, DMK_SYNTHS, i), w = cell_w(SX, SW, DMK_SYNTHS, i), cx = x + w / 2;
+        int sounding = syn_peak[i] > 200 || i == ui.synth;   /* the one played lit, and any that sound */
         char a[16], *b;
-        str_cat(a, SYNTH_SOUND[i]);
+        str_cat(a, DMK_SAMPLES[VS(i, PG_SOUND, 0, 0)].name);
         for (b = a; *b && *b != ' '; b++) {}
         if (*b) *b++ = 0;                               /* "Snow pad": what, which */
         if (i == ui.synth) card(x, SY, w, SH, C_INK, 2);
@@ -249,7 +366,7 @@ static void stage_home(void)                            /* the synths: a card ea
             char ini[2] = {(char)(a[0] | 0x20), 0};
             text_c(cx, SY + 64 - FK.ascent + FK.cap / 2, ini, &FK, sounding ? HOLO : C_LINE);
         }
-        text_fit(x + PAD + 1, SY + SH - 20, w - 2 * PAD, sounding ? ENGINES[ENGINE[i]] : "Muted", &FS, C_LABEL);
+        text_fit(x + PAD + 1, SY + SH - 20, w - 2 * PAD, ENGINES[0], &FS, C_LABEL);
     }
 }
 
@@ -281,7 +398,7 @@ static void stage_roll(void)
     for (i = 0; i < 7; i++) text(SX + PAD + 1, gy + i * rh + 2, ROW[i], &FS, ROW[i][0] == 'A' ? C_INK : C_LABEL);
     for (i = 0; i < 4; i++)
         round_fill(gx + NOTE[i].step * cw + 2, gy + NOTE[i].row * rh + 3, NOTE[i].len * cw - 3, rh - 6, (rh - 6) / 2, C_INK);
-    cur = gx + cw * (ui.val[PG_ROLL][0][0] * 16 / 128);
+    cur = gx + cw * (*vp(PG_ROLL, 0, 0) * 16 / 128);
     round_fill(cur - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);
 }
 
@@ -307,24 +424,30 @@ static void ink_line(int x0, int w, const int16_t *ys)
 static void stage_sound(void)
 {
     int16_t ya[DMK_W], yb[DMK_W];
-    int i, mid = SY + 74, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2;
+    const dmk_sample_t *sm = &DMK_SAMPLES[*vp(PG_SOUND, 0, 0) < DMK_SAMPLES_N ? *vp(PG_SOUND, 0, 0) : 0];
+    int i, mid = SY + 78, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, n = sm->blocks;
     card(SX, SY, SW, SH, C_LINE, 1);
     if (ui.row[PG_SOUND]) card_title(SX, SY, SW, "No layer", "Layer", 0);
     else {                                              /* the sound's name, and its mark in the corner, lit */
-        char ini[2] = {(char)(SYNTH_SOUND[ui.synth][0] | 0x20), 0};
-        card_title(SX, SY, SW, SYNTH_SOUND[ui.synth], "Sample", 0);
+        char ini[2] = {(char)(sm->name[0] | 0x20), 0};
+        card_title(SX, SY, SW, sm->name, sm->loops ? "Sample, looped" : "Sample, one-shot", 0);
         text_r(SX + SW - PAD - 2, SY + 8, ini, &FK, HOLO);
     }
-    for (i = 0; i < w; i++) {                           /* the sample's envelope: its body lit, its edge in ink */
-        int h = i < 8 ? i * 4 : 32 - i / 7;
+    for (i = 0; i < w; i++) {                           /* the sample's own shape: its body lit, its edge in ink */
+        int h = sm->env[i * 48 / w] * 26 / 255;
         if (h < 1) h = 1;
         ya[i] = (int16_t)(mid - h); yb[i] = (int16_t)(mid + h + 1);
     }
     lit_band(x0, w, ya, yb);
     for (i = 0; i < w; i++) { px_put(x0 + i, ya[i], C_INK); px_put(x0 + i, yb[i] - 1, C_INK); }
-    for (i = 3; i <= 4; i++) {                          /* the loop's ends, as tall as the sample is there */
-        int lx = w * i / 5, lh = mid - ya[lx] + 8;
-        round_fill(x0 + lx - 2, mid - lh, 4, 2 * lh, 2, C_INK);
+    if (sm->loops && *vp(PG_SOUND, 0, 2) >= 64)         /* the loop's ends, as tall as the sample is there */
+        for (i = 0; i < 2; i++) {
+            int lx = (i ? sm->loop1 : sm->loop0) * (w - 1) / n, lh = mid - ya[lx] + 6;
+            round_fill(x0 + lx - 2, mid - lh, 4, 2 * lh, 2, C_INK);
+        }
+    if (syn[ui.synth].start) {                          /* where it starts */
+        int sx = syn[ui.synth].start * (w - 1) / n;
+        vline(x0 + sx, mid - 30, 61, C_INK);
     }
 }
 
@@ -335,7 +458,7 @@ static void stage_curve(int amp)
     card(SX, SY, SW, SH, C_LINE, 1);
     for (i = 0; i < w; i++) yb[i] = (int16_t)(base + 1);
     if (!amp) {                                         /* the response: its body lit under the curve */
-        int fc = x0 + ui.val[PG_FILTER][0][0] * w / 127, q = ui.val[PG_FILTER][0][1] / 4, ly = top + 40;
+        int fc = x0 + *vp(PG_FILTER, 0, 0) * w / 127, q = *vp(PG_FILTER, 0, 1) / 4, ly = top + 40;
         for (i = 0; i < w; i++) {
             int x = x0 + i, y;
             if (x < fc - 12) y = ly;
@@ -349,8 +472,8 @@ static void stage_curve(int amp)
         ink_line(x0, w, ys);
         round_fill(fc - 4, base - 4, 9, 9, 4, lit(0) ? HOLO : C_INK);
     } else {                                            /* the envelope: its body lit under the line */
-        int a = ui.val[PG_AMP][0][0] / 3 + 4, d = ui.val[PG_AMP][0][1] / 3 + 4, s = ui.val[PG_AMP][0][2];
-        int r = ui.val[PG_AMP][0][3] / 3 + 4, hold = w - a - d - r, sy = base - (s * (base - top)) / 127;
+        int a = *vp(PG_AMP, 0, 0) / 3 + 4, d = *vp(PG_AMP, 0, 1) / 3 + 4, s = *vp(PG_AMP, 0, 2);
+        int r = *vp(PG_AMP, 0, 3) / 3 + 4, hold = w - a - d - r, sy = base - (s * (base - top)) / 127;
         int pts[5][2] = {{x0, base}, {x0 + a, top}, {x0 + a + d, sy}, {x0 + a + d + hold, sy}, {x0 + w - 1, base}};
         for (i = 0; i < 4; i++) {
             int k, n = pts[i + 1][0] - pts[i][0];
@@ -364,7 +487,7 @@ static void stage_curve(int amp)
 }
 
 /* four rows, a pill each: its name, its switch (off), the open one framed in ink */
-static void stage_rows(const char *const *names, int n, int open)
+static void stage_rows(int page, const char *const *names, int n, int open)
 {
     int i, h = (SH - (n - 1) * G) / n;
     for (i = 0; i < n; i++) {
@@ -372,8 +495,14 @@ static void stage_rows(const char *const *names, int n, int open)
         if (i == open) round_line(SX, y, SW, h, h / 2, 2, C_INK);
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
         text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, C_INK);
-        round_line(tx, y + h / 2 - 6, 22, 12, 6, 1, C_LABEL);   /* the switch: off */
-        round_fill(tx + 3, y + h / 2 - 3, 6, 6, 3, C_LABEL);
+        if (page != PG_FX && i >= 2) continue;              /* the song and the setup are not effects: no switch */
+        if (row_off(page, i)) {                             /* the switch: off */
+            round_line(tx, y + h / 2 - 6, 22, 12, 6, 1, C_LABEL);
+            round_fill(tx + 3, y + h / 2 - 3, 6, 6, 3, C_LABEL);
+        } else {                                            /* on: lit, the knob to the right */
+            round_fill(tx, y + h / 2 - 6, 22, 12, 6, HOLO);
+            round_fill(tx + 13, y + h / 2 - 3, 6, 6, 3, C_PAPER);
+        }
     }
 }
 
@@ -468,9 +597,9 @@ static const uint8_t *ui_frame(uint32_t ms)
     case PG_SOUND: stage_sound(); break;
     case PG_FILTER: stage_curve(0); break;
     case PG_AMP: stage_curve(1); break;
-    case PG_FX: stage_rows(PAGE[PG_FX].row, 4, ui.row[PG_FX]); break;
+    case PG_FX: stage_rows(PG_FX, PAGE[PG_FX].row, 4, ui.row[PG_FX]); break;
     case PG_CHORD: stage_chord(); break;
-    case PG_GLOBAL: stage_rows(PAGE[PG_GLOBAL].row, 4, ui.row[PG_GLOBAL]); break;
+    case PG_GLOBAL: stage_rows(PG_GLOBAL, PAGE[PG_GLOBAL].row, 4, ui.row[PG_GLOBAL]); break;
     case PG_LFO: stage_curve(1); break;
     default: stage_songs(); break;
     }
@@ -523,8 +652,15 @@ static void ui_encoder(int e, int d)
         int b;
         for (b = 0; b < B_COUNT; b++) if (ui.btn_held >> b & 1u) ui.btn_used |= (uint16_t)(1u << b);
     }
-    if (e == E_SELECT) { int s = ui.synth + (d > 0 ? 1 : -1); ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s); return; }
-    if (e == E_PRESET) { notice("Sounds come in phase 1"); return; }
+    if (e == E_SELECT) { int s = ui.synth + (d > 0 ? 1 : -1); ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s); sp_sync(); return; }
+    if (e == E_PRESET) {                                /* the synth's sound: the next recording */
+        uint8_t *sv = &ui.val[ui.synth][PG_SOUND][0][0];
+        int n = *sv + (d > 0 ? 1 : -1);
+        *sv = (uint8_t)(n < 0 ? DMK_SAMPLES_N - 1 : n >= DMK_SAMPLES_N ? 0 : n);
+        notice(DMK_SAMPLES[*sv].name);
+        sp_sync();
+        return;
+    }
     k = e == E_ALGO ? 4 : e >= E_K1 && e <= E_K4 ? e - E_K1 : -1;
     if (k < 0) return;
 #ifdef DMK_BENCH
@@ -537,13 +673,20 @@ static void ui_encoder(int e, int d)
         theme = (uint8_t)(t < 0 ? DMK_THEMES - 1 : t >= DMK_THEMES ? 0 : t);
         return;
     }
-    v = &ui.val[ui.page][r][k];
+    v = vp(ui.page, r, k);
+    if (ui.page == PG_SOUND && r == 0 && k == 0) {      /* the sample: a step a detent */
+        int n = *v + (d > 0 ? 1 : -1);
+        *v = (uint8_t)(n < 0 ? 0 : n >= DMK_SAMPLES_N ? DMK_SAMPLES_N - 1 : n);
+        sp_sync();
+        return;
+    }
     {
         const choice_t *c = choice_of(ui.page, r, k);
         int n = c && c->n > 1 ? (choice_index(c, *v) + (d > 0 ? 1 : -1)) * 128 / c->n + 128 / c->n / 2 : *v + d;
         if (c && c->n > 1 && (n < 0 || n > 127)) return;   /* a choice stops at its ends */
         *v = (uint8_t)(n < 0 ? 0 : n > 127 ? 127 : n);
     }
+    sp_sync();
 }
 
 static void ui_key(int k, int down)
@@ -553,7 +696,8 @@ static void ui_key(int k, int down)
     ui.boot_done = 1;
     n = 53 + k + ui.octave * 12;                        /* F3 = 53, chromatic */
     ui.keys_down[k] = (uint8_t)down;
-    if (down) note_on(n); else note_off(n);
+    if (down) { ui.key_sy[k] = ui.synth; ui.key_note[k] = (uint8_t)n; note_on_s(ui.synth, n); }
+    else note_off_s(ui.key_sy[k], ui.key_note[k]);      /* the synth and the note it started */
 }
 
 static const uint8_t *ui_leds(void)

@@ -4,7 +4,9 @@
  *   build/host/dmk_host DIR            the tour: every screen as DIR/NN_name.png, the text audit over each
  *   build/host/dmk_host --selftest     behaviour checks; exit 1 on a failure
  *   build/host/dmk_host --wav FILE     a chord held and let go, 3 s
- *   build/host/dmk_host --bench        instructions per sample of the bench build's levels (build with -DDMK_BENCH) */
+ *   build/host/dmk_host --bench        instructions per sample of the bench build's levels (build with -DDMK_BENCH)
+ *   build/host/dmk_host --demo DIR [N...]  a phrase on each sound (or the ones named), dry and through the effects
+ *   build/host/dmk_host --cpu          the engine's instructions a sample: idle, 12 voices dry, 12 with the effects */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -155,9 +157,11 @@ static void selftest(void)
     e = 0; for (int i = 0; i < 1024; i++) e += b[i] < 0 ? -b[i] : b[i];
     if (e < 1000 * 512) { fails++; printf("selftest: a held key is too quiet (%lld)\n", (long long)e); }
     dmk_key(0, 0);
-    for (int k = 0; k < 400; k++) dmk_render(b, 512);
+    for (int k = 0; k < 600; k++) dmk_render(b, 512);  /* 7 s: the release over, every voice silent */
+    for (int v = 0; v < DMK_VOICES; v++) if (vc[v].stage) { fails++; printf("selftest: a released voice still plays\n"); break; }
+    for (int k = 0; k < 1400; k++) dmk_render(b, 512); /* 23 s in all: the room's and the echo's tails gone too */
     e = 0; for (int i = 0; i < 1024; i++) e += b[i] < 0 ? -b[i] : b[i];
-    if (e) { fails++; printf("selftest: a released key still sounds (%lld)\n", (long long)e); }
+    if (e > 1024 * 2) { fails++; printf("selftest: a released key still sounds (%lld)\n", (long long)e); }
     for (int k = 0; k < DMK_KEYS; k++) dmk_key(k, 1);       /* every key at once: 12 voices, no clip past full scale */
     for (int k = 0; k < 20; k++) dmk_render(b, 512);
     for (int k = 0; k < DMK_KEYS; k++) dmk_key(k, 0);
@@ -186,6 +190,56 @@ static void wav(const char *path)
     v = (uint32_t)n * 4; memcpy(h + 40, &v, 4);
     fwrite(h, 1, 44, f); fwrite(b, 4, (size_t)n, f); fclose(f); free(b);
     printf("wav: %s\n", path);
+}
+
+static void wav_write(const char *path, const int16_t *b, int n)
+{
+    FILE *f = fopen(path, "wb");
+    uint8_t h[45] = "RIFF....WAVEfmt \x10\0\0\0\x01\0\x02\0....\0\0\0\0\x04\0\x10\0data....";
+    uint32_t v = 36 + (uint32_t)n * 4;
+    if (!f) { perror(path); exit(2); }
+    memcpy(h + 4, &v, 4);
+    v = DMK_SR; memcpy(h + 24, &v, 4); v = DMK_SR * 4; memcpy(h + 28, &v, 4);
+    v = (uint32_t)n * 4; memcpy(h + 40, &v, 4);
+    fwrite(h, 1, 44, f); fwrite(b, 4, (size_t)n, f); fclose(f);
+}
+
+/* a phrase on one sound, for the owner to hear: Am(add9) held, then a line over it, then the tail. dry: no tape,
+ * no sends; else the first synth's defaults (tape, room, echo) */
+static void demo_one(const char *dir, int idx, int dry)
+{
+    static const struct { float t, len; uint8_t n; } PH[] = {
+        {0.0f, 3.2f, 57}, {0.0f, 3.2f, 60}, {0.0f, 3.2f, 64}, {0.0f, 3.2f, 71},
+        {3.4f, 0.5f, 64}, {3.9f, 0.5f, 67}, {4.4f, 0.5f, 69}, {4.9f, 0.9f, 72}, {5.8f, 0.5f, 71}, {6.3f, 0.5f, 69},
+        {6.8f, 1.6f, 64}, {6.8f, 1.6f, 57}};
+    int n = DMK_SR * 11, i, k, np = (int)(sizeof PH / sizeof PH[0]);
+    int16_t *b = malloc((size_t)n * 4);
+    char path[512], name[16];
+    dmk_init(1);
+    ui.val[0][PG_SOUND][0][0] = (uint8_t)idx;
+    if (dry) { ui.val[0][PG_FX][1][4] = 0; ui.val[0][PG_FX][3][0] = 0; ui.val[0][PG_FX][3][1] = 0; }
+    sp_sync();
+    for (i = 0; i < n; i += DMK_SUB) {
+        for (k = 0; k < np; k++) {
+            int on = (int)(PH[k].t * DMK_SR), off = (int)((PH[k].t + PH[k].len) * DMK_SR);
+            if (on >= i && on < i + DMK_SUB) note_on_s(0, PH[k].n);
+            if (off >= i && off < i + DMK_SUB) note_off_s(0, PH[k].n);
+        }
+        dmk_render(b + i * 2, DMK_SUB);
+    }
+    for (i = 0; i < 15 && DMK_SAMPLES[idx].name[i]; i++) name[i] = DMK_SAMPLES[idx].name[i] == ' ' ? '_' : DMK_SAMPLES[idx].name[i];
+    name[i] = 0;
+    snprintf(path, sizeof path, "%s/%02d_%s_%s.wav", dir, idx, name, dry ? "dry" : "fx");
+    wav_write(path, b, n);
+    free(b);
+}
+
+static void demo(const char *dir, int argc, char **argv)
+{
+    int i;
+    if (argc == 0) for (i = 0; i < DMK_SAMPLES_N; i++) { demo_one(dir, i, 1); demo_one(dir, i, 0); }
+    else for (i = 0; i < argc; i++) { demo_one(dir, atoi(argv[i]), 1); demo_one(dir, atoi(argv[i]), 0); }
+    printf("demo: %s\n", dir);
 }
 
 #ifdef __APPLE__
@@ -217,11 +271,51 @@ static void bench(void)
 #endif
 }
 
+#ifdef __APPLE__
+/* the engine's cost, counted as the FM-1's budget is (docs/plan.md, 1.1): build with -fno-builtin -fno-vectorize
+ * -fno-slp-vectorize; 12 voices held across the three synths */
+static double cpu_case(int fx)
+{
+    static int16_t b[128 * 2];
+    int frames = DMK_SR * 10, i, s;
+    uint64_t a, z;
+    dmk_init(7);
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        if (!fx) { ui.val[s][PG_FX][1][4] = 0; ui.val[s][PG_FX][3][0] = 0; ui.val[s][PG_FX][3][1] = 0; }
+        else ui.val[s][PG_FX][1][4] = 127;
+    }
+    sp_sync();
+    for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
+    for (i = 0; i < 100; i++) dmk_render(b, 128);
+    a = instructions();
+    for (i = 0; i < frames; i += 128) dmk_render(b, 128);
+    z = instructions();
+    return (double)(z - a) / frames;
+}
+static void cpu(void)
+{
+    static int16_t b[128 * 2];
+    int frames = DMK_SR * 10, i;
+    uint64_t a, z;
+    dmk_init(7);
+    for (i = 0; i < 100; i++) dmk_render(b, 128);
+    a = instructions();
+    for (i = 0; i < frames; i += 128) dmk_render(b, 128);
+    z = instructions();
+    printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with tape x3, room and echo %.0f instructions a sample\n",
+           (double)(z - a) / frames, cpu_case(0), cpu_case(1));
+}
+#endif
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && !strcmp(argv[1], "--selftest")) { selftest(); return fails ? 1 : 0; }
     if (argc > 2 && !strcmp(argv[1], "--wav")) { wav(argv[2]); return 0; }
     if (argc > 1 && !strcmp(argv[1], "--bench")) { bench(); return 0; }
+    if (argc > 2 && !strcmp(argv[1], "--demo")) { demo(argv[2], argc - 3, argv + 3); return 0; }
+#ifdef __APPLE__
+    if (argc > 1 && !strcmp(argv[1], "--cpu")) { cpu(); return 0; }
+#endif
     tour(argc > 1 ? argv[1] : "build/host");
     return fails ? 1 : 0;
 }
