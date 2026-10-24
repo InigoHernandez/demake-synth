@@ -117,7 +117,8 @@ static void tour(const char *dir)
     dmk_init(1);
     now_ms = 0;
     ui.hinted = 0xFFFFu;                                /* the first-time hints stay off the pictures */
-    wait_ms(1400); shot(dir, "boot");                   /* the boot held, lit */
+    wait_ms(700); shot(dir, "boot_land");              /* the boot: a landscape, full screen */
+    wait_ms(1900); shot(dir, "boot");                   /* the word held, lit */
     wait_ms(1000); shot(dir, "home");
     static const struct { int b; const char *n; } P[] = {{B_SEQ, "roll"}, {B_EDIT, "sound"}, {B_SEL, "filter"},
         {B_ENV, "amp"}, {B_FX, "fx"}, {B_ARP, "chord"}, {B_GLO, "global"}, {B_LFO, "lfo"}};
@@ -143,8 +144,11 @@ static void tour(const char *dir)
     }
     theme = 0;
     tap(B_SEQ); dmk_encoder(E_SELECT, 1); dmk_encoder(E_SELECT, 1); shot(dir, "roll_synth3");   /* its own pattern */
-    ta_reset(); boot(400); shot_fr(dir, "boot_arrive", fb);
-    ta_reset(); boot(900); shot_fr(dir, "boot_heat", fb);
+    dmk_button(B_SEQ, 1); wait_ms(500); shot(dir, "roll_seq_held");                               /* SEQ: OCT- clears */
+    dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); wait_ms(100); shot(dir, "roll_clear_armed"); dmk_button(B_SEQ, 0); wait_ms(2100);
+    ta_reset(); boot(1650); shot_fr(dir, "boot_arrive", fb);
+    ta_reset(); boot(2200); shot_fr(dir, "boot_heat", fb);
+    for (int k = 0; k < 4; k++) { char nm[16]; boot_sc = (uint8_t)k; ta_reset(); boot(700); snprintf(nm, sizeof nm, "boot_land%d", k); shot_fr(dir, nm, fb); }
     shot_fr(dir, "update", dmk_update_frame(3, 0));
     shot_fr(dir, "update_write", dmk_update_frame(5, 0));
     shot_fr(dir, "update_stopped", dmk_update_frame(9, -3));
@@ -241,6 +245,21 @@ static void selftest(void)
         if (!sq[ui.synth].count || ch.follow[ui.synth] != FW_FREE) { fails++; printf("selftest: ARP + OCT+ does not print to the roll\n"); }
         if (ui.page != PG_CHORD) { fails++; printf("selftest: printing left the page\n"); }
         tap(B_FX);
+    }
+    /* clearing: SEQ held and OCT- twice, this synth's roll; HOME held and OCT- twice, all three; once arms only */
+    {
+        int other = (ui.synth + 1) % DMK_SYNTHS, n = sq[other].count;
+        if (!sq[ui.synth].count) seq_add(ui.synth, 0, 2, 60, 100);
+        dmk_button(B_SEQ, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); wait_ms(30);
+        if (!sq[ui.synth].count) { fails++; printf("selftest: one OCT- with SEQ held cleared the roll\n"); }
+        dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_SEQ, 0); wait_ms(30);
+        if (sq[ui.synth].count || sq[other].count != n) { fails++; printf("selftest: SEQ + OCT- twice does not clear this roll alone\n"); }
+        if (ui.page == PG_ROLL && ui.octave) { fails++; printf("selftest: clearing moved the octave\n"); }
+        dmk_button(B_HOME, 1); wait_ms(400); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); wait_ms(30);
+        dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_HOME, 0); wait_ms(30);
+        for (int s = 0; s < DMK_SYNTHS; s++) if (sq[s].count) { fails++; printf("selftest: HOME + OCT- twice leaves notes in a roll\n"); break; }
+        if (ui.page == PG_HOME) { fails++; printf("selftest: a used HOME opened Home on release\n"); }
+        seq_init();
     }
     /* a modifier that was used does nothing on release */
     dmk_button(B_GLO, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_GLO, 0); wait_ms(30);

@@ -32,6 +32,7 @@ static uint8_t holo_pat;                                 /* which of the dither'
  * from the left (of 256; a pixel not yet there shows holo_bg), and how hot it may glow (sixteenths of a tone: 0 the
  * blue rim alone, 112 the pale core). Outside the boot, all of it, as hot as its size allows */
 static int holo_veil = 256, holo_heat = 255, holo_bg;
+static const uint8_t *holo_under;                        /* set: a pixel not yet there shows this frame's, not holo_bg */
 /* [the shape's greatest depth]: how far in its deepest ring goes, sixteenths of a tone (64: the magenta body; 112:
  * the core). Between the rim and that, the rings share the ramp, dithered */
 static const uint8_t TH_PMAX[10] = {64, 64, 64, 76, 88, 100, 112, 112, 112, 112};
@@ -134,7 +135,8 @@ static void holo_done(void)
                 if (!dep[i]) continue;
                 p = pd[dep[i]];
                 if (holo_veil < 256 && T_BAYER6[0][(Y & 3) * 4 + (X & 3)] * 9 + X * 115 / DMK_W >= holo_veil) {
-                    px_put(X, Y, holo_bg);
+                    if (holo_under) { uint8_t u = holo_under[(Y * DMK_W + X) >> 1]; px_put(X, Y, X & 1 ? u & 15 : u >> 4); }
+                    else px_put(X, Y, holo_bg);
                     continue;
                 }
                 t = p >> 4;

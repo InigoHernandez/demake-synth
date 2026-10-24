@@ -178,7 +178,7 @@ static int16_t tp_buf[DMK_SYNTHS][TP_LEN] POOL;
 static int16_t ch_buf[DMK_SYNTHS][CH_LEN] POOL;
 static struct {
     uint32_t tw, wow, flut, rng, wdrift, warb, tick, cw, clfo, hold_ph, vib;
-    int32_t hl, lp1, lp2, hp, fol, drop, drop_g, track, track_g, wd, dd, toff, tdk, tkp, jit, nb;   /* MEDIA */
+    int32_t hl, lp1, lp2, hp, fol, drop, drop_g, track, track_g, wd, dd, toff, tenv, jit, nb;   /* MEDIA */
     int32_t clp, hold, sl, band[2], peak[3], step[3], frame, crk, nfol, nlp, hum, sdc, lg[3];   /* COLOUR */
     int32_t chlp[2];                                    /* MOTION */
     int32_t xg[3];                                      /* each row's share while its type changes, Q15 */
@@ -272,8 +272,9 @@ static void colour_block(int sy, int32_t *x, int type)
 }
 
 /* MEDIA: TAPE (wow drifting in rate, flutter, head loss, saturation), CASSETTE (a faster warble, the top closing as
- * it gets loud, dropouts), VHS (band-limited, a slow deep wobble with jitter, the head-switch tick, tracking events:
- * a dip in pitch, a duck and a noise burst) */
+ * it gets loud, dropouts), VHS (band-limited, a slow deep wobble with a wandering time base, and now and then the
+ * tracking slipping: in over 150 ms and out over 400, the pitch bending down and back, the sound dimming and ducking
+ * under a soft hiss; nothing sudden) */
 static void media_block(int sy, int32_t *x, int t)
 {
     const synth_t *p = &syn[sy];
@@ -282,8 +283,8 @@ static void media_block(int sy, int32_t *x, int t)
     fx[sy].wd += ((int32_t)(xs32(&fx[sy].rng) >> 22) - 512 - fx[sy].wd) >> 6;   /* the wow's rate wanders */
     if (t == FM_CASS && !fx[sy].drop && (xs32(&fx[sy].rng) >> 20) < (uint32_t)k3 / 10u)  /* a dropout begins */
         { fx[sy].drop = 450 + (int32_t)(fx[sy].rng % 5000u); fx[sy].drop_g = 16000 + (int32_t)(fx[sy].rng % 12000u); }
-    if (t == FM_VHS && !fx[sy].track && (xs32(&fx[sy].rng) >> 16) < (uint32_t)(k3 * k3) >> 9)   /* a tracking event: ~1 s apart at full */
-        fx[sy].track = 900 + (int32_t)(fx[sy].rng % 8000u);
+    if (t == FM_VHS && !fx[sy].track && !fx[sy].tenv && (xs32(&fx[sy].rng) >> 16) < (uint32_t)(k3 * k3) >> 11)
+        fx[sy].track = 13000 + (int32_t)(fx[sy].rng % 60000u);   /* the tracking slips (~3 s apart at full): 0.3-1.7 s */
     for (i = 0; i < DMK_SUB; i++) {
         int32_t m, d, pos, f, y, a, c;
         uint32_t j, rate = t == FM_TAPE ? p->twow : t == FM_CASS ? p->twow + (uint32_t)k2 * 1200u : p->twow / 2u + (uint32_t)k2 * 1000u;
@@ -294,13 +295,14 @@ static void media_block(int sy, int32_t *x, int t)
         m = (sinp(fx[sy].wow) * 48 + sinp(fx[sy].flut)) >> 6;
         if (t == FM_VHS) {                              /* the jitter: the time base wandering, not a new place each sample */
             fx[sy].jit += ((int32_t)(xs32(&fx[sy].rng) >> 20) - 2048 - fx[sy].jit) >> 6;
-            m += fx[sy].jit / 4;
+            m += fx[sy].jit / 8;
         }
         d = (t == FM_CASS ? 300 : 400) * 256 + (int32_t)(((int64_t)m * (t == FM_TAPE ? p->tdepth : 100 + k0 * (t == FM_VHS ? 300 : 220))) >> 15);
         /* tracking: the pitch dips, glided (a jump in the line's read would click) */
-        if (fx[sy].track || fx[sy].toff) {
-            fx[sy].toff += ((fx[sy].track ? 30000 - (fx[sy].track & 4095) * 4 : 0) - fx[sy].toff) >> 9;
-            d += fx[sy].toff;
+        if (fx[sy].track || fx[sy].tenv) {              /* tracking: its envelope, in over 150 ms, out over 400 */
+            if (fx[sy].track) { fx[sy].track--; fx[sy].tenv += fx[sy].tenv < 32763 ? 5 : 32768 - fx[sy].tenv; }
+            else fx[sy].tenv -= fx[sy].tenv > 2 ? 2 : fx[sy].tenv;
+            d += (fx[sy].tenv * (k3 + 30)) >> 8;        /* read later by up to 80 samples: the pitch bends, gently */
         }
         pos = (int32_t)(fx[sy].tw << 8) - d;
         j = (uint32_t)(pos >> 8); f = pos & 255;
@@ -324,25 +326,16 @@ static void media_block(int sy, int32_t *x, int t)
         } else {
             fx[sy].hp += (y * 256 - fx[sy].hp) >> 9;    /* ~80 Hz out */
             y -= fx[sy].hp >> 8;
-            fx[sy].lp1 += ((y - fx[sy].lp1) * tone) >> 15;
-            fx[sy].lp2 += ((fx[sy].lp1 - fx[sy].lp2) * tone) >> 15;
+            c = fx[sy].tenv ? tone - ((tone * (fx[sy].tenv >> 1)) >> 15) : tone;   /* tracking dims the top */
+            fx[sy].lp1 += ((y - fx[sy].lp1) * c) >> 15;
+            fx[sy].lp2 += ((fx[sy].lp1 - fx[sy].lp2) * c) >> 15;
             y = fx[sy].lp2;
-            a = y < 0 ? -y : y;                         /* the machine's noises ride the sound, as the tape's hiss */
-            if (a > fx[sy].fol) fx[sy].fol += (a - fx[sy].fol) >> 4; else fx[sy].fol -= (fx[sy].fol >> 13) + (fx[sy].fol > 0);
-            c = fx[sy].fol > 2048 ? 32768 : fx[sy].fol * 16;
-            if (fx[sy].tkp) { y += fx[sy].tkp; fx[sy].tkp = 0; }
-            if (++fx[sy].tick >= 1471u) {               /* the head switch, 29.97 Hz: a faint up and down, no thump */
-                fx[sy].tick = 0;
-                fx[sy].tkp = -((k3 * 2 * c) >> 15);
-                y -= fx[sy].tkp;
-            }
-            if (fx[sy].track || fx[sy].tdk < 32768) {   /* tracking: the sound ducks, a noise rises, both glided */
-                if (fx[sy].track) fx[sy].track--;
-                fx[sy].tdk += ((fx[sy].track ? 24000 : 32768) - fx[sy].tdk) >> 7;
-                if (!fx[sy].track && fx[sy].tdk > 32640) fx[sy].tdk = 32768;   /* home, not a 128th short of it */
-                /* its noise: the band's, not white */
-                fx[sy].nb += ((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 7) - fx[sy].nb) >> 2;
-                y = (y * fx[sy].tdk >> 15) + ((((fx[sy].nb * c) >> 15) * (32768 - fx[sy].tdk)) / 8768);
+            if (fx[sy].tenv) {                          /* and ducks it a little under a soft hiss that rides the sound */
+                a = y < 0 ? -y : y;
+                if (a > fx[sy].fol) fx[sy].fol += (a - fx[sy].fol) >> 4; else fx[sy].fol -= (fx[sy].fol >> 13) + (fx[sy].fol > 0);
+                c = fx[sy].fol > 2048 ? 32768 : fx[sy].fol * 16;
+                fx[sy].nb += ((((int32_t)xs32(&fx[sy].rng) >> 19) * k3 >> 7) - fx[sy].nb) >> 3;
+                y = ((y * (32768 - fx[sy].tenv / 4)) >> 15) + ((((fx[sy].nb * c) >> 15) * (fx[sy].tenv >> 1)) >> 15);
             }
             y = curve(T_LIM, y);
         }
@@ -671,7 +664,7 @@ static void dsp_reset(void)
         uint32_t k;
         for (k = 0; k < sizeof fx[i]; k++) z[k] = 0;
         fx[i].rng = 0x9E3779B9u * (i + 1u);
-        fx[i].tdk = fx[i].lg[0] = fx[i].lg[1] = fx[i].lg[2] = 32768;
+        fx[i].lg[0] = fx[i].lg[1] = fx[i].lg[2] = 32768;
         syn_peak[i] = 0; syn_dc[i] = 0;
     }
     { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }

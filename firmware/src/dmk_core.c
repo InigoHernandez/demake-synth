@@ -21,7 +21,7 @@ static uint32_t samples;
 void dmk_init(uint32_t seed)
 {
     int i;
-    (void)seed;
+    boot_sc = (uint8_t)((seed * 2654435761u) >> 30);   /* the boot's scene: one of four, by the start's clock */
     for (i = 0; i < DMK_VOICES; i++) { vc[i].on = 0; vc[i].env = 0; vc[i].stage = 0; }
     dsp_reset();
     samples = 0;

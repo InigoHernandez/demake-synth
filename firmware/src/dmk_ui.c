@@ -60,7 +60,7 @@ static const int8_t BTN_PAGE[B_COUNT] = {PG_FX, PG_FILTER, PG_AMP, PG_LFO, PG_SO
 static const char *const BTN_NAME[B_COUNT] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ",
                                               "PLAY", "REC", "OCT−", "OCT+"};
 static const char *const LAYER_NAME[B_COUNT] = {"ALGORITHM, the effect", "help", "help", "help", "the sound", "ALGORITHM, the type",
-                                                "", "songs", "the progression", "the sequence", "", "", "", ""};
+                                                "", "songs", "the progression", "OCT\xE2\x88\x92 clears the roll", "", "", "", ""};
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
@@ -119,6 +119,8 @@ static struct {
     uint32_t key_t0[DMK_KEYS];                          /* recording: where the playing was when it went down */
     uint16_t hinted;                                    /* the pages whose next row was shown how */
     uint8_t key_ch[DMK_KEYS][7], key_nch[DMK_KEYS];     /* the CHORD page: each key's chord, as it sounds */
+    uint8_t clear_arm;                                  /* OCT- once: 1 this synth's roll, 2 all three, armed */
+    uint32_t clear_at;
     uint8_t key_slot[DMK_KEYS];                         /* writing: the slot a held key wrote, + 1 (0: none) */
 } ui;
 
@@ -531,6 +533,11 @@ static void foot(void)
 {
     const page_t *pg = &PAGE[ui.page];
     int r = ui.row[ui.page];
+    if (ui.btn_held >> B_HOME & 1u && ui.now - ui.btn_down_at[B_HOME] > 350u) {   /* the patterns */
+        text(PAD + 1, Y_FOOT + 2, "Patterns", &FS, C_LABEL);
+        text_r(DMK_W - PAD - 1, Y_FOOT + 2, "OCT\xE2\x88\x92 twice: clear all", &FS, C_LABEL);
+        return;
+    }
     if (ui.page == PG_ROLL) {                           /* the zoom, or a held note's velocity */
         char v[16];
         int h = roll_held(), j = h >= 0 ? seq_find(ui.synth, ui.key_step[h], ui.key_note[h]) : -1;
@@ -682,11 +689,10 @@ static void cloud(int x, int y, int w, int lt)          /* a cloud: puffs on a f
     round_fill(SX + x - 3, SY + y - 5, w + 6, 4, 2, lt);
 }
 
-static void stage_home(void)
+/* a frame of scene sc at its card's place (the boot shows it full screen), drawn every 140 ms and held in sc_out */
+static void scene_frame(int sc, uint32_t tick)
 {
     int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, i;
-    int sc = DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3;
-    uint32_t tick = ui.now / 140u;
     if (sc_key != (uint8_t)(theme * 4 + sc)) {
         ui_yield();
         scene_build(sc, dk, lt);
@@ -765,6 +771,12 @@ static void stage_home(void)
     } else
         for (y = 0; y < SC_H; y++)
             for (x = 0; x < SC_W; x += 2) fb[((SY + y) * DMK_W + SX + x) >> 1] = sc_out[y * (SC_W / 2) + x / 2];
+}
+
+static void stage_home(void)
+{
+    int lt = THEME_DARK[theme] ? C_INK : C_PAPER;
+    scene_frame(DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].scene & 3, ui.now / 140u);
     card(SX, SY, SW, SH, C_LINE, 1);
     text(SX + PAD + 2, SY + 7, DMK_SAMPLES[VS(ui.synth, PG_SOUND, 0, 0)].name, &FS, lt);   /* the sound, on the dark */
 }
@@ -1028,32 +1040,62 @@ static void stage_songs(void)
     }
 }
 
-/* the boot, as the site's splash: on the dark ground the word stacks in Kiloy, "dem" over "ake"; its bits arrive
- * through the dither, sweeping in, and heat from the blue rim to the pale core; it holds while the bits step and a
- * meter of ticks fills; then the screen leaves in 16 px blocks by the same dither, Home under it. A key or a button
- * ends it */
-#define BOOT_ARRIVE 650u
-#define BOOT_HEAT0 150u
-#define BOOT_HEAT1 1150u
-#define BOOT_LEAVE 1750u
-#define BOOT_END 2300u
+/* the boot: a landscape, full screen and twice the size (its bits plain), the clouds drifting and the lights on;
+ * then it goes out bit by bit, by the dither, to the dark ground while the word arrives through the same dither,
+ * stacked in Kiloy ("dem" over "ake"), and heats from the blue rim to the pale core; it holds while a meter of ticks
+ * fills; then the screen leaves in 16 px blocks, Home under it. A start shows one of the four scenes (dmk_init's
+ * seed). A key or a button ends it */
+#define BOOT_NAME 1300u                                 /* the landscape alone until here */
+#define BOOT_ARRIVE 2100u                               /* the word whole, the landscape gone */
+#define BOOT_HEAT0 1450u
+#define BOOT_HEAT1 2500u
+#define BOOT_LEAVE 2900u
+#define BOOT_END 3450u
 static uint8_t boot_fb[DMK_FB_BYTES] POOL;             /* the held frame, while Home comes through it */
+static uint8_t boot_sc;                                 /* the scene this start shows */
+
+static void boot_land(uint32_t t)                       /* the scene, its middle 120 x 118 doubled over the screen */
+{
+    static const uint8_t CROP[4] = {54, 42, 90, 90};    /* the peak; the cabin and the sun; the stacks; the moon */
+    int x, y, cx = CROP[boot_sc & 3];
+    scene_frame(boot_sc & 3, t / 140u);
+    for (y = 0; y < DMK_H; y++) {
+        const uint8_t *src = &sc_out[(y / 2 < SC_H ? y / 2 : SC_H - 1) * (SC_W / 2)];
+        uint8_t *b = &fb[y * (DMK_W / 2)];
+        for (x = 0; x < DMK_W / 2; x++) {               /* a byte: two screen pixels, one scene pixel */
+            int sx = cx + x, n = sx & 1 ? src[sx >> 1] & 15 : src[sx >> 1] >> 4;
+            b[x] = (uint8_t)(n << 4 | n);
+        }
+    }
+}
 
 static void boot(uint32_t t)
 {
     int dark = THEME_DARK[theme], gnd = dark ? C_PAPER : C_INK, lit = dark ? C_INK : C_PAPER;
     int i, at, y1 = 50, y2 = y1 + FK.ascent + 12;
-    fill(0, 0, DMK_W, DMK_H, gnd);
-    holo_veil = t >= BOOT_ARRIVE ? 256 : (int)(t * 256u / BOOT_ARRIVE);
+    if (t < BOOT_NAME) { boot_land(t); return; }
+    if (t < BOOT_ARRIVE) {                              /* the landscape going out in 2 px bits, to the ground */
+        int q = (int)((t - BOOT_NAME) * 17u / (BOOT_ARRIVE - BOOT_NAME)), x, y;
+        boot_land(t);
+        for (y = 0; y < DMK_H; y += 2)
+            for (x = 0; x < DMK_W; x += 2)
+                if (T_BAYER6[0][((y >> 1) & 3) * 4 + ((x >> 1) & 3)] < q) { fb[(y * DMK_W + x) >> 1] = (uint8_t)(gnd << 4 | gnd); fb[((y + 1) * DMK_W + x) >> 1] = (uint8_t)(gnd << 4 | gnd); }
+        for (i = 0; i < DMK_FB_BYTES; i++) boot_fb[i] = fb[i];   /* what the word's bits not yet here show */
+        holo_under = boot_fb;
+    } else
+        fill(0, 0, DMK_W, DMK_H, gnd);
+    holo_veil = t >= BOOT_ARRIVE ? 256 : (int)((t - BOOT_NAME) * 256u / (BOOT_ARRIVE - BOOT_NAME));
     holo_heat = t <= BOOT_HEAT0 ? 0 : t >= BOOT_HEAT1 ? 255 : (int)((t - BOOT_HEAT0) * 112u / (BOOT_HEAT1 - BOOT_HEAT0));
     holo_bg = gnd;
     text_c(DMK_W / 2, y1, "dem", &FK, HOLO);
     text_c(DMK_W / 2, y2, "ake", &FK, HOLO);
     holo_veil = 256;
     holo_heat = 255;
-    at = (int)((t < BOOT_LEAVE ? t : BOOT_LEAVE) * 40u / BOOT_LEAVE);
+    holo_under = 0;
+    at = (int)(((t < BOOT_LEAVE ? t : BOOT_LEAVE) - BOOT_NAME) * 40u / (BOOT_LEAVE - BOOT_NAME));
     for (i = 0; i <= 40; i++) {                         /* the meter: ticks lit up to where it has reached */
         int x = 59 + i * 3;
+        if (t < BOOT_ARRIVE && T_BAYER6[0][(i & 3) * 4 + 2] * 16 >= (int)((t - BOOT_NAME) * 256u / (BOOT_ARRIVE - BOOT_NAME))) continue;
         if (i == at) round_fill(x - 1, 176, 3, 16, 1, HOLO);
         else fill(x, 180, 1, 8, i < at ? lit : C_LABEL);
     }
@@ -1271,6 +1313,22 @@ static void ui_button(int b, int down)
         if ((b == B_OCTD || b == B_OCTU) && ui.page == PG_ROLL && roll_held() >= 0) {
             roll_oct(b == B_OCTU);                      /* a held note: OCT- takes it away, OCT+ adds a copy */
             ui.btn_used |= bit;
+            return;
+        }
+        if (b == B_OCTD && (ui.btn_held >> B_SEQ & 1u || ui.btn_held >> B_HOME & 1u)) {
+            /* SEQ held, OCT- twice: this synth's roll cleared; HOME held (the patterns), all three. Twice, as
+             * nothing is saved yet to bring them back */
+            int all = (int)(ui.btn_held >> B_HOME & 1u), what = 1 + all, s;
+            ui.btn_used |= (uint16_t)(bit | 1u << (all ? B_HOME : B_SEQ));
+            if (ui.clear_arm == what && ui.now - ui.clear_at < 2000u) {
+                for (s = 0; s < DMK_SYNTHS; s++) if (all || s == ui.synth) { seq_quiet(s); sq[s].count = 0; }
+                notice(all ? "Rolls cleared" : "Roll cleared");
+                ui.clear_arm = 0;
+            } else {
+                ui.clear_arm = (uint8_t)what;
+                ui.clear_at = ui.now;
+                notice(all ? "OCT\xE2\x88\x92 again: all three" : "OCT\xE2\x88\x92 again: clear");
+            }
             return;
         }
         if (b == B_OCTD || b == B_OCTU) {
