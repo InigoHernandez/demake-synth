@@ -744,6 +744,42 @@ static double cpu_case(int fx)
     z = instructions();
     return (double)(z - a) / frames;
 }
+/* the two cores, counted: a stand-in for the second core runs each job in place and counts it, and counts what the
+ * first does meanwhile; the first waits for the second when its own share is the shorter (the critical path) */
+static uint64_t ins_c, job_ins, job_wait, par_t0;
+static uint64_t ins_job;
+static int host_par_begin(void (*job)(void))
+{
+    uint64_t a = instructions();
+    job();
+    ins_job = instructions() - a - ins_c;
+    job_ins += ins_job;
+    par_t0 = instructions();
+    return 1;
+}
+static void host_par_end(void)
+{
+    uint64_t own = instructions() - par_t0 - ins_c;
+    if (ins_job > own) job_wait += ins_job - own;
+}
+static void cpu_cores(double *c0, double *c1)
+{
+    static int16_t b[128 * 2];
+    int frames = DMK_SR * 10, i;
+    uint64_t a, z, t;
+    ins_c = ~0ull;
+    for (i = 0; i < 64; i++) { a = instructions(); z = instructions(); if (z - a < ins_c) ins_c = z - a; }
+    for (i = 0; i < 100; i++) dmk_render(b, 128);
+    a = instructions();                                 /* the whole, with no second core */
+    for (i = 0; i < frames; i += 128) dmk_render(b, 128);
+    t = instructions() - a;
+    dmk_par_begin = host_par_begin; dmk_par_end = host_par_end;
+    job_ins = job_wait = 0;
+    for (i = 0; i < frames; i += 128) dmk_render(b, 128);
+    dmk_par_begin = 0; dmk_par_end = 0;
+    *c1 = (double)job_ins / frames;
+    *c0 = (double)(t - job_ins + job_wait) / frames;
+}
 static void cpu(void)
 {
     static int16_t b[128 * 2];
@@ -756,23 +792,11 @@ static void cpu(void)
     z = instructions();
     printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with tape x3, room and echo %.0f instructions a sample\n",
            (double)(z - a) / frames, cpu_case(0), cpu_case(1));
-    {   /* the heaviest: every synth lossy, VHS and chorus, the haze; the voices' share, which half of goes to CPU1 */
-        double all = cpu_case(2);
-        for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
-        v_frames = 128;
-        a = instructions();
-        for (i = 0; i < frames; i += 128) { voices_run(0); voices_run(1); }
-        z = instructions();
-        {
-            double vo = (double)(z - a) / frames, ve;
-            uint32_t rr = 1;
-            a = instructions();
-            for (i = 0; i < frames; i++) { rr = rr * 1664525u + 1013904223u; vq[vq_w++ & (VQ_LEN - 1)] = (int32_t)(rr >> 20) - 2048; if ((i & 127) == 127) { verb_job(); wq_r = wq_w; } }
-            z = instructions();
-            ve = (double)(z - a) / frames;
-            printf("cpu: the heaviest (lossy, VHS, chorus x3, haze, echo) %.0f: its voices %.0f, the haze %.0f; on the FM-1 CPU0 %.0f, CPU1 %.0f\n",
-                   all, vo, ve, all - vo / 2 - ve, vo / 2 + ve);
-        }
+    {   /* the heaviest: every synth lossy, VHS and chorus, the haze, the grains; each core's share */
+        double all = cpu_case(2), c0, c1;
+        cpu_cores(&c0, &c1);
+        printf("cpu: the heaviest (lossy, VHS, chorus x3, haze, grains) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
+               all, c0, c1);
     }
 }
 #endif

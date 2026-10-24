@@ -34,8 +34,8 @@ them.
 - **Scenes and the song mode** (built): each synth's eight patterns, sixteen scenes that combine them, and a song of up
   to 128 steps, typed from the scene keys or recorded live; one synth can harmonize another.
 - **The budget is the limit for the sound, not ideas:**
-  - CPU0 is at 1818 in the heaviest case, past the proven 1650 a core. The calibration puts a core near 3470, but the
-    FM-1 hasn't been measured.
+  - CPU0 is at 1503 in the heaviest case (1818 before the third synth's chain moved to the second core), under the
+    proven 1650 a core. The calibration puts a core near 3470, but the FM-1 hasn't been measured.
   - The RAM pool has 28 KB free.
   - Stage 1 measures the FM-1, moves work to the second core and frees RAM before anything heavy is added.
 - **Order:** seven stages, below. Section 10 lists what is the owner's to decide.
@@ -53,7 +53,8 @@ them.
 | Mix | DC blocker, half level through the effects, soft limiter, fades on every type change | — |
 
 - **The heaviest case** (Lossy, VHS and Chorus on all three, Haze, Grains):
-  - CPU0 1818, CPU1 835 [M]: the first core does the per-synth chains, the second the verb and half the voices.
+  - CPU0 1503 (its wait for the second included), CPU1 1143 [M]: each core runs half the voices; the first does two
+    synths' chains and the mix, the second the verb's network and the third synth's chain.
 - **RAM:** pool 316 KB of 344 KB, RAM 48 KB of 96 KB.
 - **Flash:** 496 KB of 582 KB, so 85 KB left for code and tables. The recordings are already in.
 
@@ -61,20 +62,22 @@ them.
 
 1. **Measure the FM-1 once.**
    - The diagnostic build (`tools/fm1/build.py --diag`) shows each core's load on the screen.
-   - The owner plays the heaviest song from section 1, then a typical one, and reads the two numbers.
+   - In that build, HOME and SAVE held, then REC, sets the heaviest case from section 1 (twelve notes struck every
+     two seconds); the same keys put the sound back.
+   - The owner reads the two numbers in it, then while playing a typical song.
    - That gives the ratio between host instructions and the device (phase 0's missing measurement), so every cost
      below becomes a percentage of the real chip.
-2. **Balance the cores.** The second core runs at less than half the first. It takes:
-   - the third synth's chain (Colour, Media, Motion: up to ~300);
-   - the echo bus.
-
-   That leaves ~1500 on each core in the heaviest case [E]. The second core already joins the first before any
-   flash write, so the store is unaffected.
+2. **Balance the cores (done).** The second core ran at less than half the first. It now takes the third synth's
+   chain (Colour, Media, Motion) with the verb's network, while the first runs the other two: 1503 and 1143 in the
+   heaviest case [M], the sound bit for bit the same. The echo bus stays on the first core for now. The second core
+   already joins the first before any flash write, so the store is unaffected.
 3. **Free RAM for sound.**
    - The boot's held frame (29 KB) is needed only during the boot, while nothing sounds. It can share its memory
      with a sound buffer that starts empty after the boot.
    - The lit shapes' depth cache (31 KB) only needs 16 KB.
    - Together that's ~45 KB more for effect lines, without touching the landscapes or the screen.
+   - Stage 3 and stage 4 need no new RAM (the new media and motion types share their row's line), so this waits for
+     stage 5's spaces.
 4. **Two fixes the chord audit found:**
    - velocity is stored but unused;
    - the LFO page draws but does nothing.

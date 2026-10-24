@@ -780,6 +780,34 @@ static void voices_run(int half)
 }
 static void voices_job(void) { voices_run(1); }
 
+/* a synth's chain over the run, in place: its voices' halves summed with a stolen voice's tail, its DC out, the
+ * limiter's bend, then its rows; vbuf[0] holds its left after, vbuf[1] its right. Each synth's state is its own, so
+ * the chains can run on either core */
+static int ch_nb;                                       /* blocks this run */
+static void chain_run(int s)
+{
+    int b, i;
+    for (b = 0; b < ch_nb; b++) {
+        int32_t *pl = &vbuf[0][s][b * DMK_SUB], *pr = &vbuf[1][s][b * DMK_SUB], x[DMK_SUB];
+        for (i = 0; i < DMK_SUB; i++) {                 /* half the level through the effects, room for a chord; no DC */
+            int32_t v = (pl[i] + pr[i] + vc_tail[s]) >> 2;
+            vc_tail[s] -= (vc_tail[s] >> 6) + (vc_tail[s] > 0) - (vc_tail[s] < 0);   /* to zero, ~1.5 ms */
+            syn_dc[s] += (v * 4096 - syn_dc[s]) / 512;  /* ~14 Hz, Q12: its stall under a 512th is under */
+            x[i] = curve(T_LIM, v - ((syn_dc[s] + 2048) >> 12));   /* a chord past full: bent, never cut */
+        }
+#ifdef DMK_METER
+        for (i = 0; i < DMK_SUB; i++) { int32_t a = x[i] < 0 ? -x[i] : x[i]; if (a > dmeter.syn_max) dmeter.syn_max = a; }
+#endif
+        rows_run(s, x, pl, pr);
+    }
+}
+/* the second core's share of the mix: the network on the last run's input, and the last synth's chain */
+static void chains_job(void)
+{
+    if (v_cur != VB_ROOM) verb_job();
+    chain_run(DMK_SYNTHS - 1);
+}
+
 static void dsp_render(int16_t *lr, int frames)
 {
     int b, i, s, n, at;
@@ -797,19 +825,18 @@ static void dsp_render(int16_t *lr, int frames)
         par = dmk_par_begin && dmk_par_begin(voices_job);
         voices_run(0);
         if (par) dmk_par_end(); else voices_run(1);
-        /* the network: the last run's input, on the second core while this run mixes; the mix takes what it made */
+        /* the chains, the last on the second core with the network (the last run's input: the mix takes what it
+         * made), the rest here */
         if (v_cur != gp.vtype && !v_g) v_cur = gp.vtype;   /* faded out: the new type, from the next run */
         if (e_cur != gp.etype && !e_g) e_cur = gp.etype;
         if (v_cur == VB_ROOM) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix: the queue stays empty */
         vfill = wq_w - wq_r;
-        par = v_cur != VB_ROOM && dmk_par_begin && dmk_par_begin(verb_job);
-        if (v_cur != VB_ROOM && !par) verb_job();
+        ch_nb = nb;
+        par = dmk_par_begin && dmk_par_begin(chains_job);
+        for (s = 0; s < DMK_SYNTHS - 1; s++) chain_run(s);
+        if (par) dmk_par_end(); else chains_job();
         for (b = 0; b < nb; b++) {
-            int32_t sm[DMK_SYNTHS][DMK_SUB], L[DMK_SUB], R[DMK_SUB], vin[DMK_SUB], ein[DMK_SUB];
-            for (s = 0; s < DMK_SYNTHS; s++) for (i = 0; i < DMK_SUB; i++) {
-                sm[s][i] = vbuf[0][s][b * DMK_SUB + i] + vbuf[1][s][b * DMK_SUB + i] + vc_tail[s];
-                vc_tail[s] -= (vc_tail[s] >> 6) + (vc_tail[s] > 0) - (vc_tail[s] < 0);   /* to zero, ~1.5 ms */
-            }
+            int32_t L[DMK_SUB], R[DMK_SUB], vin[DMK_SUB], ein[DMK_SUB];
             for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = vin[i] = ein[i] = 0;
             if (mix_dg) {                               /* a song's fade, a step a block */
                 mix_g += mix_dg;
@@ -818,16 +845,8 @@ static void dsp_render(int16_t *lr, int frames)
             }
             for (s = 0; s < DMK_SYNTHS; s++) {
                 const synth_t *p = &syn[s];
-                int32_t pk = 0, sl[DMK_SUB], sr[DMK_SUB], lvl = mix_g < 32768 ? (p->level * mix_g) >> 15 : p->level;
-                for (i = 0; i < DMK_SUB; i++) {         /* half the level through the effects, room for a chord; no DC */
-                    int32_t x = sm[s][i] >> 2;
-                    syn_dc[s] += (x * 4096 - syn_dc[s]) / 512;   /* ~14 Hz, Q12: its stall under a 512th is under */
-                    sm[s][i] = curve(T_LIM, x - ((syn_dc[s] + 2048) >> 12));   /* a chord past full: bent, never cut */
-                }
-#ifdef DMK_METER
-                for (i = 0; i < DMK_SUB; i++) { int32_t a = sm[s][i] < 0 ? -sm[s][i] : sm[s][i]; if (a > dmeter.syn_max) dmeter.syn_max = a; }
-#endif
-                rows_run(s, sm[s], sl, sr);
+                const int32_t *sl = &vbuf[0][s][b * DMK_SUB], *sr = &vbuf[1][s][b * DMK_SUB];
+                int32_t pk = 0, lvl = mix_g < 32768 ? (p->level * mix_g) >> 15 : p->level;
                 for (i = 0; i < DMK_SUB; i++) {
                     int32_t xl = (sl[i] * lvl) >> 14, xr = (sr[i] * lvl) >> 14, x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * p->gl) >> 15;
@@ -867,7 +886,6 @@ static void dsp_render(int16_t *lr, int frames)
             bench_block(DMK_SUB);
 #endif
         }
-        if (par) dmk_par_end();
     }
 }
 

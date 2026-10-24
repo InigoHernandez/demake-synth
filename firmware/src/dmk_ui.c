@@ -1642,6 +1642,44 @@ static void overlays(void)
         }
 }
 
+#ifndef DMK_FM1_DIAG
+#define DMK_FM1_DIAG 0
+#endif
+/* the test build's load case (docs/sound-design.md, stage 1): HOME and SAVE held, then REC. Every synth lossy, VHS and
+ * chorus, the haze and the grains, twelve notes struck again every two seconds; the same keys put it all back */
+static struct { uint8_t on, kept[DMK_SYNTHS][3], gkept[2]; uint32_t at; } stress;
+static const uint8_t STRESS_ROW[3] = {90, 127, 40};    /* the rows' type knobs: lossy, VHS, chorus */
+static void stress_notes(int on)
+{
+    int i;
+    for (i = 0; i < DMK_VOICES; i++) {
+        if (on) note_on_s(i % DMK_SYNTHS, 48 + i * 3); else note_off_s(i % DMK_SYNTHS, 48 + i * 3);
+    }
+}
+static void stress_set(int on)
+{
+    int s, r;
+    if (on == stress.on) return;
+    for (s = 0; s < DMK_SYNTHS; s++)
+        for (r = 0; r < 3; r++) {
+            if (on) { stress.kept[s][r] = ui.val[s][PG_FX][r][4]; ui.val[s][PG_FX][r][4] = STRESS_ROW[r]; }
+            else ui.val[s][PG_FX][r][4] = stress.kept[s][r];
+        }
+    for (r = 0; r < 2; r++) {
+        if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = (uint8_t)(r ? 100 : 74); }
+        else ui.val[0][PG_GLOBAL][r][4] = stress.gkept[r];
+    }
+    sp_sync();
+    stress.on = (uint8_t)on;
+    stress_notes(on);
+    stress.at = ui.now;
+    notice(on ? "Load test on" : "Load test off");
+}
+static void stress_tick(void)
+{
+    if (stress.on && ui.now - stress.at >= 2000u) { stress_notes(0); stress_notes(1); stress.at = ui.now; }
+}
+
 static const uint8_t *ui_frame(uint32_t ms)
 {
     {                                                   /* the bits: a new arrangement every 140 ms, at random */
@@ -1651,6 +1689,7 @@ static const uint8_t *ui_frame(uint32_t ms)
         if (holo_pat > 5) holo_pat = 0;
     }
     ui.now = ms;
+    if (DMK_FM1_DIAG) stress_tick();
     clip_all();
 #ifdef DMK_TEXT_AUDIT
     ta_reset();
@@ -1807,6 +1846,11 @@ static void ui_button(int b, int down)
         ui.btn_used &= (uint16_t)~bit;
         for (o = 0; o < B_COUNT; o++)                   /* another button held: it was used as a modifier */
             if (o != b && ui.btn_held >> o & 1u) ui.btn_used |= (uint16_t)(1u << o);
+        if (DMK_FM1_DIAG && b == B_REC && (ui.btn_held & (1u << B_HOME | 1u << B_SAVE)) == (1u << B_HOME | 1u << B_SAVE)) {
+            stress_set(!stress.on);                     /* the test build's load case */
+            ui.btn_used |= (uint16_t)(bit | 1u << B_HOME | 1u << B_SAVE);
+            return;
+        }
         if ((b == B_OCTD || b == B_OCTU) && ui.page == PG_CHORD) {
             int h;
             for (h = 0; h < DMK_KEYS && !(ui.keys_down[h] && ui.key_slot[h]); h++) {}
