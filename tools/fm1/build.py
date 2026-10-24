@@ -158,7 +158,7 @@ def build_loader():
 
 # the second core renders some synths of each block (the core's dmk_par_begin; DUAL=0 in the environment: one core)
 DUAL = 0 if os.environ.get("DUAL") == "0" else 1
-CORE = ["-DDMK_FW=1", "-DDMK_SAMPLES_N=32"]   # bank A only in the app slot (docs/plan.md, 2.5); bank B comes later
+CORE = ["-DDMK_FW=1"]                      # all 64 sounds in the app slot (docs/plan.md, 2.5)
 
 
 def build_app():

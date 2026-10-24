@@ -31,7 +31,7 @@ ls /opt/homebrew/bin/gcc-[0-9]* /usr/local/bin/gcc-[0-9]* >/dev/null 2>&1 || [ -
 
 echo "== device rules (armv7m, soft float)"
 if clang --target=armv7m-none-eabi -mfloat-abi=soft -ffreestanding -O2 -std=c99 -Wall -Wextra -Wno-unused-function \
-        -DDMK_FW=1 -DDMK_SAMPLES_N=32 $I -c firmware/src/dmk_core.c -o "$B/core_arm.o"; then
+        -DDMK_FW=1 $I -c firmware/src/dmk_core.c -o "$B/core_arm.o"; then
     bad=$(nm -u "$B/core_arm.o" | grep -E "__aeabi_(l|ul)divmod|__(u)?(div|mod)di3|__aeabi_[fd](add|sub|mul|div|cmp|2|cmpeq|cmplt)|__aeabi_[iul]2[fd]|__(add|sub|mul|div)[sd]f3|__float|__fix")
     if [ -n "$bad" ]; then echo "  calls a float helper or 64-bit division:"; echo "$bad"; FAIL=1; else echo "  no float helper, no 64-bit division"; fi
     flash=0; ram=0

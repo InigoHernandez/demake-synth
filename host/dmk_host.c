@@ -176,8 +176,14 @@ static void selftest(void)
     /* a tap on a page button opens it, a second moves its row */
     wait_ms(1600);
     tap(B_FX); if (ui.page != PG_FX || ui.row[PG_FX] != 1) { fails++; printf("selftest: FX does not open FX on Media\n"); }
-    tap(B_FX); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: FX again is not the next row built\n"); }
-    tap(B_FX); if (ui.row[PG_FX] != 1) { fails++; printf("selftest: FX does not come round to Media\n"); }
+    tap(B_FX); if (ui.row[PG_FX] != 2) { fails++; printf("selftest: FX again is not the next row\n"); }
+    dmk_encoder(E_ALGO, 1); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: ALGORITHM does not move the rows\n"); }
+    dmk_encoder(E_ALGO, -1); dmk_encoder(E_ALGO, -1); dmk_encoder(E_ALGO, -1);
+    if (ui.row[PG_FX] != 0) { fails++; printf("selftest: ALGORITHM does not reach the first row\n"); }
+    dmk_button(B_FX, 1); dmk_encoder(E_ALGO, 1); dmk_button(B_FX, 0); wait_ms(30);
+    if (syn[ui.synth].colour != FC_SAT || ui.row[PG_FX] != 0) { fails++; printf("selftest: FX held and ALGORITHM do not pick the effect\n"); }
+    dmk_button(B_FX, 1); dmk_encoder(E_ALGO, -1); dmk_button(B_FX, 0); wait_ms(30);
+    dmk_encoder(E_ALGO, 1);
     /* the rolls: every synth its own; a key writes at the cursor, OCT- takes a held note away, PLAY sounds them */
     {
         int n0 = sq[0].count, n1 = sq[1].count, n2 = sq[2].count;
@@ -265,6 +271,67 @@ static void demo_one(const char *dir, int idx, int dry)
     free(b);
 }
 
+/* the effects, each on a sound that shows it: 11 s of the same chord and line, the knobs set where the effect is
+ * plain to hear; a filter's cutoff swept so its type is heard; a WAV each */
+static void fx_one(const char *dir, const char *name, const char *sound, int page, int row, int type, const uint8_t *k, int verb, int sweep)
+{
+    static const struct { float t, len; uint8_t n; } PH[] = {
+        {0.0f, 3.2f, 57}, {0.0f, 3.2f, 60}, {0.0f, 3.2f, 64}, {0.0f, 3.2f, 71},
+        {3.4f, 0.5f, 64}, {3.9f, 0.5f, 67}, {4.4f, 0.5f, 69}, {4.9f, 0.9f, 72}, {5.8f, 0.5f, 71}, {6.3f, 0.5f, 69},
+        {6.8f, 1.6f, 64}, {6.8f, 1.6f, 57}};
+    int n = DMK_SR * 11, i, j, np = (int)(sizeof PH / sizeof PH[0]);
+    int16_t *b = malloc((size_t)n * 4);
+    char path[512];
+    dmk_init(1);
+    ui.val[0][PG_SOUND][0][0] = (uint8_t)smp_named(sound);
+    ui.val[0][PG_FX][1][4] = 0;                         /* only the effect heard: no tape */
+    ui.val[0][PG_FX][3][0] = verb ? 100 : 30;           /* a little verb, or a lot for the verbs */
+    ui.val[0][PG_FX][3][1] = 0;
+    if (page >= 0) {
+        int nch = page == PG_GLOBAL ? 5 : page == PG_FILTER ? 8 : row == 0 ? 5 : 4;
+        ui.val[0][page][row][4] = (uint8_t)(type * 128 / nch + 128 / nch / 2);
+        for (j = 0; j < 4; j++) if (k[j] != 255) ui.val[0][page][row][j] = k[j];
+    }
+    if (page != PG_GLOBAL) ui.val[0][PG_GLOBAL][0][4] = 37;   /* the hall under the others */
+    sp_sync();
+    for (i = 0; i < n; i += DMK_SUB) {
+        for (j = 0; j < np; j++) {
+            int on = (int)(PH[j].t * DMK_SR), off = (int)((PH[j].t + PH[j].len) * DMK_SR);
+            if (on >= i && on < i + DMK_SUB) note_on_s(0, PH[j].n);
+            if (off >= i && off < i + DMK_SUB) note_off_s(0, PH[j].n);
+        }
+        if (sweep && !(i & 1023)) { ui.val[0][PG_FILTER][0][0] = (uint8_t)(20 + (int64_t)i * 100 / n); sp_sync(); }
+        dmk_render(b + i * 2, DMK_SUB);
+    }
+    snprintf(path, sizeof path, "%s/%s.wav", dir, name);
+    wav_write(path, b, n);
+    free(b);
+}
+
+static void fx_demo(const char *dir)
+{
+    static const uint8_t VB[4] = {100, 60, 100, 100}, SAT[4] = {96, 70, 50, 127}, CR[4] = {85, 90, 70, 40};
+    static const uint8_t LO[4] = {95, 80, 0, 70}, NO[4] = {60, 50, 70, 25}, TA[4] = {70, 70, 60, 64};
+    static const uint8_t CA[4] = {80, 60, 60, 80}, VH[4] = {90, 50, 50, 90}, CH[4] = {90, 100, 40, 100};
+    static const uint8_t VI[4] = {60, 255, 70, 40}, DR[4] = {110, 90, 40, 255}, FI[4] = {255, 100, 64, 255};
+    static const char *const VN[5] = {"verb_1_room", "verb_2_hall", "verb_3_haze", "verb_4_bloom", "verb_5_lofi"};
+    static const char *const FN[3] = {"filter_notch", "filter_peak", "filter_vowel"};
+    int t;
+    for (t = 0; t < 5; t++) fx_one(dir, VN[t], t == 3 ? "Snow pad" : "Felt piano", PG_GLOBAL, 0, t, VB, 1, 0);
+    fx_one(dir, "colour_1_saturate", "Felt piano", PG_FX, 0, FC_SAT, SAT, 0, 0);
+    fx_one(dir, "colour_2_crush", "Felt piano", PG_FX, 0, FC_CRUSH, CR, 0, 0);
+    fx_one(dir, "colour_3_lossy", "Felt piano", PG_FX, 0, FC_LOSSY, LO, 0, 0);
+    fx_one(dir, "colour_4_noise", "Felt piano", PG_FX, 0, FC_NOISE, NO, 0, 0);
+    fx_one(dir, "media_1_tape", "Snow pad", PG_FX, 1, FM_TAPE, TA, 0, 0);
+    fx_one(dir, "media_2_cassette", "Snow pad", PG_FX, 1, FM_CASS, CA, 0, 0);
+    fx_one(dir, "media_3_vhs", "Snow pad", PG_FX, 1, FM_VHS, VH, 0, 0);
+    fx_one(dir, "motion_1_chorus", "Glass pluck", PG_FX, 2, FO_CHORUS, CH, 0, 0);
+    fx_one(dir, "motion_2_vibrato", "Felt piano", PG_FX, 2, FO_VIB, VI, 0, 0);
+    fx_one(dir, "motion_3_drift", "Snow pad", PG_FX, 2, FO_DRIFT, DR, 0, 0);
+    for (t = 0; t < 3; t++) fx_one(dir, FN[t], "Snow pad", PG_FILTER, 0, FT_NOTCH + t, FI, 0, 1);
+    printf("fx demo: %s\n", dir);
+}
+
 static void demo(const char *dir, int argc, char **argv)
 {
     int i;
@@ -313,8 +380,10 @@ static double cpu_case(int fx)
     dmk_init(7);
     for (s = 0; s < DMK_SYNTHS; s++) {
         if (!fx) { ui.val[s][PG_FX][1][4] = 0; ui.val[s][PG_FX][3][0] = 0; ui.val[s][PG_FX][3][1] = 0; }
-        else ui.val[s][PG_FX][1][4] = 127;
+        else ui.val[s][PG_FX][1][4] = fx == 1 ? 48 : 127;   /* tape; or VHS */
+        if (fx == 2) { ui.val[s][PG_FX][0][4] = 90; ui.val[s][PG_FX][2][4] = 40; }   /* lossy, chorus */
     }
+    ui.val[0][PG_GLOBAL][0][4] = fx == 2 ? 70 : 0;      /* the heaviest: haze; else the room */
     sp_sync();
     for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
     for (i = 0; i < 100; i++) dmk_render(b, 128);
@@ -335,6 +404,24 @@ static void cpu(void)
     z = instructions();
     printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with tape x3, room and echo %.0f instructions a sample\n",
            (double)(z - a) / frames, cpu_case(0), cpu_case(1));
+    {   /* the heaviest: every synth lossy, VHS and chorus, the haze; the voices' share, which half of goes to CPU1 */
+        double all = cpu_case(2);
+        for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
+        v_frames = 128;
+        a = instructions();
+        for (i = 0; i < frames; i += 128) { voices_run(0); voices_run(1); }
+        z = instructions();
+        {
+            double vo = (double)(z - a) / frames, ve;
+            uint32_t rr = 1;
+            a = instructions();
+            for (i = 0; i < frames; i++) { rr = rr * 1664525u + 1013904223u; vq[vq_w++ & (VQ_LEN - 1)] = (int32_t)(rr >> 20) - 2048; if ((i & 127) == 127) { verb_job(); wq_r = wq_w; } }
+            z = instructions();
+            ve = (double)(z - a) / frames;
+            printf("cpu: the heaviest (lossy, VHS, chorus x3, haze, echo) %.0f: its voices %.0f, the haze %.0f; on the FM-1 CPU0 %.0f, CPU1 %.0f\n",
+                   all, vo, ve, all - vo / 2 - ve, vo / 2 + ve);
+        }
+    }
 }
 #endif
 
@@ -344,6 +431,7 @@ int main(int argc, char **argv)
     if (argc > 2 && !strcmp(argv[1], "--wav")) { wav(argv[2]); return 0; }
     if (argc > 1 && !strcmp(argv[1], "--bench")) { bench(); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--demo")) { demo(argv[2], argc - 3, argv + 3); return 0; }
+    if (argc > 2 && !strcmp(argv[1], "--fxdemo")) { fx_demo(argv[2]); return 0; }
 #ifdef __APPLE__
     if (argc > 1 && !strcmp(argv[1], "--cpu")) { cpu(); return 0; }
 #endif

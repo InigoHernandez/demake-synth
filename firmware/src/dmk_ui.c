@@ -59,24 +59,34 @@ static const int8_t BTN_PAGE[B_COUNT] = {PG_FX, PG_FILTER, PG_AMP, PG_LFO, PG_SO
                                          PG_ROLL, -1, -1, -1, -1};
 static const char *const BTN_NAME[B_COUNT] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ",
                                               "PLAY", "REC", "OCT−", "OCT+"};
-static const char *const LAYER_NAME[B_COUNT] = {"the four amounts", "help", "help", "help", "the sound", "the history",
+static const char *const LAYER_NAME[B_COUNT] = {"ALGORITHM, the effect", "help", "help", "help", "the sound", "ALGORITHM, the type",
                                                 "", "songs", "the progression", "the sequence", "", "", "", ""};
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
-static const char *const FILTERS[] = {"LP24", "LP12", "BP", "HP", "Off"};
+static const char *const FILTERS[] = {"LP24", "LP12", "HP", "BP", "Notch", "Peak", "Vowel", "Off"};
+static const char *const COLOURS[] = {"Off", "Saturate", "Crush", "Lossy", "Noise"};
+static const char *const MEDIAS[] = {"Off", "Tape", "Cassette", "VHS"};
+static const char *const MOTIONS[] = {"Off", "Chorus", "Vibrato", "Drift"};
+/* each effect's four knobs, by row and type (the off ones: the row's own) */
+static const char *const FXK[3][5][4] = {
+    {{"Amount", "Tone", "Time", "Spice"}, {"Drive", "Tone", "Bias", "Mix"}, {"Bits", "Tone", "Rate", "Jitter"},
+     {"Loss", "Band", "Frame", "Holes"}, {"Hiss", "Tone", "Crackle", "Hum"}},
+    {{"Amount", "Tone", "Time", "Spice"}, {"Amount", "Tone", "Wow", "Flutter"}, {"Warble", "Tone", "Rate", "Dropout"},
+     {"Wobble", "Band", "Rate", "Track"}},
+    {{"Amount", "Tone", "Time", "Spice"}, {"Depth", "Tone", "Rate", "Mix"}, {"Depth", "", "Rate", "Fade"},
+     {"Depth", "Detune", "Rate", ""}}};
 static const char *const ZOOMS[] = {"16", "32", "64"};
 static const char *const OFF[] = {"Off"};
 static const char *const LFOS[] = {"Sine", "Triangle", "Ramp", "Square", "Random"};
 static const char *const TARGETS[] = {"Pitch", "Cutoff", "Level", "Pan"};
 static const char *const LOOPS[] = {"Off", "Full"};
-static const char *const MEDIA[] = {"Off", "Tape"};
-static const char *const VERBS[] = {"Room"};
+static const char *const VERBS[] = {"Room", "Hall", "Haze", "Bloom", "Lofi"};
 static const char *const ECHOS[] = {"Tape"};
 static const choice_t CHOICE[] = {
-    {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 5, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
-    {PG_FX, 0, 4, 1, OFF}, {PG_FX, 1, 4, 2, MEDIA}, {PG_FX, 2, 4, 1, OFF}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
-    {PG_GLOBAL, 0, 4, 1, VERBS}, {PG_GLOBAL, 1, 4, 1, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
+    {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
+    {PG_FX, 0, 4, 5, COLOURS}, {PG_FX, 1, 4, 4, MEDIAS}, {PG_FX, 2, 4, 4, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
+    {PG_GLOBAL, 0, 4, 5, VERBS}, {PG_GLOBAL, 1, 4, 1, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 4, TARGETS},
 };
 
 static struct {
@@ -139,7 +149,7 @@ static void sp_sync(void)
         p->loops = (uint8_t)(VS(s, PG_SOUND, 0, 2) >= 64);
         p->tune = (int16_t)((VS(s, PG_SOUND, 0, 3) - 64) * 24 / 64);
         p->fine = (int8_t)((VS(s, PG_SOUND, 0, 4) - 64) * 50 / 64);
-        p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 5 / 128);
+        p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 8 / 128);
         p->cut = (int16_t)(VS(s, PG_FILTER, 0, 0) >= 127 ? 255 : VS(s, PG_FILTER, 0, 0) * 2);
         p->resq = T_RESQ[VS(s, PG_FILTER, 0, 1)];
         p->fenv = (int16_t)((VS(s, PG_FILTER, 0, 2) - 64) * 4);
@@ -149,7 +159,11 @@ static void sp_sync(void)
         p->rel = T_EXP[VS(s, PG_AMP, 0, 3)];
         v = VS(s, PG_AMP, 0, 4);
         p->level = v * v * 2;                           /* Q15 on a square law: 64 is -12 dB */
-        p->tape = (uint8_t)(VS(s, PG_FX, 1, 4) >= 64);
+        p->colour = (uint8_t)(VS(s, PG_FX, 0, 4) * 5 / 128);
+        p->media = (uint8_t)(VS(s, PG_FX, 1, 4) * 4 / 128);
+        p->motion = (uint8_t)(VS(s, PG_FX, 2, 4) * 4 / 128);
+        for (v = 0; v < 4; v++) { p->ck[v] = VS(s, PG_FX, 0, v); p->mk[v] = VS(s, PG_FX, 1, v); p->ok[v] = VS(s, PG_FX, 2, v); }
+        p->tape = (uint8_t)(p->media == FM_TAPE);
         p->tdepth = VS(s, PG_FX, 1, 0) * 800;           /* the wow: up to ~40 cents at its slowest */
         p->tdrive = 256 + VS(s, PG_FX, 1, 0) * 3;
         p->thl = T_OP[64 + VS(s, PG_FX, 1, 1) / 2];     /* head loss: 600 Hz .. open */
@@ -159,6 +173,17 @@ static void sp_sync(void)
         p->esend = VS(s, PG_FX, 3, 1) * 258;
         v = VS(s, PG_FX, 3, 2);
         p->gl = T_PAN[127 - v]; p->gr = T_PAN[v];
+    }
+    {   /* the VERB's type: its loop's gain from SIZE (Q15, a ninth of a dB a pass at the most for HAZE), its sweep's
+         * depth at full MOD (Q8 samples) and its rate (0.3, 0.13, 0.2, 0.5 Hz at 22.05 kHz) */
+        static const uint16_t G0[5] = {0, 23000, 24500, 24000, 19000}, G1[5] = {0, 31300, 32100, 31800, 29500};
+        static const uint16_t MD[5] = {0, 4096, 12288, 3072, 15360};
+        static const uint32_t RT[5] = {0, 58435, 25322, 38957, 97392};
+        int t = VS(0, PG_GLOBAL, 0, 4) * 5 / 128, sz = VS(0, PG_GLOBAL, 0, 2);
+        gp.vtype = (uint8_t)t;
+        gp.vfbq = (G0[t] + (G1[t] - G0[t]) * sz / 127) * 11585 >> 15;   /* the Hadamard's sqrt(8) taken out */
+        gp.vmod = MD[t] * VS(0, PG_GLOBAL, 0, 3) / 127;
+        gp.vrate = RT[t];
     }
     gp.vret = VS(0, PG_GLOBAL, 0, 0) * 258;
     gp.vdamp = T_OPH[VS(0, PG_GLOBAL, 0, 1)];
@@ -205,12 +230,15 @@ static void ui_init(void)
         ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
         ui.val[s][PG_FILTER][0][0] = t[4]; ui.val[s][PG_FILTER][0][1] = t[5]; ui.val[s][PG_FILTER][0][2] = t[6];
         ui.val[s][PG_FILTER][0][4] = 0;                 /* LP24 */
-        ui.val[s][PG_FX][1][4] = t[8] ? 96 : 0;         /* tape */
+        ui.val[s][PG_FX][1][4] = t[8] ? 48 : 0;         /* Media: tape, or off */
+        ui.val[s][PG_FX][0][4] = 0;                     /* Colour, Motion: off */
+        ui.val[s][PG_FX][2][4] = 0;
         ui.val[s][PG_FX][1][0] = t[9]; ui.val[s][PG_FX][1][1] = 90;
         ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
     }
     ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
-    ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the room */
+    ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the verb: a hall */
+    ui.val[0][PG_GLOBAL][0][4] = 37; ui.val[0][PG_GLOBAL][0][3] = 64;
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* each roll on its own pattern: its notes in view */
@@ -280,7 +308,7 @@ static int lit(int k) { return ui.touch_k == k && ui.now - ui.touch_ms < 1000u; 
 /* a row not built yet (COLOUR and MOTION in phase 4, the LAYER, the song): shown, marked soon, passed over */
 static int row_soon(int page, int row)
 {
-    return (page == PG_FX && (row == 0 || row == 2)) || (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
+    return (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
 }
 static int row_next(int page, int row)                  /* the page's next row that is built */
 {
@@ -293,7 +321,7 @@ static int rows_built(int page) { int r, n = 0; for (r = 0; r < PAGE[page].rows;
 /* a row with nothing behind it: those not built, MEDIA while its effect is off */
 static int row_off(int page, int row)
 {
-    if (page == PG_FX) return row == 0 || row == 2 || (row == 1 && *vp(PG_FX, 1, 4) < 64);
+    if (page == PG_FX && row < 3) return choice_index(choice_of(PG_FX, row, 4), *vp(PG_FX, row, 4)) == 0;
     return (page == PG_SOUND && row == 1) || (page == PG_GLOBAL && row == 2);
 }
 
@@ -366,13 +394,15 @@ static void head(void)
     const page_t *pg = &PAGE[ui.page];
     int x = text(PAD + 1, 6, pg->name, &FH, C_INK), i;
     if (pg->rows > 1) text(x + 7, 6, pg->row[ui.row[ui.page]], &FH, C_LABEL);
-    {                                                   /* the synths by their sounds' initials: S F G, the current in ink */
-        int rx = DMK_W - PAD - 1, y = 6 + FH.ascent - FM.ascent;
+    {                                                   /* the synths by their sounds' initials, S F G: the current boxed */
+        int rx = DMK_W - PAD - 1, bw = 17, y = 6 + FH.ascent - FS.ascent - 3;
         for (i = DMK_SYNTHS - 1; i >= 0; i--) {
             char ini[2] = {DMK_SAMPLES[VS(i, PG_SOUND, 0, 0)].name[0], 0};
+            int bx = rx - bw;
             if (ini[0] >= 'a' && ini[0] <= 'z') ini[0] = (char)(ini[0] - 32);
-            text_r(rx, y, ini, &FM, i == ui.synth ? C_INK : C_LABEL);
-            rx -= text_w(ini, &FM) + 8;
+            if (i == ui.synth) round_line(bx, y - 3, bw, bw, 5, 1, C_INK);
+            text_c(bx + bw / 2 + 1, y, ini, &FS, i == ui.synth ? C_INK : C_LABEL);
+            rx = bx - 3;
         }
     }
 }
@@ -426,7 +456,11 @@ static void fields_band(void)
     const page_t *pg = &PAGE[ui.page];
     int r = ui.row[ui.page], k;
     if (ui.page == PG_ROLL) { roll_fields(); return; }
-    for (k = 0; k < 4; k++) field(k, pg->k[r][k], ui.page, r);
+    for (k = 0; k < 4; k++) {
+        const char *l = pg->k[r][k];
+        if (ui.page == PG_FX && r < 3) l = FXK[r][choice_index(choice_of(PG_FX, r, 4), *vp(PG_FX, r, 4))][k];
+        field(k, l, ui.page, r);
+    }
 }
 
 static void foot(void)
@@ -443,9 +477,10 @@ static void foot(void)
     }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
-        int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL);
+        int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL), typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2);
         val_text(v, ui.page, r, 4);
-        text_fit(x + 6, Y_FOOT + 2, 200 - x, v, &FS, lit(4) ? HOLO : C_INK);
+        text_fit(x + 6, Y_FOOT + 2, 124 - x, v, &FS, lit(4) ? HOLO : C_INK);
+        if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, ui.page == PG_FX ? "Hold FX to change" : "Hold GLO to change", &FS, C_LABEL);
     }
 }
 
@@ -574,15 +609,25 @@ static void stage_filter(void)
     int16_t ys[DMK_W], yb[DMK_W];
     int x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, base = SY + SH - 14, top = SY + 12, ly = top + 34, i;
     int cut = *vp(PG_FILTER, 0, 0), q = *vp(PG_FILTER, 0, 1) * 30 / 127, env = *vp(PG_FILTER, 0, 2) - 64;
-    int type = *vp(PG_FILTER, 0, 4) * 5 / 128, fc = x0 + cut * (w - 1) / 127, ex;
+    int type = *vp(PG_FILTER, 0, 4) * 8 / 128, fc = x0 + cut * (w - 1) / 127, ex, f1 = fc, f2 = fc;
     card(SX, SY, SW, SH, C_LINE, 1);
+    if (type == FT_VOWEL) {                             /* the vowel's two formants, where the cutoff puts them */
+        int pos = (cut * 2 > 255 ? 255 : cut * 2) * 4, a = pos >> 8, t = pos & 255, z = a < 4 ? a + 1 : 4;
+        f1 = x0 + ((VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8) * (w - 1) / 255;
+        f2 = x0 + ((VOW[a][1] * (256 - t) + VOW[z][1] * t) >> 8) * (w - 1) / 255;
+    }
     for (i = 0; i < w; i++) {
         int x = x0 + i, dx = x - fc, ad = dx < 0 ? -dx : dx, y = ly;
-        if (type == 4) y = ly;                          /* off: all of it passes */
-        else {
-            if ((type == 0 || type == 1 || type == 2) && dx > 0) y = ly + dx * (type == 0 ? 4 : type == 1 ? 2 : 3);
-            if ((type == 3 || type == 2) && dx < 0) y = ly + ad * (type == 3 ? 4 : 3);
-            if (ad < 16) y -= q * (16 - ad) / 16;       /* the resonance: a peak at the cutoff */
+        if (type == FT_LP24 || type == FT_LP12 || type == FT_BP) { if (dx > 0) y = ly + dx * (type == FT_LP24 ? 4 : type == FT_LP12 ? 2 : 3); }
+        if ((type == FT_HP || type == FT_BP) && dx < 0) y = ly + ad * (type == FT_HP ? 4 : 3);
+        if (type <= FT_BP && ad < 16) y -= q * (16 - ad) / 16;   /* the resonance: a peak at the cutoff */
+        if (type == FT_NOTCH && ad < 22 - q / 2) y = ly + (22 - q / 2 - ad) * 4;
+        if (type == FT_PEAK && ad < 20) y = ly - (20 - ad) * (8 + q) / 20;
+        if (type == FT_VOWEL) {
+            int a1 = x - f1 < 0 ? f1 - x : x - f1, a2 = x - f2 < 0 ? f2 - x : x - f2;
+            y = ly + 26;
+            if (a1 < 14) y -= (14 - a1) * (30 + q) / 14;
+            if (a2 < 14) y -= (14 - a2) * (22 + q) / 14;
         }
         ys[i] = (int16_t)(y < top ? top : y > base ? base : y);
         yb[i] = (int16_t)(base + 1);
@@ -592,8 +637,8 @@ static void stage_filter(void)
     ex = fc + env * (w - 1) / 127;                      /* where the envelope takes the cutoff */
     if (ex < x0) ex = x0;
     if (ex > x0 + w - 1) ex = x0 + w - 1;
-    if (env) { hline(ex < fc ? ex : fc, base - 2, (ex < fc ? fc - ex : ex - fc) + 1, C_INK); round_line(ex - 4, base - 6, 9, 9, 4, 1, lit(2) ? HOLO : C_INK); }
-    round_fill(fc - 4, (type == 4 ? ly : ys[fc - x0]) - 4, 9, 9, 4, lit(0) || lit(1) ? HOLO : C_INK);
+    if (env && type != FT_OFF) { hline(ex < fc ? ex : fc, base - 2, (ex < fc ? fc - ex : ex - fc) + 1, C_INK); round_line(ex - 4, base - 6, 9, 9, 4, 1, lit(2) ? HOLO : C_INK); }
+    if (type != FT_OFF) round_fill(fc - 4, ys[fc - x0] - 4, 9, 9, 4, lit(0) || lit(1) ? HOLO : C_INK);
 }
 
 /* the envelope: attack, decay, sustain, release as their own widths (each up to a quarter of the card), the peak as
@@ -658,6 +703,11 @@ static void stage_rows(int page, const char *const *names, int n, int open)
         text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, row_soon(page, i) ? C_LABEL : C_INK);
         if (row_soon(page, i)) { text_r(SX + SW - PAD - 4, y + (h - 12) / 2, "Soon", &FS, C_LABEL); continue; }
         if (page != PG_FX && i >= 2) continue;              /* the setup is not an effect: no switch */
+        if ((page == PG_FX && i < 3) || page == PG_GLOBAL) {   /* the row's effect, by name, left of its switch */
+            char v[16];
+            val_text(v, page, i, 4);
+            text_r(tx - 8, y + (h - 12) / 2, v, &FS, row_off(page, i) ? C_LABEL : C_INK);
+        }
         if (row_off(page, i)) {                             /* the switch: off */
             round_line(tx, y + h / 2 - 6, 22, 12, 6, 1, C_LABEL);
             round_fill(tx + 3, y + h / 2 - 3, 6, 6, 3, C_LABEL);
@@ -946,7 +996,8 @@ static void ui_button(int b, int down)
             if (row_soon(p, ui.row[p])) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);
             if (rows_built(p) > 1 && !(ui.hinted >> p & 1u)) {   /* the first time: how to reach the next row */
                 char t[32];
-                str_cat(str_cat(t, BTN_NAME[b]), " again: the next row");
+                if (p == PG_FX || p == PG_GLOBAL) str_cat(t, "ALGORITHM: the rows");
+                else str_cat(str_cat(t, BTN_NAME[b]), " again: the next row");
                 notice(t);
                 ui.hinted |= (uint16_t)(1u << p);
             }
@@ -981,6 +1032,13 @@ static void ui_encoder(int e, int d)
     ui.touch_k = (int8_t)k;
     ui.touch_ms = ui.now;
     if (ui.page == PG_ROLL) { roll_turn(k, d); return; }
+    if (k == 4 && (ui.page == PG_FX || ui.page == PG_GLOBAL) && !(ui.btn_held >> (ui.page == PG_FX ? B_FX : B_GLO) & 1u)) {
+        int n = r, dir = d > 0 ? 1 : -1;                /* ALGORITHM moves through the rows; held, it is the type */
+        do { n += dir; } while (n >= 0 && n < PAGE[ui.page].rows && row_soon(ui.page, n));
+        if (n >= 0 && n < PAGE[ui.page].rows) ui.row[ui.page] = (uint8_t)n;
+        ui.touch_k = -1;
+        return;
+    }
     if (ui.page == PG_GLOBAL && r == 3 && k == 0) {    /* theme */
         int t = theme + (d > 0 ? 1 : -1);
         theme = (uint8_t)(t < 0 ? DMK_THEMES - 1 : t >= DMK_THEMES ? 0 : t);

@@ -14,9 +14,9 @@ The pipeline, per recording:
      strong: a C with a louder fifth); most are Cs, a few an F, a G, an E;
   3. pick its rate from its bandwidth: 11,025 Hz, or 22,050 Hz if it has energy above 4.5 kHz;
   4. resample with a band limit (a Kaiser-windowed sinc);
-  5. cut it: a sustained sound to 1.25 s with a loop over its last 0.35-0.6 s, the loop's start chosen where the
+  5. cut it: a sustained sound to 0.9 s with a loop over its last 0.3-0.45 s, the loop's start chosen where the
      wave matches its end best, an equal-power crossfade of 80 ms baked across the seam; a sound that dies away
-     (keys, plucks) to where it falls under -50 dB, at most 1.6 s, one-shot;
+     (keys, plucks) to where it falls under -50 dB, at most 1.2 s, one-shot;
   6. normalise to -1 dBFS, fade in over 2 ms;
   7. encode: 16-byte blocks of 28 samples, each the best of 5 two-tap predictors and 13 shifts (our own encoder,
      after the format's public description), the decoder's state at the loop's first block kept for the jump back;
@@ -143,6 +143,11 @@ def kind_of(x, sr, root):
     return "pad", att, end
 
 
+# the cuts: all 64 in the FM-1's app slot (2026-10-24, the owner: "all 64, like a rompler"), so a held sound is a
+# second with its loop over the last 0.3-0.5 s, and a sound that dies away at most 1.3 s
+SUS_CUT, LOOP_MIN, LOOP_MAX, ONE_MAX = 0.9, 0.3, 0.45, 1.2
+
+
 def cut_and_loop(y, sr, kind, end_level):
     """the cut, the loop (in blocks of 28), the crossfade baked in"""
     B = 28
@@ -152,18 +157,18 @@ def cut_and_loop(y, sr, kind, end_level):
         pk = env.max()
         below = np.where(env < pk * 10 ** (-50 / 20))[0]
         below = below[below > np.argmax(env)]
-        n = min(len(y), int(1.6 * sr), below[0] if len(below) else len(y))
+        n = min(len(y), int(ONE_MAX * sr), below[0] if len(below) else len(y))
         n = (n // B) * B
         y = y[:n]
         fo = min(int(0.05 * sr), n // 4)
         y[-fo:] *= np.linspace(1, 0, fo)
         return y, None, None
-    n = (min(len(y), int(1.25 * sr)) // B) * B
+    n = (min(len(y), int(SUS_CUT * sr)) // B) * B
     lend = n // B
     xf = int(0.08 * sr)
     best, bstart = -2.0, None
     w = int(0.025 * sr)
-    for lb in range(lend - int(0.6 * sr) // B, lend - int(0.35 * sr) // B + 1):
+    for lb in range(lend - int(LOOP_MAX * sr) // B, lend - int(LOOP_MIN * sr) // B + 1):
         s = lb * B
         if s - xf - w < 0:
             continue
@@ -245,7 +250,8 @@ def main():
         spec = np.abs(np.fft.rfft(x * np.hanning(len(x)))) ** 2
         fr = np.fft.rfftfreq(len(x), 1 / SR_IN)
         hi = 10 * np.log10(spec[fr > 4500].sum() / (spec.sum() + 1e-20) + 1e-20)
-        sr = 22050 if hi > -35 else 11025
+        lo = 10 * np.log10(spec[fr > 3500].sum() / (spec.sum() + 1e-20) + 1e-20)
+        sr = 22050 if hi > -35 else 11025 if lo > -48 else 8000   # the darkest lose nothing under 4 kHz
         y = resample(x, sr)
         kind, att, endl = kind_of(y, sr, root)
         y, l0, l1 = cut_and_loop(y, sr, kind, endl)
