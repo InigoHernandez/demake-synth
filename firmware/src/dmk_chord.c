@@ -387,11 +387,16 @@ static void chord_strike(int s, const uint8_t *notes, int n, int most_ms)
 {
     int i, j, k = 0;
     if (!arp_on(s) && vary_rests(s)) n = 0;
-    for (i = 0; i < n && k < 7; i++) {
-        int m = arp_on(s) ? notes[i] : vary_move(s, notes[i]);
-        for (j = 0; j < k && ch_sp[s][j] != m; j++) {}
-        ch_sp[s][k] = (uint8_t)(j < k ? notes[i] : m);
-        k++;
+    for (i = 0; i < n && k < 7; i++) {                  /* (moved onto one placed: as written; that placed too: left
+                                                           out, no tone doubled) */
+        int m = arp_on(s) ? notes[i] : vary_move(s, notes[i]), t;
+        for (t = 0; t < 2; t++) {
+            for (j = 0; j < k && ch_sp[s][j] != m; j++) {}
+            if (j == k) break;
+            m = notes[i];
+        }
+        if (t == 2) continue;
+        ch_sp[s][k++] = (uint8_t)m;
     }
     ch_sn[s] = (uint8_t)k;
     strike_src(s, ch_sp[s], k, SRC_CHORD, most_ms, 0);
@@ -609,4 +614,5 @@ static void print_to_roll(int s)
     }
     ch_pn = (uint8_t)pn;
     ch.follow[s] = FW_FREE;
+    if (sq[s].pos >= sq[s].steps) sq[s].pos = 0;        /* (shorter now: the playhead inside it) */
 }

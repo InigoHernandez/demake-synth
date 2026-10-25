@@ -36,6 +36,7 @@ void w_key(int k, int d) { dmk_key(k, d); }
 void w_button(int b, int d) { dmk_button(b, d); }
 void w_encoder(int e, int d) { dmk_encoder(e, d); }
 void w_midi(int s, int a, int b) { dmk_midi(s, a, b); }
+void w_latency(int n) { dmk_latency(n); }
 int w_midi_take(void)                                   /* MIDI out: a message as status | d1 << 8 | d2 << 16, or -1 */
 {
     uint8_t s, a, b;

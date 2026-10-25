@@ -55,6 +55,7 @@ void dmk_key(int k, int down) { ui_key(k, down); }
 void dmk_button(int b, int down) { ui_button(b, down); }
 void dmk_encoder(int e, int delta) { ui_encoder(e, delta); }
 void dmk_midi(int status, int d1, int d2) { midi_in(status, d1, d2); }
+void dmk_latency(int samples) { rec_lat = (uint16_t)(samples < 0 ? 0 : samples > 8192 ? 8192 : samples); }
 void dmk_status(int cpu, int core2, int screen, uint32_t shorts)
 {
     sys.cpu = (uint8_t)(cpu > 255 ? 255 : cpu); sys.core2 = (uint8_t)(core2 > 255 ? 255 : core2);

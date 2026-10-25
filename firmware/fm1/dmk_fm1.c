@@ -79,6 +79,8 @@ static int store_write(uint32_t at, const void *p, uint32_t n)
     uint32_t took;
     int rc;
     if (!flash_ok || (at & 0xFFFu) || n > 0x1000u || at + 0x1000u > BANK_LEN) return -1;
+    { uint32_t i; for (i = 0; i < 2u * HALF_WORDS; i++) abuf[i] = 0; }   /* the DMA loops its two halves while the
+                                                   erase holds the interrupts: silence, not the last 11 ms buzzing */
     if ((rc = fl_erase4k(BANK_AT + at, &took)) != 0) return rc;
     if (n > 16u && (rc = fl_write(BANK_AT + at + 16u, b + 16, n - 16u)) != 0) return rc;
     return fl_write(BANK_AT + at, b, n < 16u ? n : 16u);
@@ -352,6 +354,8 @@ static void app_init(void)
     dmk_yield = frame_yield;
     if (flash_ok) { dmk_store_read = store_read; dmk_store_write = store_write; }   /* before init: it loads the newest song */
     dmk_init(fm1_ticks());
+    dmk_latency(1280);                          /* a key to its sound: the render ring (6 x 128), the I2S half (256) and
+                                                   the keys' debounce (~390): a take lands where it was heard */
     lcd_fill(0, 0, 240, 240, 0x0000u);
     render_ahead();
     screen_frame();

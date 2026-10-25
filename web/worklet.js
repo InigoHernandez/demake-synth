@@ -29,6 +29,7 @@ class Demake extends AudioWorkletProcessor {
       case "btn": x.w_button(m.b, m.d); break;
       case "enc": x.w_encoder(m.e, m.d); break;
       case "midi": x.w_midi(m.s, m.a, m.b); break;
+      case "lat": x.w_latency(m.n); break;
     }
   }
 

@@ -782,7 +782,11 @@ static void selftest(void)
         if (!s1) { fails++; printf("selftest: MIDI channel 3 does not play synth 3\n"); }
         ui.val[0][PG_GLOBAL][3][2] = choice_val(1, 2); sp_sync();   /* the clock outside */
         dmk_midi(0xFA, 0, 0);
-        if (!seq_on) { fails++; printf("selftest: an outside start does not play\n"); }
+        if (seq_on) { fails++; printf("selftest: an outside start plays before its first clock\n"); }
+        dmk_midi(0xF8, 0, 0);
+        if (!seq_on || seq_ticks != 1) { fails++; printf("selftest: an outside start does not play on its first clock\n"); }
+        seq_play(0); dmk_midi(0xFA, 0, 0); wait_ms(300);   /* none after it: at once, its own tempo */
+        if (!seq_on) { fails++; printf("selftest: an outside start with no clock does not play\n"); }
         { uint32_t t0 = seq_ticks, t1;                  /* none coming: its own tempo (it froze, its notes held) */
           wait_ms(500); if (seq_ticks == t0) { fails++; printf("selftest: the clock set outside but none coming, PLAY does not run\n"); }
           t1 = seq_ticks;                               /* then the clock: it steps them */
@@ -1208,6 +1212,108 @@ static void selftest(void)
           if (sq[1].n[0].len != 254 || ui.roll_pen[1] != 254) { fails++; printf("selftest: a held note's length is not the next one's (%d, %d)\n", sq[1].n[0].len, ui.roll_pen[1]); }
           tap(B_REC); ui.roll_cur[1] = 10; dmk_key(4, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30); tap(B_REC);
           if (sq[1].count != c0 + 1 || sq[1].n[c0].len != 254) { fails++; printf("selftest: a written note is not as long as the last one set\n"); } }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* the audit's (2026-10-25): notes never left on, takes never written wrong, saves never past their sector */
+        static uint8_t pk[4096];
+        int v, on, k;
+        uint8_t st, a1, b1;
+        #define ON(S, SRC) do { on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == (S) && vc[v].src == (SRC); } while (0)
+        dmk_init(39); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        /* a key held as the arp comes on, its pitch then fed to the arp by the roll: let go, its voice ends */
+        note_on_s(1, 69); ui.val[1][PG_ROLL][2][0] = choice_val(AR_UP, AR_N); sp_sync();
+        note_on_vel(1, 69, SRC_ROLL, 100); wait_ms(100);
+        note_off_s(1, 69); note_off_src(1, 69, SRC_ROLL); wait_ms(100);
+        ON(1, SRC_KEY);
+        if (on) { fails++; printf("selftest: a key held as the arp came on stays on after its release\n"); }
+        /* a held arp sounding, a new project: nothing left on */
+        ui.val[1][PG_ROLL][2][4] = choice_val(1, 2); sp_sync();
+        note_on_s(1, 60); note_off_s(1, 60); wait_ms(300);
+        project_empty(); wait_ms(300);
+        ON(1, SRC_ARP);
+        if (on || arp[1].n) { fails++; printf("selftest: a new project leaves the arp sounding (%d on, %d held)\n", on, arp[1].n); }
+        /* HOLD, playing, the roll feeding it: STOP lets go */
+        dmk_init(39); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[1][PG_ROLL][2][0] = choice_val(AR_UP, AR_N); ui.val[1][PG_ROLL][2][4] = choice_val(1, 2); sp_sync();
+        seq_play(1); wait_ms(1500); seq_play(0); wait_ms(600);
+        ON(1, SRC_ARP);
+        if (on || arp[1].n) { fails++; printf("selftest: after STOP a held arp plays on what the roll fed it\n"); }
+        /* MIDI in: two channels on one pitch, a follower in harmony, both let go: nothing left; nothing sent back out */
+        dmk_init(39); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_GLOBAL][3][1] = choice_val(1, 4); sp_sync();   /* out: notes */
+        ch.follow[2] = FW_HARM1; ui.synth = 0;
+        while (dmk_midi_take(&st, &a1, &b1)) {}
+        dmk_midi(0x90, 60, 100); dmk_midi(0x91, 60, 100); wait_ms(60);
+        dmk_midi(0x80, 60, 0); dmk_midi(0x81, 60, 0); wait_ms(60);
+        ON(2, SRC_MIDI);
+        if (on) { fails++; printf("selftest: a MIDI note on two channels leaves its harmony on\n"); }
+        k = 0; while (dmk_midi_take(&st, &a1, &b1)) k += (st & 0xE0) == 0x80;
+        if (k) { fails++; printf("selftest: MIDI in notes are sent back out (%d)\n", k); }
+        /* the clock out: its first clock with the start */
+        ui.val[0][PG_GLOBAL][3][1] = choice_val(3, 4); sp_sync();
+        seq_play(1); seq_play(0);
+        { int fa = 0, f8 = 0; while (dmk_midi_take(&st, &a1, &b1)) { if (st == 0xFA) fa = 1; else if (st == 0xF8 && fa && !f8) f8 = 1; }
+          if (!f8) { fails++; printf("selftest: the clock out's first clock does not come with the start\n"); } }
+        /* the tempo raised inside a step: one step, not several */
+        dmk_init(39); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_HOME][0][4] = 30; sp_sync(); seq_play(1);
+        while ((seq_now() & 255u) < 220u) dmk_render(b, 32);
+        { uint32_t t0 = seq_ticks; ui.val[0][PG_HOME][0][4] = 120; sp_sync(); dmk_render(b, 32);
+          if (seq_ticks - t0 > 1) { fails++; printf("selftest: a faster tempo inside a step ran %u steps at once\n", (unsigned)(seq_ticks - t0)); } }
+        seq_play(0);
+        /* recording: a key held across a stop and a start is not written 255 steps long; across a pattern switch, not
+         * into the next */
+        dmk_init(39); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_SEQ); ui.synth = 1; sq[1].count = 0; tap(B_REC); seq_play(1); wait_ms(800);
+        dmk_key(9, 1); wait_ms(600); tap(B_PLAY); tap(B_PLAY); wait_ms(600); dmk_key(9, 0); wait_ms(60);
+        for (k = 0; k < sq[1].count; k++) if (sq[1].n[k].len > 16) { fails++; printf("selftest: a key held across a stop is written %d steps long\n", sq[1].n[k].len); break; }
+        sq[1].count = 0;
+        dmk_key(9, 1); wait_ms(200); pat_pick_syn(1, 3); wait_ms(4000); dmk_key(9, 0); wait_ms(60);
+        if (sq[1].count) { fails++; printf("selftest: a key held across a pattern switch is written into the next\n"); }
+        tap(B_PLAY); tap(B_REC);
+        /* the platform's latency: a take lands as much earlier (it was heard that much after it was rendered) */
+        dmk_init(39); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_SEQ); ui.synth = 1; sq[1].count = 0; tap(B_REC); seq_play(1); wait_ms(1000);
+        dmk_latency((int)(seq_per() >> 8) / 4);         /* a quarter of a step */
+        do dmk_render(b, 32); while ((seq_now() & 255u) < 120u || (seq_now() & 255u) > 136u);   /* half into a step */
+        dmk_key(9, 1); wait_ms(200); dmk_key(9, 0); wait_ms(30);
+        if (sq[1].count != 1 || sq[1].n[0].off < 6 || sq[1].n[0].off > 10) { fails++; printf("selftest: a take with latency lands at %d/32, not 8\n", sq[1].count ? sq[1].n[0].off : -1); }
+        dmk_latency(0); tap(B_PLAY); tap(B_REC);
+        /* USER chords to 16 half-bars, notes past a shortened end, a song too big: saved as they are, or said */
+        host_store_on(1, 1);
+        dmk_init(40); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        uprog[0].n = 2; uprog[0].s[0].half = 12; uprog[0].s[1].half = 16;
+        sq[1].count = 0; sq[1].steps = 16; seq_add(1, 2, 2, 60, 100); seq_add(1, 12, 2, 64, 100); sq[1].steps = 8;
+        st_ver = ST_VER;
+        if (song_unpack(pk, (uint32_t)song_pack(pk)) || uprog[0].s[0].half != 12 || uprog[0].s[1].half != 16 || sq[1].count != 2)
+            { fails++; printf("selftest: a song loses its long chords (%d %d) or the notes past its end (%d)\n", uprog[0].s[0].half, uprog[0].s[1].half, sq[1].count); }
+        for (int q = 0; q < DMK_SYNTHS; q++) for (int pp = 0; pp < SYN_PATS; pp++) {   /* every pattern full: no byte past */
+            spat[q][pp].used = 1; spat[q][pp].steps = 256; spat[q][pp].count = SEQ_NOTES;
+            for (k = 0; k < SEQ_NOTES; k++) { spat[q][pp].n[k].step = (uint8_t)k; spat[q][pp].n[k].len = 1; spat[q][pp].n[k].note = 60; spat[q][pp].n[k].vel = 100; spat[q][pp].n[k].off = 0; }
+        }
+        for (int q = 0; q < DMK_SYNTHS; q++) spat_load(q, syn_pat(q));
+        if (song_pack(st_buf + ST_HDR) != -1) { fails++; printf("selftest: a song too big packs\n"); }
+        tap(B_SAVE); tap(B_SAVE);
+        if (strcmp(ui.note, "Too many notes to save")) { fails++; printf("selftest: a song too big says %s\n", ui.note); }
+        /* OCT- twice deletes only the project it was armed on; Ready goes with the work left */
+        dmk_init(41); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_SAVE); tap(B_SAVE); save_pick(1); tap(B_SAVE);   /* two projects */
+        if (!song_used(0) || !song_used(1)) { fails++; printf("selftest: the arm test's two saves\n"); }
+        tap(B_OCTD); save_pick(0); tap(B_OCTD);
+        if (!song_used(0)) { fails++; printf("selftest: OCT- deletes a project it was not armed on\n"); }
+        seq_play(1); save_pick(1); tap(B_OCTD); tap(B_OCTD); seq_play(0);
+        if (!song_used(1) || strcmp(ui.note, "Stop to delete")) { fails++; printf("selftest: OCT- twice deletes while playing\n"); }
+        tap(B_REC); tap(B_HOME); tap(B_PLAY); tap(B_SAVE); save_pick(1); tap(B_PLAY); tap(B_PLAY);
+        if (ui.rec_ready) { fails++; printf("selftest: Ready stays armed into the project opened\n"); }
+        if (seq_rec) tap(B_REC);
+        /* a slot of a newer firmware: used, not opened, not saved over */
+        host_store[0x2000 + 1 * 4096 + 12] = (uint8_t)(ST_VER + 1);
+        songs_scan();
+        if (!song_used(1) || !song_newer(1) || !song_load(1)) { fails++; printf("selftest: a newer firmware's project reads as empty or opens\n"); }
+        save_open(); save_pick(1); tap(B_SAVE);
+        if (strcmp(ui.note, "Made by a newer Demake")) { fails++; printf("selftest: a save goes over a newer firmware's project\n"); }
+        host_store_on(0, 0);
+        #undef ON
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {   /* FX's Space, a synth's sends: its ALGO and PRESET the verb all share, Off first (the owner found no way to set

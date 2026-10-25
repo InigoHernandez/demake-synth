@@ -63,8 +63,10 @@ static const int8_t BTN_PAGE[B_COUNT] = {PG_FX, PG_FILTER, PG_AMP, PG_LFO, PG_SO
                                          PG_ROLL, -1, -1, -1, -1};
 static const char *const BTN_NAME[B_COUNT] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ",
                                               "PLAY", "REC", "OCT−", "OCT+"};
-static const char *const LAYER_NAME[B_COUNT] = {"ALGORITHM, the effect", "help", "help", "help", "the sound", "ALGORITHM, the type",
-                                                "", "projects, sounds", "the progression", "K2 the harmony, OCT\xE2\x88\x92 clears", "", "", "", ""};
+/* what a button held does (shown after 350 ms); none: a slow press is a tap (the audit: placeholders, and layers
+ * named that were never there) */
+static const char *const LAYER_NAME[B_COUNT] = {"", "", "", "", "SAVE keeps, OCT\xE2\x88\x92 init", "",
+                                                "", "", "OCT+ to the roll, K1 a slot", "ALGO follow, K2 harmony, OCT\xE2\x88\x92 clear", "", "", "", ""};
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
@@ -177,6 +179,9 @@ static struct {
     uint8_t song, song_pick, list_top;                  /* the project open's slot; Save's cursor; the first row in view */
     uint8_t ren_slot, ren_v[3];                         /* a name being changed: its slot (0xFF: none), its words */
     uint32_t ren_at, nm_n;                              /* (when it was turned: written once it rests) */
+    uint8_t key_pg[DMK_KEYS];                           /* recording: its synth's pattern then (switched since: not
+                                                           written into the next) */
+    uint8_t arm_at;                                     /* the project or track an OCT- twice was armed on */
     uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
     uint8_t arr_cur, arr_bars;                          /* Arrange: the step cursor; the bars a key writes a step with */
     uint8_t copy_arm, copy_to;                          /* HOME held + OCT+: a pattern key next pastes into it */
@@ -191,6 +196,11 @@ static struct {
 } ui;
 
 static uint8_t leds[DMK_KEYS + B_COUNT];
+static uint32_t mi_clk, mi_last, mi_per;                /* MIDI clock in: clocks since start; when the last came;
+                                                           samples between, Q4 */
+static uint8_t mi_armed;                                /* a start came: the next clock is the first step's */
+static uint32_t mi_arm_at;
+static void mi_start(void);
 
 static void notice(const char *s)
 {
@@ -313,6 +323,7 @@ static uint8_t song_nmv[ST_SONGS][3];
 static int song_rename(int i, const uint8_t *v);
 static void project_empty(void);
 static int song_changed(void);
+static int song_newer(int i);
 static void song_new(void);
 static const char *song_name(int i);
 static int sound_save(int s);
@@ -726,9 +737,10 @@ static void note_name(char *o, int n)
 static int lit(int k) { return ui.touch_k == k && ui.now - ui.touch_ms < 1000u; }
 /* ---- SAVE (the owner's two pages): Projects, the fourteen slots in a list; Sounds, the three tracks' */
 #define SAVE_ROWS 4                                     /* the projects in view */
-static void ren_flush(void)                             /* a name changed: written now */
+static void ren_flush(void)                             /* a name changed: written now (playing, later: a write stops
+                                                           the sound) */
 {
-    if (ui.ren_slot >= ST_SONGS) return;
+    if (ui.ren_slot >= ST_SONGS || seq_on) return;
     if (song_rename(ui.ren_slot, ui.ren_v)) notice("Not renamed");
     ui.ren_slot = 0xFF;
 }
@@ -1129,7 +1141,7 @@ static void foot(void)
         text_fit(x, Y_FOOT + 2, end - x, v, &FS, lit(4) ? HOLO : C_INK);
         if (typed && !sel_scrolls(ui.page)) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "PRESET too", &FS, C_LABEL);   /* (where SELECT
                                                            scrolls the rows, the dots say so: page_dots) */
-        if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, !seq_on && seq_rec ? "Keys write" : "REC: write", &FS, C_LABEL);
+        if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, seq_on ? (seq_rec ? "Recording" : "REC: record") : seq_rec ? "Keys write" : "REC: write", &FS, C_LABEL);
 
         if (ui.page == PG_HOME) {                       /* where the music is: the pattern, or the song */
             char t[20], *o = t;
@@ -2455,9 +2467,10 @@ static void overlays(void)
     }
     for (b = 0; b < B_COUNT; b++)
         if (ui.btn_held >> b & 1u && !(ui.btn_used >> b & 1u) && ui.now - ui.btn_down_at[b] > 350u && LAYER_NAME[b][0]) {
-            char t[40];
+            char t[64];
             int w, x;
-            str_cat(str_cat(str_cat(t, BTN_NAME[b]), ": "), LAYER_NAME[b]);
+            str_cat(t, LAYER_NAME[b]);                   /* (the button held is named by the hand on it: room for
+                                                           what it does) */
             w = text_w(t, &FS) + 2 * PAD + 8;
             x = (DMK_W - w) / 2;
             box(x, Y_FOOT - 40, w, 30);
@@ -2506,6 +2519,7 @@ static void stress_tick(void)
     if (stress.on && ui.now - stress.at >= 2000u) { stress_notes(0); stress_notes(1); stress.at = ui.now; }
 }
 
+static void roll_cur_in(void);
 static const uint8_t *ui_frame(uint32_t ms)
 {
     {                                                   /* the bits: a new arrangement every 140 ms, at random */
@@ -2515,6 +2529,8 @@ static const uint8_t *ui_frame(uint32_t ms)
         if (holo_pat > 5) holo_pat = 0;
     }
     ui.now = ms;
+    if (mi_armed && seq_frames - mi_arm_at > DMK_SR / 8u) mi_start();   /* a start with no clock after it */
+    roll_cur_in();
     if (ui.ren_slot < ST_SONGS && ui.now - ui.ren_at > 900u && !seq_on) ren_flush();   /* a name turned: written as it rests */
     if (DMK_FM1_DIAG) stress_tick();
     clip_all();
@@ -2708,6 +2724,13 @@ static void play_toggle(void)                           /* PLAY: started or stop
     if (!seq_on && clock_ext && !ext_running()) notice("No clock in: its own tempo");
     ui.rec_ready = 0;
     seq_play(!seq_on);
+    if (seq_on) {                                       /* (its count from the start; keys held, recorded from here:
+                                                           held across a stop they were written 255 steps long) */
+        int k;
+        mi_clk = 0;
+        for (k = 0; k < DMK_KEYS; k++)
+            if (ui.keys_down[k] && ui.key_roll[k] == 2) { ui.key_t0[k] = seq_now(); ui.key_q8[k] = seq_rec_q8(ui.key_sy[k]); ui.key_pg[k] = spat_gen[ui.key_sy[k]]; }
+    }
 }
 
 DMK_SMALL static void ui_button(int b, int down)
@@ -2814,26 +2837,29 @@ DMK_SMALL static void ui_button(int b, int down)
             notice("Init");
             return;
         }
-        if (b == B_OCTD && ui.page == PG_DISCS && ui.row[PG_DISCS]) {   /* Sounds, OCT- twice: the track's sound INIT */
+        if (b == B_OCTD && ui.page == PG_DISCS && ui.row[PG_DISCS]) {   /* Sounds, OCT- twice: the track's sound INIT
+                                                           (twice on that track: armed on another, it was this one) */
             char t[24];
             ui.btn_used |= bit;                         /* (not the octave as well) */
-            if (ui.clear_arm == 6 && ui.now - ui.clear_at < 2000u) {
+            if (ui.clear_arm == 6 && ui.arm_at == ui.synth && ui.now - ui.clear_at < 2000u) {
                 sound_init(ui.synth);
                 ui.preset[ui.synth] = ui.val[ui.synth][PG_SOUND][0][0];
-                fmt_int(str_cat(t, "Track "), ui.synth + 1); str_cat(t, ": init");
+                str_cat(fmt_int(str_cat(t, "Track "), ui.synth + 1), ": init");
                 ui.clear_arm = 0;
-            } else { ui.clear_arm = 6; ui.clear_at = ui.now; str_cat(t, "OCT\xE2\x88\x92 again: init"); }
+            } else { ui.clear_arm = 6; ui.arm_at = ui.synth; ui.clear_at = ui.now; str_cat(t, "OCT\xE2\x88\x92 again: init"); }
             notice(t);
             return;
         }
-        if (b == B_OCTD && ui.page == PG_DISCS) {       /* Projects, OCT- twice: the project picked deleted */
+        if (b == B_OCTD && ui.page == PG_DISCS) {       /* Projects, OCT- twice: the project picked deleted (twice on
+                                                           that one; stopped: a write stops the sound) */
             ui.btn_used |= bit;
             if (!song_used(ui.song_pick)) { notice("Empty already"); return; }
-            if (ui.clear_arm == 3 && ui.now - ui.clear_at < 2000u) {
+            if (seq_on) { notice("Stop to delete"); return; }
+            if (ui.clear_arm == 3 && ui.arm_at == ui.song_pick && ui.now - ui.clear_at < 2000u) {
                 if (ui.ren_slot == ui.song_pick) ui.ren_slot = 0xFF;   /* (its name being turned: gone with it) */
                 notice(song_erase(ui.song_pick) ? "Not deleted" : "Deleted");
                 ui.clear_arm = 0;
-            } else { ui.clear_arm = 3; ui.clear_at = ui.now; notice("OCT\xE2\x88\x92 again: delete it"); }
+            } else { ui.clear_arm = 3; ui.arm_at = ui.song_pick; ui.clear_at = ui.now; notice("OCT\xE2\x88\x92 again: delete it"); }
             return;
         }
         if (b == B_OCTD && (ui.btn_held >> B_SEQ & 1u || ui.btn_held >> B_HOME & 1u)) {
@@ -2849,7 +2875,7 @@ DMK_SMALL static void ui_button(int b, int down)
             } else {
                 ui.clear_arm = (uint8_t)what;
                 ui.clear_at = ui.now;
-                notice(all ? "OCT\xE2\x88\x92 again: all three" : "OCT\xE2\x88\x92 again: clear");
+                notice(all ? "OCT\xE2\x88\x92 again: all three rolls" : "OCT\xE2\x88\x92 again: clear its roll");
             }
             return;
         }
@@ -2867,7 +2893,8 @@ DMK_SMALL static void ui_button(int b, int down)
         return;
     }
     if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { save_open(); return; }   /* (held: the same) */
-    if (ui.now - ui.btn_down_at[b] > 350u) return;      /* a hold showed its layer: no tap */
+    if (ui.now - ui.btn_down_at[b] > 350u && (LAYER_NAME[b][0] || b == B_HOME)) return;   /* a hold showed its layer: no
+                                                           tap (one with none: a slow press is one) */
     if (b == B_SAVE && ui.page != PG_DISCS) {           /* SAVE: its pages (the owner), Projects first */
         if (!store_on()) { notice("No store here"); return; }
         save_open();
@@ -2892,9 +2919,20 @@ DMK_SMALL static void ui_button(int b, int down)
         if (!store_on()) { notice("No store here"); return; }
         if (seq_on) { notice("Stop to save"); return; }
         ren_flush();
+        if (song_newer(at)) { notice("Made by a newer Demake"); return; }
         if (song_used(at) && at != ui.song) { notice("Pick an empty slot"); return; }
-        if (!song_used(at)) nm_roll(ui.val[0][PG_DISCS][1], ++ui.nm_n * 2654435761u ^ ui.now ^ (uint32_t)at * 977u);
-        if (song_save(at)) { notice("Not saved"); return; }
+        {
+            uint8_t keep[3], *nv = ui.val[0][PG_DISCS][1];
+            int r;
+            keep[0] = nv[0]; keep[1] = nv[1]; keep[2] = nv[2];
+            if (!song_used(at)) nm_roll(nv, ++ui.nm_n * 2654435761u ^ ui.now ^ (uint32_t)at * 977u);
+            r = song_save(at);
+            if (r) {                                    /* (not saved: its name as it was) */
+                nv[0] = keep[0]; nv[1] = keep[1]; nv[2] = keep[2];
+                notice(r == -2 ? "Too many notes to save" : "Not saved");
+                return;
+            }
+        }
         ui.song = (uint8_t)at;
         str_cat(str_cat(m, "Saved: "), song_name(at));
         notice(m);
@@ -2912,7 +2950,8 @@ DMK_SMALL static void ui_button(int b, int down)
             return;
         }
         ui.clear_arm = 0;
-        if (song_used(at)) { if (song_load(at)) { notice("Not opened"); return; } notice("Opened"); }
+        ui.rec_ready = 0;                               /* (Ready was for the work left) */
+        if (song_used(at)) { if (song_load(at)) { notice(song_newer(at) ? "Made by a newer Demake" : "Not opened"); return; } notice("Opened"); }
         else { project_empty(); notice("New project"); }
         ui.song = (uint8_t)at;
         for (s = 0; s < DMK_SYNTHS; s++) ui.preset[s] = ui.val[s][PG_SOUND][0][0];
@@ -3070,7 +3109,8 @@ DMK_SMALL static void ui_encoder(int e, int d)
             int at = ui.song_pick;
             if (k == 0) save_pick(at + dir);
             if (k == 1 || k == 2) {                     /* a project's name, a word a knob */
-                if (!song_used(at)) { notice("Saved, it has a name"); return; }
+                if (!song_used(at)) { notice("Empty: no name yet"); return; }
+                if (song_newer(at)) { notice("Made by a newer Demake"); return; }
                 if (seq_on) { notice("Stop to rename"); return; }
                 if (ui.ren_slot != at) {
                     ren_flush();
@@ -3150,10 +3190,17 @@ DMK_SMALL static void ui_encoder(int e, int d)
 
 /* a key: on the roll, stopped, it writes at the cursor (or holds the note of its pitch there); playing with REC, it
  * is recorded as played; else it plays. Its note as it is, on the scale or off it */
+static void roll_cur_in(void)                           /* each roll's cursor inside its pattern (a shorter one switched
+                                                           in left it past the end: a note written there never played) */
+{
+    int s;
+    for (s = 0; s < DMK_SYNTHS; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = (uint8_t)(sq[s].steps - 1);
+}
 DMK_SMALL static void ui_key(int k, int down)
 {
     int n, s;
     if (k < 0 || k >= DMK_KEYS) return;
+    roll_cur_in();
     ui.boot_done = 1;
     n = 53 + k + ui.octave * 12;                        /* F3 = 53, chromatic */
     if (down && ui.btn_held >> B_HOME & 1u) {           /* HOME held: the white keys the sixteen scenes, black 1-3 the mutes */
@@ -3225,7 +3272,7 @@ DMK_SMALL static void ui_key(int k, int down)
             strike(s, ui.key_ch[k], ui.key_nch[k], k);
             ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */
             ui.key_t0[k] = seq_now();
-            if (ui.key_roll[k] == 2) ui.key_q8[k] = seq_rec_q8(s);   /* where on its own roll, as played */
+            if (ui.key_roll[k] == 2) { ui.key_q8[k] = seq_rec_q8(s); ui.key_pg[k] = spat_gen[s]; }   /* where on its own roll, as played */
             if (ui.page == PG_ROLL && !seq_on && seq_rec) {   /* the roll, stopped, REC lit: the chord written at the cursor */
                 int c = ui.roll_cur[s];
                 roll_heard(s);
@@ -3240,6 +3287,8 @@ DMK_SMALL static void ui_key(int k, int down)
         s = ui.key_sy[k];
         if (ui.key_slot[k]) { ch_cur = ui.key_slot[k]; ui.key_slot[k] = 0; }   /* the cursor to the next slot */
         if (ui.key_roll[k] == 4) ui.roll_cur[s] = (uint8_t)((ui.key_step[k] + ui.roll_pen[s]) % sq[s].steps);   /* after the chord */
+        if (ui.key_roll[k] == 2 && (seq_now() < ui.key_t0[k] || ui.key_pg[k] != spat_gen[s])) ui.key_roll[k] = 0;   /* (a stop or a
+                                                           pattern switch since: not written) */
         if (ui.key_roll[k] == 2 && seq_on) roll_heard(s);
         for (j = 0; j < ui.key_nch[k]; j++) {
             later_off(s, ui.key_ch[k][j], SRC_KEY, k + 1);
@@ -3273,6 +3322,7 @@ DMK_SMALL static void ui_key(int k, int down)
             ui.key_t0[k] = seq_now();
             ui.key_q8[k] = seq_rec_q8(s);               /* where on its own roll, as played (a switched pattern starts
                                                            it again) */
+            ui.key_pg[k] = spat_gen[s];
         }
         ui.key_note[k] = (uint8_t)n;
         note_on_s(s, n);
@@ -3294,7 +3344,8 @@ DMK_SMALL static void ui_key(int k, int down)
     if (ui.key_roll[k] == 1) {                          /* step entry: the cursor to the note's end */
         int j = seq_find(s, ui.key_step[k], ui.key_note[k]);
         if (j >= 0) ui.roll_cur[s] = (uint8_t)((sq[s].n[j].step + sq[s].n[j].len) % sq[s].steps);
-    } else if (ui.key_roll[k] == 2 && seq_on) {         /* recorded: where it began, as long as it was held */
+    } else if (ui.key_roll[k] == 2 && seq_on && seq_now() >= ui.key_t0[k] && ui.key_pg[k] == spat_gen[s]) {   /* recorded: where it began,
+                                                           as long as it was held (a stop or a pattern switch since: not) */
         uint32_t held = seq_now() - ui.key_t0[k];
         roll_heard(s);
         if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_note[k], 100, 0, 1, 0) < 0) roll_full();
@@ -3319,6 +3370,8 @@ static const uint8_t *ui_leds(void)
         for (i = 0; i < DMK_SYNTHS; i++) leds[1 + 2 * i] = pat_mute >> i & 1u ? 0 : 255;
     }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
+    if (ui.page == PG_DISCS) leds[DMK_KEYS + B_SAVE] = 255;   /* (Save and the Song page: their buttons lit) */
+    if (ui.page == PG_ARR) leds[DMK_KEYS + B_SEQ] = 255;
     leds[DMK_KEYS + B_PLAY] = seq_on || (ui.rec_ready && seq_rec && (ui.now / 250u) & 1u) ? 255 : 0;   /* ready: blinking */
     leds[DMK_KEYS + B_REC] = seq_rec ? 255 : 0;         /* REC armed: lit (it never was) */
     if (ch.keys) leds[DMK_KEYS + B_ARP] = 255;          /* the keys play chords everywhere: ARP lit */
@@ -3339,8 +3392,16 @@ static const uint8_t *ui_leds(void)
  * synths in harmony with it along; with the clock outside (Clock: Ext), its start and stop play and stop, and each six
  * of its 24 a beat step the sequences, its pace taken as the tempo */
 static uint8_t mi_hn[DMK_SYNTHS][128][DMK_SYNTHS];      /* a note's harmony on each follower, + 1 */
+static uint8_t mi_hc[DMK_SYNTHS][128];                  /*   and the channels holding that note: its harmony ends with
+                                                           the last (two channels on one pitch left it on) */
 static uint8_t mi_sy[16][128];                          /* each channel's notes on: the synth that plays it, + 1 */
-static uint32_t mi_clk, mi_last, mi_per;                /* clocks since start; when the last came; samples between, Q4 */
+static void mi_start(void)                              /* the outside start, on its first clock (or none coming: at
+                                                           once, its own tempo, as a song of 0.2 needed) */
+{
+    mi_armed = 0; mi_clk = 0;
+    if (song_mode && song_n) song_start(0);
+    seq_play(1);
+}
 static void midi_in(int st, int d1, int d2)
 {
     int ty = st & 0xF0, s, f;
@@ -3350,32 +3411,36 @@ static void midi_in(int st, int d1, int d2)
         ext_last = now; ext_seen = 1;
         if (dt > 200u && dt < 20000u) mi_per = mi_per ? mi_per + (int32_t)(dt * 16u - mi_per) / 8 : dt * 16u;
         if (clock_ext && mi_per) { int b = (int)(DMK_SR * 60u * 16u / (mi_per * 24u)); seq_bpm = b < 20 ? 20 : b > 300 ? 300 : b; }
-        if (clock_ext && seq_on && ++mi_clk % 6u == 0u) {
+        if (clock_ext && mi_armed) mi_start();          /* the clock after a start is the downbeat (MIDI's rule: it
+                                                           played on the start itself, a 24th early) */
+        else if (clock_ext && seq_on && ++mi_clk % 6u == 0u) {
             seq_step();
             if (seq_stop_req) { seq_stop_req = 0; seq_play(0); }   /* the song's end, on the outside clock too */
         }
         return;
     }
-    if (st == 0xFA || st == 0xFB) {                     /* start, continue */
-        if (clock_ext && !seq_on) { mi_clk = 0; if (song_mode && song_n) song_start(0); seq_play(1); }
+    if (st == 0xFA || st == 0xFB) {                     /* start, continue: armed for the next clock */
+        if (clock_ext && !seq_on) { mi_armed = 1; mi_arm_at = seq_frames; }
         return;
     }
-    if (st == 0xFC) { if (clock_ext) seq_play(0); return; }   /* stop */
+    if (st == 0xFC) { mi_armed = 0; if (clock_ext) seq_play(0); return; }   /* stop */
     if ((ty != 0x80 && ty != 0x90) || d1 < 0 || d1 > 127) return;
     s = midi_chans && (st & 15) < DMK_SYNTHS ? st & 15 : ui.synth;
     if (mi_sy[st & 15][d1]) {                           /* on already: the synth it began on; ended first if again */
         int s0 = mi_sy[st & 15][d1] - 1;
         mi_sy[st & 15][d1] = 0;
-        note_off_s(s0, d1);
-        for (f = 0; f < DMK_SYNTHS; f++) if (mi_hn[s0][d1][f]) { note_off_s(f, mi_hn[s0][d1][f] - 1); mi_hn[s0][d1][f] = 0; }
+        note_off_src(s0, d1, SRC_MIDI);
+        if (mi_hc[s0][d1] && !--mi_hc[s0][d1])
+            for (f = 0; f < DMK_SYNTHS; f++) if (mi_hn[s0][d1][f]) { note_off_src(f, mi_hn[s0][d1][f] - 1, SRC_MIDI); mi_hn[s0][d1][f] = 0; }
         if (!(ty == 0x90 && d2)) return;
     } else if (!(ty == 0x90 && d2)) return;             /* an off for nothing on */
     {
         mi_sy[st & 15][d1] = (uint8_t)(s + 1);
-        note_on_vel(s, d1, SRC_KEY, d2);                /* its velocity heard (VOICE's Velocity) */
+        note_on_vel(s, d1, SRC_MIDI, d2);               /* its velocity heard (VOICE's Velocity); not sent back out */
+        if (mi_hc[s][d1]++) return;                     /* (another channel's: its harmony sounds already) */
         for (f = 0; f < DMK_SYNTHS; f++) {
             mi_hn[s][d1][f] = 0;
-            if (f != s && harm_of(f) == s) { int h = harm_note(f, d1); if (h >= 0 && h < 128) { note_on_vel(f, h, SRC_KEY, d2); mi_hn[s][d1][f] = (uint8_t)(h + 1); } }
+            if (f != s && harm_of(f) == s) { int h = harm_note(f, d1); if (h >= 0 && h < 128) { note_on_vel(f, h, SRC_MIDI, d2); mi_hn[s][d1][f] = (uint8_t)(h + 1); } }
         }
     }
 }

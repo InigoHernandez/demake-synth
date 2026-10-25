@@ -35,6 +35,7 @@ void dmk_key(int k, int down);
 void dmk_button(int b, int down);
 void dmk_encoder(int e, int delta);
 void dmk_midi(int status, int d1, int d2);          /* MIDI in: notes (by GLO's MIDI row), the clock, start, stop */
+void dmk_latency(int samples);                      /* from a key to the sound heard: recording takes it off */
 void dmk_status(int cpu, int core2, int screen, uint32_t shorts);   /* the platform's load, % of real time: the sound
                                                        (its wait for the second core in it), the second core, the screen;
                                                        the times the sound ran short. Shown on GLO */

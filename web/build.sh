@@ -9,7 +9,7 @@ cd "$ROOT"
 [ -f firmware/gen/dmk_font.h ] || .venv/bin/python tools/gen_font.py
 emcc -O3 -std=gnu11 -Wall -Wno-unused-function -Ifirmware/src -Ifirmware/gen web/dmk_web.c \
     -sSTANDALONE_WASM=1 --no-entry -sINITIAL_MEMORY=4194304 -sALLOW_MEMORY_GROWTH=0 -sSTACK_SIZE=131072 \
-    -sEXPORTED_FUNCTIONS=_w_audio,_w_render,_w_init,_w_frame,_w_palette,_w_leds,_w_key,_w_button,_w_encoder,_w_midi,_w_store,_w_store_gen,_w_midi_take \
+    -sEXPORTED_FUNCTIONS=_w_audio,_w_render,_w_init,_w_frame,_w_palette,_w_leds,_w_key,_w_button,_w_encoder,_w_midi,_w_store,_w_store_gen,_w_midi_take,_w_latency \
     -o web/dmk.wasm
 ls -l web/dmk.wasm
 cp "assets/fonts/Geist[wght].ttf" web/fonts/Geist.ttf      # Geist, SIL OFL 1.1 (LICENSES/OFL-1.1-Geist.txt)

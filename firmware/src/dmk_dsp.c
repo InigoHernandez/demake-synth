@@ -120,7 +120,7 @@ static voice_t vc[DMK_VOICES];
 static uint32_t vc_clock;
 /* who started a voice: the keys, a roll, the chord machine; a note off ends only its own source's (the progression's
  * chord change never cuts a note the hands hold, nor the reverse) */
-enum { SRC_KEY, SRC_ROLL, SRC_CHORD, SRC_ARP };
+enum { SRC_KEY, SRC_ROLL, SRC_CHORD, SRC_ARP, SRC_MIDI };   /* (MIDI in's: never sent back out, or a loop sang on) */
 static int arp_take(int sy, int n, int vel);            /* (dmk_seq.c: a synth's arp takes its notes, plays them its way) */
 static int arp_drop(int sy, int n);
 static int32_t vc_tail[DMK_SYNTHS];                     /* a stolen voice's last level, fading out (~1.5 ms) */
@@ -268,7 +268,7 @@ static void note_on_vel(int sy, int n, int src, int vel)
     o->env = 0; o->stage = 1;
     o->lp = o->bp = o->lp2 = o->bp2 = 0;
     o->note = (uint8_t)n; o->sy = (uint8_t)sy; o->on = 1; o->age = vc_clock++; o->src = (uint8_t)src; o->lastv = 0;
-    if (midi_out & 1u) mq_put(0x90 | sy, n, vel);
+    if (midi_out & 1u && src != SRC_MIDI) mq_put(0x90 | sy, n, vel);
 }
 #define VEL_KEY 100                                     /* the keys' velocity, as the roll writes it */
 static void note_on_src(int sy, int n, int src) { note_on_vel(sy, n, src, VEL_KEY); }
@@ -279,10 +279,12 @@ static void note_off_src(int sy, int n, int src)
 {
     int i, best = -1;
     uint32_t oldest = 0xFFFFFFFFu;
-    if (src != SRC_ARP && sy >= 0 && sy < DMK_SYNTHS && arp_drop(sy, n)) return;   /* (one the arp took) */
-    if (midi_out & 1u && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     for (i = 0; i < DMK_VOICES; i++)
         if (vc[i].on && vc[i].note == n && vc[i].sy == sy && vc[i].src == src && vc[i].age < oldest) { oldest = vc[i].age; best = i; }
+    /* its own voice first; none, one the arp took (the arp asked first ate another's off: a key held as the arp came on
+     * stuck, its pitch in the pool from the roll) */
+    if (best < 0 && src != SRC_ARP && sy >= 0 && sy < DMK_SYNTHS && arp_drop(sy, n)) return;
+    if (midi_out & 1u && src != SRC_MIDI && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     if (best >= 0) { vc[best].on = 0; if (vc[best].stage) vc[best].stage = 3; }
 }
 static void note_on_s(int sy, int n) { note_on_src(sy, n, SRC_KEY); }   /* the keys' */

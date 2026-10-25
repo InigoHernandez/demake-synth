@@ -37,6 +37,8 @@ static const char *const NM_B[24] = {"harbour", "radio", "window", "tape", "mote
     "orchard", "tide", "hallway", "rooftop", "meadow", "comet", "ferry", "arcade", "forest", "pool", "street", "screen",
     "cassette", "palms", "lights"};
 static char song_nm[ST_SONGS][20];                      /* each slot's name, if it has one ("" : its progression's) */
+static uint8_t song_nw[ST_SONGS];                       /* a slot written by a newer firmware: used, not opened (it
+                                                           read as empty, and a save went over it) */
 static uint8_t song_nmv[ST_SONGS][3];                   /* and its words' places and mark, to change it (Save's K2, K3) */
 static const char *nm_word(int second, int i) { return (second ? NM_B : NM_A)[i % 24]; }
 static void nm_of(char *o, const uint8_t *v) { o[0] = 0; if (v[2] == NM_MARK && v[0] < 24u && v[1] < 24u) str_cat(str_cat(str_cat(o, NM_A[v[0]]), " "), NM_B[v[1]]); }
@@ -184,16 +186,17 @@ DMK_SMALL static int song_pack(uint8_t *o)                        /* the song op
     for (s = 0; s < DMK_SYNTHS; s++)                    /* each synth's patterns */
         for (g = 0; g < SYN_PATS; g++) {
             const pseq_t *q = &spat[s][g];
+            if (p - o + (q->used ? 3 + q->count * 5 : 1) > (int)(ST_SECTOR - ST_HDR)) return -1;   /* (checked before a
+                                                           byte of it: its head was written past the sector) */
             *p++ = q->used;
             if (!q->used) continue;
             *p++ = (uint8_t)(q->steps - 1); *p++ = q->count;   /* (1-256) */
-            if (p - o + q->count * 5 > (int)(ST_SECTOR - ST_HDR)) return -1;
             for (i = 0; i < q->count; i++) {
                 const snote_t *m = &q->n[i];
                 *p++ = m->step; *p++ = m->len; *p++ = m->note; *p++ = m->vel; *p++ = m->off;
             }
         }
-    if (p - o + SCENES * 6 + 3 + song_n * 2 > (int)(ST_SECTOR - ST_HDR)) return -1;
+    if (p - o + SCENES * 6 + 3 + song_n * 2 + DMK_SYNTHS > (int)(ST_SECTOR - ST_HDR)) return -1;   /* (the intervals too) */
     for (g = 0; g < SCENES; g++) {                      /* the scenes */
         *p++ = scn[g].used;
         if (!scn[g].used) continue;
@@ -218,7 +221,8 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
         q->used = 1;
         for (i = 0; i < c && e - p >= 5; i++, p += 5) {
             snote_t m = {p[0], p[1], p[2], p[3], (uint8_t)(p[4] & 31u)};
-            if (q->count < SEQ_NOTES && m.step < q->steps && m.len) q->n[q->count++] = m;
+            if (q->count < SEQ_NOTES && m.len) q->n[q->count++] = m;   /* (past its end too: kept, as the roll
+                                                           keeps them while shorter) */
         }
         *pp = p;
         return 0;
@@ -229,7 +233,7 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
     for (i = 0; i < c && e - p >= 4; i++, p += 4) {     /* (before 10 the spare bits were 0: on its step) */
         snote_t m = {(uint8_t)(p[0] & 63u), (uint8_t)(p[1] & 127u), (uint8_t)(p[2] & 127u), (uint8_t)(p[3] & 127u),
                      (uint8_t)(p[0] >> 6 | (p[2] >> 7) << 2 | (p[3] >> 7) << 3 | (p[1] >> 7) << 4)};
-        if (q->count < SEQ_NOTES && m.step < q->steps) q->n[q->count++] = m;
+        if (q->count < SEQ_NOTES) q->n[q->count++] = m;
     }
     *pp = p;
     return 0;
@@ -242,6 +246,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     if (n < 1 || *p++ != PG_SAVED) return -1;
     if (n < 1u + DMK_SYNTHS * PG_SAVED * 20u + 1u + DMK_SYNTHS + 4u * (3u + PROG_SLOTS * 4u) + DMK_SYNTHS * 4u + DMK_SYNTHS * 2u) return -1;
     seq_play(0);
+    arp_clear_all();                                    /* (the last project's arps: their pools went on in this one) */
+    for (s = 0; s < DMK_SYNTHS; s++) ch.hint[s] = 2;    /* (before 4 none were kept: the last project's stayed) */
     for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
     if (st_ver < 7u) for (k = 0; k < 3; k++) if (ui.val[0][PG_GLOBAL][2][k] == 64) {   /* the MIDI row never set (a song of 0.2, before
                                                            it was there; no choice is 64): In Synth, Out Notes, the
@@ -281,13 +287,18 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             c->root = *p++; c->q = *p++; c->half = *p++; c->pedal = *p++;
             if (c->root > 11) c->root = 0;
             if (c->q >= Q_COUNT) c->q = 0;
-            if (c->half < 1 || c->half > 8) c->half = 2;
+            if (c->half < 1 || c->half > 16) c->half = 2;   /* (to 16, as K3 writes them: 9-16 came back as 2) */
             c->pedal = c->pedal ? 1 : 0;
         }
         if (uprog[i].mode >= MO_COUNT) uprog[i].mode = MO_AEOL;
         if (uprog[i].voicing >= VO_COUNT) uprog[i].voicing = VO_WIDE;
     }
-    for (s = 0; s < DMK_SYNTHS; s++) { ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++; }
+    for (s = 0; s < DMK_SYNTHS; s++) {                  /* (each checked: a zoom past 2 divided by nothing) */
+        ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++;
+        if (ui.roll_view[s] < 14 || ui.roll_view[s] > 43) ui.roll_view[s] = 28;
+        if (!ui.roll_pen[s]) ui.roll_pen[s] = 1;
+        if (ui.roll_zoom[s] > 2) ui.roll_zoom[s] = 0;
+    }
     pat_init();
     song_init();
     if (st_ver < 2u) {                                  /* version 1: the rolls: each synth's first pattern, scene 1 */
@@ -361,8 +372,16 @@ static void songs_scan(void)                            /* which slots hold a so
     uint32_t n, g;
     st_gen = 0;
     for (i = 0; i < ST_SONGS; i++) {
-        song_gen[i] = 0; song_nm[i][0] = 0; song_nmv[i][2] = 0;
-        if (st_load(slot_at(i), ST_MAGIC_SONG, &n, &g)) continue;
+        song_gen[i] = 0; song_nm[i][0] = 0; song_nmv[i][2] = 0; song_nw[i] = 0;
+        if (st_load(slot_at(i), ST_MAGIC_SONG, &n, &g)) {
+            if (!dmk_store_read(slot_at(i), st_buf, ST_HDR) && st_get32(st_buf) == ST_MAGIC_SONG && (st_get32(st_buf + 12) & 0xFFFFu) > ST_VER) {
+                g = st_get32(st_buf + 12) >> 16;
+                song_gen[i] = g ? g : 1; song_nw[i] = 1;
+                str_cat(song_nm[i], "Newer firmware");
+                if (g > st_gen) st_gen = g;
+            }
+            continue;
+        }
         song_gen[i] = g ? g : 1;
         /* the progression's place, for the slot's name: the CHORD page's value, packed after the counts */
         song_prog[i] = st_buf[ST_HDR + 1 + PG_CHORD * 20 + 4];
@@ -375,6 +394,7 @@ static void songs_scan(void)                            /* which slots hold a so
     }
 }
 static int song_used(int i) { return i >= 0 && i < ST_SONGS && song_gen[i]; }
+static int song_newer(int i) { return i >= 0 && i < ST_SONGS && song_nw[i]; }
 /* the work open as last saved, opened or started: its packed bytes' check, to tell changes not saved (the owner: PLAY
  * twice on Projects lost a song unasked) */
 static uint32_t song_kept;
@@ -387,14 +407,15 @@ static void song_mark(void) { song_kept = song_check(); }
 static int song_changed(void) { uint32_t c = song_check(); return !c || c != song_kept; }
 static const char *song_name(int i) { return song_nm[i][0] ? song_nm[i] : PROGS[choice_index(choice_of(PG_CHORD, 0, 4), song_prog[i])]; }
 
-/* the song open into slot i: 0 saved, -1 not (no store, too long, the write failed) */
+/* the song open into slot i: 0 saved, -1 not (no store, the write failed), -2 too many notes for its sector */
 static int song_save(int i)
 {
     int n;
     if (ui.val[0][PG_DISCS][1][2] != NM_MARK)           /* a song without a name: one made up for it */
         nm_roll(ui.val[0][PG_DISCS][1], ui.now * 2654435761u ^ (uint32_t)i);
     n = song_pack(st_buf + ST_HDR);
-    if (n < 0 || st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
+    if (n < 0) return -2;
+    if (st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
     st_gen = (st_gen + 1u) & 0xFFFFu;
     song_gen[i] = st_gen ? st_gen : 1;
     song_kept = st_crc(st_buf + ST_HDR, (uint32_t)n) ^ (uint32_t)n;   /* (what was written) */
@@ -433,7 +454,7 @@ static int song_erase(int i)                            /* an empty record: the 
     if (!store_on()) return -1;
     st_put32(st_buf, 0); st_put32(st_buf + 4, 0); st_put32(st_buf + 8, 0); st_put32(st_buf + 12, 0);
     if (dmk_store_write(slot_at(i), st_buf, ST_HDR)) return -1;
-    song_nm[i][0] = 0; song_nmv[i][2] = 0;
+    song_nm[i][0] = 0; song_nmv[i][2] = 0; song_nw[i] = 0;
     song_gen[i] = 0;
     return 0;
 }
@@ -441,6 +462,7 @@ static void song_new(void)                              /* the first song: its r
 {
     int i, th = theme;
     seq_play(0);
+    arp_clear_all();                                    /* (its arps let go: a held one sounded on, stuck) */
     seq_init();
     for (i = 0; i < 4; i++) uprog[i].n = 0;
     chord_init();
@@ -468,7 +490,17 @@ static void store_boot(void)                            /* at start: the library
     if (!store_on()) return;
     lib_read();
     songs_scan();
-    for (i = 0; i < ST_SONGS; i++) if (song_gen[i] && (best < 0 || song_gen[i] > song_gen[best])) best = i;
-    if (best >= 0 && !song_load(best)) ui.song = (uint8_t)best;
-    else song_mark();                                   /* (the first song: as it starts) */
+    for (;;) {                                          /* the newest that opens (one that does not: the next; a
+                                                           half-read one left the work a mix: the first song again) */
+        int tried = best;
+        best = -1;
+        for (i = 0; i < ST_SONGS; i++)
+            if (song_gen[i] && !song_nw[i] && (tried < 0 || song_gen[i] < song_gen[tried]) && (best < 0 || song_gen[i] > song_gen[best])) best = i;
+        if (best < 0) break;
+        if (!song_load(best)) { ui.song = (uint8_t)best; return; }
+    }
+    song_new();
+    for (i = 0; i < ST_SONGS && song_gen[i]; i++) {}   /* (the work open goes to an empty slot, not over one) */
+    ui.song = (uint8_t)(i < ST_SONGS ? i : 0);
+    song_mark();                                        /* (the first song: as it starts) */
 }

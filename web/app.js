@@ -121,13 +121,15 @@
     if (ctx) { ctx.resume(); return; }
     try {
       ctx = new AudioContext({ sampleRate: 44100 });
-      await ctx.audioWorklet.addModule("worklet.js?v=11");
+      await ctx.audioWorklet.addModule("worklet.js?v=12");
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=27")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=28")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
+      // from a key to its sound: the browser's output and the worklet's quantum, so a take lands where it was heard
+      node.port.postMessage({ t: "lat", n: Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 44100) + 128 });
       power.textContent = "On";
       midiOn();
     } catch (e) { power.textContent = "No sound: " + e.message; }
@@ -272,7 +274,10 @@
   const ARROWS = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowRight: [1, 1], ArrowLeft: [1, -1] };
   const down = new Set();
   window.addEventListener("keydown", (ev) => {
-    if (ev.metaKey || ev.ctrlKey || ev.altKey || (ev.target.closest && ev.target.closest("#vol, input, textarea"))) return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || (ev.target.closest && ev.target.closest("input, textarea"))) return;
+    if (ev.target.closest && ev.target.closest("#vol") && ev.code.startsWith("Arrow")) return;   // (its own; the rest still
+                                                                                                    // play: a touch of the volume
+                                                                                                    // silenced the keys)
     if (ARROWS[ev.code]) { if (!node) return; const [e, d] = ARROWS[ev.code]; turn(e, d); ev.preventDefault(); return; }
     const m = KEYMAP[ev.code];
     if (!m || !node) return;

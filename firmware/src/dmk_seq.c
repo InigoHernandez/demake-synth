@@ -58,6 +58,8 @@ static int harm_of(int s);
 static int harm_note(int f, int n);
 static void later_tick(int frames);
 static void arp_restart(void);                          /* (the arps, on PLAY: in time) */
+static void arp_stopped(void);                          /* (STOP: a held arp lets go what nothing holds) */
+static void arp_clear_all(void);                        /* (a project opened or new: the arps let go) */
 static void chord_rest(void);
 
 /* patterns and scenes, after the way a pocket studio arranges (docs/sound-design.md, 3): each synth has eight
@@ -90,6 +92,8 @@ static void spat_keep(int s)                            /* synth s's roll into i
     q->count = sq[s].count; q->steps = sq[s].steps; q->used = 1;
     for (i = 0; i < sq[s].count; i++) q->n[i] = sq[s].n[i];
 }
+static uint8_t spat_gen[DMK_SYNTHS];                    /* a synth's patterns switched: counted (a key recorded across
+                                                           a switch is not written into the next) */
 static void spat_load(int s, int p)                     /* pattern p into synth s's roll (what was open not kept) */
 {
     const pseq_t *q = &spat[s][p & (SYN_PATS - 1)];
@@ -100,6 +104,7 @@ static void spat_load(int s, int p)                     /* pattern p into synth 
     sq[s].steps = q->used && q->steps ? q->steps : sq[s].steps ? sq[s].steps : 16;   /* a new one: the length it had */
     for (i = 0; i < sq[s].count; i++) sq[s].n[i] = q->n[i];
     sq[s].pos = 0;
+    spat_gen[s]++;
 }
 static void scn_keep(void)                              /* the scene open, its rolls into their patterns */
 {
@@ -166,7 +171,8 @@ enum { SE_LOOP, SE_STOP, SE_FADE, SE_FADES, SE_COUNT };   /* the end: loop; stop
 typedef struct { uint8_t scene, bars; } sstep_t;
 static sstep_t song[SONG_STEPS];
 static uint8_t song_n, song_end, song_mode, song_at, song_left, song_rec;
-static uint8_t rec_scn, rec_bars, rec_from;
+static uint8_t rec_scn, rec_from;
+static uint16_t rec_bars;                               /* (past 255 bars of a scene it lost them) */
 static int song_playing(void) { return seq_on && song_mode && song_n && !song_rec; }
 
 static int32_t song_bar_samples(int bars) { return (int32_t)((uint32_t)bars * 16u * (seq_per_q8() >> 8)); }
@@ -389,7 +395,9 @@ static void seq_play(int on)
     seq_stop_req = 0;                                   /* (one left by an outside clock would stop the next run) */
     if (!on && song_rec) { rec_close(); song_rec = 0; song_mode = (uint8_t)(song_n > 0); }   /* a take ended: the song */
     if (!on) { mix_g = 32768; mix_dg = 0; mix_next = 0; }
-    if (midi_out & 2u) mq_put(on ? 0xFA : 0xFC, 0, 0);   /* MIDI out: start, stop */
+    if (midi_out & 2u) mq_put(on ? 0xFA : 0xFC, 0, 0);   /* MIDI out: start, stop; the first clock with the first step,
+                                                           its downbeat (it came a 24th late) */
+    if (on && midi_out & 2u) mq_put(0xF8, 0, 0);
     clk_acc = 0;
     seq_on = (uint8_t)on;
     for (s = 0; s < DMK_SYNTHS; s++) { seq_quiet(s); sq[s].pos = 0; }
@@ -397,6 +405,7 @@ static void seq_play(int on)
     chord_start();
     arp_restart();
     if (!on) chord_rest();                              /* stopped: no chord shown as sounding */
+    if (!on) arp_stopped();                             /* HOLD: what the roll and the chords fed it goes with them */
     seq_acc = 0;
     seq_ticks = 0;
     if (on) seq_step();                                 /* the first step sounds at once */
@@ -573,6 +582,9 @@ static void arp_tick(int frames)                        /* each synth's, on the 
     }
 }
 static void arp_restart(void) { int s; for (s = 0; s < DMK_SYNTHS; s++) { arp[s].ph = arp_len(s); arp[s].k = 0; } }   /* PLAY: in time */
+static void arp_stopped(void) { int s; for (s = 0; s < DMK_SYNTHS; s++) if (arp[s].mode && arp[s].hold) arp_unheld(s); }   /* (a key
+                                                           held plays on: the owner heard it go on after STOP) */
+static void arp_clear_all(void) { int s; for (s = 0; s < DMK_SYNTHS; s++) arp_clear(s); }
 
 static void seq_render(int frames)
 {
@@ -584,6 +596,12 @@ static void seq_render(int frames)
     arp_tick(frames);                                   /* the arps, playing or not */
     if (!seq_on || ext_running()) return;               /* an outside clock running steps it instead (dmk_midi) */
     per = seq_per();
+    {                                                   /* the tempo changed inside a step: as far into the new one
+                                                           (it kept the old one's samples: steps at once) */
+        static uint32_t last;
+        if (last && per != last && seq_acc) seq_acc = seq_acc / (last >> 8) * (per >> 8);
+        last = per;
+    }
     if (midi_out & 2u)                                  /* MIDI out: the clock, 24 a beat, 6 a step */
         for (clk_acc += (uint32_t)frames * 256u; clk_acc >= per / 6u; clk_acc -= per / 6u) mq_put(0xF8, 0, 0);
     seq_acc += (uint32_t)frames * 256u;
@@ -597,8 +615,17 @@ static void seq_render(int frames)
 static uint32_t seq_now(void) { return seq_ticks ? ((seq_ticks - 1u) << 8) + seq_acc * 256u / seq_per() : 0; }
 static int seq_playing_step(int s) { return (sq[s].pos + sq[s].steps - 1) % sq[s].steps; }
 /* a key recorded on synth s: where on its own roll it lands (its own playhead, which a pattern or a scene switched, or
- * its length, moved from the song's count), Q8 steps: as played, its micro timing kept (the owner) */
-static uint32_t seq_rec_q8(int s) { return ((uint32_t)seq_playing_step(s) << 8) + (seq_now() & 255u); }
+ * its length, moved from the song's count), Q8 steps: as played, its micro timing kept (the owner); as heard: the
+ * platform's latency off (the sound comes that much after the step it was rendered at; the audit: keys landed late),
+ * not before the take's start */
+static uint16_t rec_lat;                                /* samples, from dmk_latency */
+static uint32_t seq_rec_q8(int s)
+{
+    uint32_t q = ((uint32_t)seq_playing_step(s) << 8) + (seq_now() & 255u), span = (uint32_t)sq[s].steps << 8;
+    uint32_t lat = (uint32_t)rec_lat * 256u / (seq_per() >> 8);
+    if (lat < seq_now()) q = (q + span - lat % span) % span;
+    return q;
+}
 
 static void seq_init(void)
 {
