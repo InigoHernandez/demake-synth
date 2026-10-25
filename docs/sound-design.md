@@ -155,7 +155,7 @@ Not here, on purpose:
 - **Unison.** It would double the voices a note uses. Drift's per-note detune and Chorus give the width more
   cheaply.
 
-## 5. Stage 4: effects per synth (built, 2026-10-25; waiting for the owner's ears)
+## 5. Stage 4: effects per synth (built, 2026-10-25; in 0.4.4)
 
 Each row keeps its four macros: K1 Amount, K2 Tone, K3 Time or Rate, K4 Character. Every new type gets the same
 treatment as 0.2's:
@@ -244,8 +244,8 @@ Today a sound is a recording and whatever the synth was set to. Instead:
 The song mode comes early: it costs no CPU, needs no measurement, and turns the patterns into finished pieces.
 
 Releases: 0.3 (FM-1_968) went out after stage 2, once it ran on the owner's FM-1; 0.4 (FM-1_969) after stage 3 and
-three reviews' fixes, at the owner's word. That was the last identity in Demake's range: the next release needs a new
-range (section 10).
+three reviews' fixes, at the owner's word. That was the last identity in Demake's range, so 0.4.1 .. 0.4.4 keep it
+(0.4.4: stage 4, at the owner's word); a 0.5 needs a new range (section 10).
 
 Or the range is widened (section 10). Every package goes to the owner first, as `~/Downloads` builds, before a
 release.

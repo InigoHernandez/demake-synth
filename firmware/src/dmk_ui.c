@@ -702,14 +702,14 @@ static void head(void)
         fmt_int(str_cat(t, "Pattern "), syn_pat(ui.synth) + 1);
         text(x + 7, 6, t, &FH, C_LABEL);
     }
-    {                                                   /* the synths by their sounds' initials, S F G: the current boxed */
+    {                                                   /* the synths by their sounds' initials, S F G: the current lit */
         int rx = DMK_W - PAD - 1, bw = 17, y = 6 + FH.ascent - FS.ascent - 3;
         for (i = DMK_SYNTHS - 1; i >= 0; i--) {
             char ini[2] = {DMK_SAMPLES[VS(i, PG_SOUND, 0, 0)].name[0], 0};
             int bx = rx - bw;
             if (ini[0] >= 'a' && ini[0] <= 'z') ini[0] = (char)(ini[0] - 32);
-            if (i == ui.synth) round_line(bx, y - 3, bw, bw, 5, 1, C_INK);
-            text_c(bx + bw / 2 + 1, y, ini, &FS, i == ui.synth ? C_INK : C_LABEL);
+            if (i == ui.synth) round_fill(bx, y - 3, bw, bw, 5, HOLO);   /* the current one lit, its letter on the light */
+            text_c(bx + bw / 2 + 1, y, ini, &FS, i == ui.synth ? (THEME_DARK[theme] ? C_PAPER : C_INK) : C_LABEL);
             rx = bx - 3;
         }
     }
@@ -1594,13 +1594,17 @@ static void stage_lfo(void)
     if (fade) round_fill(x0 + fade - 4, mid - 4, 9, 9, 4, lit(3) ? HOLO : C_INK);
 }
 
-/* four rows, a pill each: its name, its switch (off), the open one framed in ink */
+/* the row SELECT is on: its pill framed in the light, 3 px from a pixel outside it in, so the frame has its rim and its
+ * body (a hairline would be the body's tone alone) */
+static void sel_ring(int x, int y, int w, int h) { round_line(x - 1, y - 1, w + 2, h + 2, (h + 2) / 2, 3, HOLO); }
+
+/* four rows, a pill each: its name, its switch (off), the open one framed in the light */
 static void stage_rows(int page, const char *const *names, int n, int open)
 {
     int i, h = (SH - (n - 1) * G) / n;
     for (i = 0; i < n; i++) {
         int y = SY + i * (h + G), tx = SX + SW - PAD - 22;
-        if (i == open) round_line(SX, y, SW, h, h / 2, 2, C_INK);
+        if (i == open) sel_ring(SX, y, SW, h);
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
         text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, row_soon(page, i) ? C_LABEL : C_INK);
         if (row_soon(page, i)) { text_r(SX + SW - PAD - 4, y + (h - 12) / 2, "Soon", &FS, C_LABEL); continue; }
@@ -1748,7 +1752,7 @@ static void stage_songs(void)
     for (i = 0; i < 4; i++) {
         int n = first + i, y = SY + i * (h + G), used = song_used(n), pick = n == ui.song_pick;
         char t[3] = {(char)('0' + (n + 1) / 10), (char)('0' + (n + 1) % 10), 0};
-        if (pick) round_line(SX, y, SW, h, h / 2, 2, HOLO);
+        if (pick) sel_ring(SX, y, SW, h);
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
         text(SX + 14, y + (h - 12) / 2, t, &FS, C_LABEL);
         text_fit(SX + 40, y + (h - 20) / 2 - 1, SW - 70, used ? song_name(n) : "Empty", &FM, used ? C_INK : C_LABEL);

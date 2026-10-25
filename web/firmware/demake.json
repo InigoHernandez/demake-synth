@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.3.fwsc",
-  "version": "0.4.3",
-  "date": "2026-10-24",
+  "file": "demake-0.4.4.fwsc",
+  "version": "0.4.4",
+  "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "2446d2b6eb02ed370e001f412ebc91ff9c6a681b8e0728395e1b041293405dcd",
-  "note": "SELECT scrolls the rows (HOME + SELECT picks the synth anywhere); ALGORITHM sets the type with no button held."
+  "sha256": "a02c72a710fb531fae97ce84b158630fb5c5b71e3a23befada9ec64b14e90159",
+  "note": "Nine more effects: Warm and Distort; Vinyl, Radio and Dictaphone; Ensemble, Phaser, Flanger and Tremolo on the tempo. The selected row and synth are lit."
 }
