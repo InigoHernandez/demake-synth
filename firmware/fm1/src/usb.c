@@ -265,13 +265,17 @@ static int usb_cdc_now(void) { return usb_cdc_on; }   /* (the menu: what this st
 static int usb_cdc_now(void) { return 0; }
 #endif
 static const uint8_t STR0[4] = {4, 3, 0x09, 0x04};
+/* the names a computer shows (the FM-1 Firmware Hub's rule: "FM-1" or the firmware's own). The update loader is
+ * Felucca's and keeps its names: the hub finds a loader waiting by them and resumes through it. Demake is
+ * Sequencist's "Demake FM-1": its own name, and "FM-1" in it, so the hub's installer and Demake's find it */
+#ifdef FELUCCA_LOADER
 static const uint8_t STR1[] = {42, 3, 'H', 0, 0xFC, 0, 'g', 0, 'e', 0, 'l', 0, 't', 0, 'o', 0, 'n', 0, ' ', 0, 'I', 0,
                                'n', 0, 's', 0, 't', 0, 'r', 0, 'u', 0, 'm', 0, 'e', 0, 'n', 0, 't', 0, 's', 0};
-#ifdef FELUCCA_LOADER
 static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0, ' ', 0, 'U', 0, 'p', 0,
                                'd', 0, 'a', 0, 't', 0, 'e', 0};
 #else
-static const uint8_t STR2[] = {16, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0};
+static const uint8_t STR1[] = {22, 3, 'S', 0, 'e', 0, 'q', 0, 'u', 0, 'e', 0, 'n', 0, 'c', 0, 'i', 0, 's', 0, 't', 0};
+static const uint8_t STR2[] = {24, 3, 'D', 0, 'e', 0, 'm', 0, 'a', 0, 'k', 0, 'e', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0};
 #endif
 
 static int get_desc(uint32_t wvalue, const uint8_t **d, uint16_t *l)

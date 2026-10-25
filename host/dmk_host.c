@@ -12,6 +12,7 @@
 #include <string.h>
 #ifndef DMK_TEXT_AUDIT
 #define DMK_TEXT_AUDIT 1
+#define DMK_VER "0.0"                                   /* (the FM-1's build: the release's; here, to see it placed) */
 #endif
 #include "dmk_core.c"
 #ifdef __APPLE__
@@ -126,6 +127,58 @@ static void shot_fr(const char *dir, const char *name, const uint8_t *fr)
     png_rgb(path, rgb, DMK_W, DMK_H, 2);
 }
 static void shot(const char *dir, const char *name) { shot_fr(dir, name, dmk_frame(now_ms)); }
+
+/* the FM-1 Firmware Hub's picture (docs/hub): the first song playing, a frame every 100 ms at 1x, as the screen
+ * draws it: Home on synth 3's landscape (the owner: the picture is Home with its landscape), then its roll, then the
+ * chord machine (tools/hub_art.py makes the GIFs and the 4x picture) */
+static void anim(const char *dir)
+{
+    static uint8_t rgb[DMK_W * DMK_H * 3];
+    static const struct { int b, n; } PART[3] = {{-1, 50}, {B_SEQ, 40}, {B_ARP, 40}};
+    char path[512];
+    int p, i, f = 0;
+    host_store_on(0, 0);
+    dmk_init(1);
+    now_ms = 0;
+    ui.hinted = 0xFFFFu;                                /* no first-time hints on the pictures */
+    wait_ms(3700);                                      /* past the boot, on Home */
+    dmk_encoder(E_SELECT, 1); wait_ms(200); dmk_encoder(E_SELECT, 1);   /* synth 3, Washingtonia: California's palms */
+    wait_ms(1600);
+    tap(B_PLAY);
+    for (p = 0; p < 3; p++) {
+        if (PART[p].b >= 0) tap(PART[p].b);
+        for (i = 0; i < PART[p].n; i++) {
+            wait_ms(100);
+            screen_rgb(dmk_frame(now_ms), rgb);
+            snprintf(path, sizeof path, "%s/f_%03d.png", dir, f++);
+            png_rgb(path, rgb, DMK_W, DMK_H, 1);
+        }
+    }
+    printf("anim: %d frames in %s\n", f, dir);
+}
+/* Home with each landscape (the first synth on each scene's first sound), playing, at 1x: the hub's picture picked
+ * from these */
+static void homes(const char *dir)
+{
+    static uint8_t rgb[DMK_W * DMK_H * 3];
+    char path[512];
+    int k, i;
+    host_store_on(0, 0);
+    dmk_init(1);
+    now_ms = 0;
+    ui.hinted = 0xFFFFu;
+    wait_ms(3700);
+    tap(B_PLAY);
+    for (k = 0; k < DMK_SCENES; k++) {
+        for (i = 0; i < DMK_SAMPLES_N; i++) if (DMK_SAMPLES[i].scene == k) { ui.val[0][PG_SOUND][0][0] = (uint8_t)i; break; }
+        sp_sync();
+        wait_ms(1600);
+        screen_rgb(dmk_frame(now_ms), rgb);
+        snprintf(path, sizeof path, "%s/home_%02d.png", dir, k);
+        png_rgb(path, rgb, DMK_W, DMK_H, 1);
+    }
+    printf("homes: %d in %s\n", DMK_SCENES, dir);
+}
 
 static void tour(const char *dir)
 {
@@ -1277,6 +1330,8 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--bench")) { bench(); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--demo")) { demo(argv[2], argc - 3, argv + 3); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--fxdemo")) { fx_demo(argv[2]); return 0; }
+    if (argc > 2 && !strcmp(argv[1], "--anim")) { anim(argv[2]); return 0; }
+    if (argc > 2 && !strcmp(argv[1], "--homes")) { homes(argv[2]); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--chorddemo")) { chord_demo(argv[2]); return 0; }
 #ifdef __APPLE__
     if (argc > 1 && !strcmp(argv[1], "--cpu")) { cpu(); return 0; }

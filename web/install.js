@@ -1,27 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Demake's installer (install.html): MONO2K's installer on Demake's page. Felucca's update protocol and package code
 // (fm1/fm1ota.js, fm1/fm1pkg.js) do the work; this file says what is happening, in the page's words.
-import { Updater } from "./fm1/fm1ota.js?v=1";
+import { Updater } from "./fm1/fm1ota.js?v=2";
 import { productOf, logicalImage, validateStockPackage, sha256hex } from "./fm1/fm1pkg.js?v=1";
 
 const $ = (id) => document.getElementById(id);
 
-/* what an identity says the FM-1 runs ("FM-1_015", "ota-FM-1_965", ...): the numbers the open firmwares claim */
+/* what an identity says the FM-1 runs ("FM-1_015", "ota-FM-1_969", ...). Only Demake's own number is called Demake
+ * (the FM-1 Firmware Hub's rule: 966-968, Demake's before 0.4, are other firmwares' now); the others by their number */
 function describe(id) {
   const v = id.version;
   if (/^ota-/i.test(id.model)) return "Update mode: an update waits to be finished";
   if (id.model !== "FM-1") return `Another device (${id.text})`;
   if (v === 0) return "USB rescue mode";
-  if (v < 100) return `M-VAVE's official firmware, V${v}`;
-  if (v === 965) return "Demake, a test build";
-  if (v >= 966 && v <= 969) return `Demake 0.${v - 965}`;
-  if (v >= 980 && v <= 989) return `MONO2K 0.${v - 980}`;
-  if (v === 930) return "CoralFlower";
-  if (v >= 950 && v <= 959) return "CS-1";
-  if (v >= 970 && v <= 979) return "zp12";
-  if (v >= 990) return "Dinghy";
-  if (v === 906) return "FM-106";
-  if (v >= 900 && v <= 929) return v === 900 ? "Felucca, or a firmware built on it" : `Felucca ${Math.floor((v - 900) / 10)}.${v % 10}`;
+  if (v === 15) return "M-VAVE's official firmware, V15";
+  if (v < 100) return `M-VAVE's official firmware (${id.text})`;
+  if (v === 969) return "Demake";
+  if (v === 980) return "MONO2K";
   return `Another open firmware (${id.text})`;
 }
 

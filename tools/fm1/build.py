@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: GPL-3.0-only
 """Demake for the FM-1: the app, the update loader and an installable .fwsc package.
 
-  tools/fm1/build.py [--release 0.Y] [--diag] [--bench]
+  tools/fm1/build.py [--release X.Y[.Z]] [--diag] [--bench]
 
 After MONO2K's, which follows CS-1's tools/build.py (on Felucca's, Leo Kuroshita, Hügelton Instruments,
 GPL-3.0-only): the same steps, the same checks. Outputs in build/fm1/: demake.bin (the app), loader/ota.bin (the
 update loader), demake.fwsc (the package; demake-0.Y.fwsc for a release, demake-test.fwsc with the load meter,
-demake-bench.fwsc with the meter and a known load on K1). The package's identity is FM-1_965 (FM-1_965+Y for
-release 0.Y, Y 1..4: 966-969 were free on the Firmware Hub's list), as the installer page reads it.
+demake-bench.fwsc with the meter and a known load on K1). Every package's identity is FM-1_969, fixed for good (the
+FM-1 Firmware Hub's rule: one identity a firmware, never derived from the version; 0.1-0.3 were FM-1_966-968, and
+966 is GR!MM's on the hub); a release sets only the version, shown at boot, and the file's name.
 
 JieLi's toolchain (clang 4.0.1 for pi32v2) runs on Linux x86-64 only: on a Mac each tool runs in a linux/amd64
 container (colima with Rosetta, or Docker). JIELI_TOOLCHAIN (default ~/.jieli/toolchain), AC79_SDK (default
@@ -46,7 +47,7 @@ SDK_SHA256 = {                      # AC79NN_SDK_V1.2.1_2023-12-13, the version 
     "cfg_tool.bin": "276579954f076886a6a7694f65dc71c034a63a2c204b76749065c0ac7b010d1b",
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
-PRODUCT = "FM-1_965"                # Demake: 965 + Y (taken: 900-931, 93X-94X sloopDX, 950-958, 961, 97N zp12, 98N MONO2K, 99N Dinghy)
+PRODUCT = "FM-1_969"                # Demake's, for good (free in the hub's table, 2026-10-25; 966 is GR!MM, 980 MONO2K)
 VERSION = "0.0"
 # helpers the core must not need: the chip has no FPU and the build no libgcc (soft float, 64-bit division)
 BANNED = re.compile(r"\b__(?:(?:u?(?:div|mod)di3)|(?:add|sub|mul|div)[sd]f3|(?:fix|float)\w*|(?:eq|ne|lt|le|gt|ge|un)[sd]f2|extendsfdf2|truncdfsf2)\b")
@@ -170,7 +171,7 @@ def build_app():
            ("cc", "-c", FW / "hal" / "fm1_isr.S", "-o", OUT / "fm1_isr.o"),
            ("cc", *flags, "-c", FW / "dmk_fm1.c", "-o", OUT / "demake.o"),
            ("cc", *[f for f in CFLAGS if f != "-Os"], "-O2", *CORE, "-Ifirmware/src", "-Ifirmware/gen", "-c",   # the core
-            ROOT / "firmware" / "src" / "dmk_core.c",                                                              # for speed
+            f'-DDMK_VER="{VERSION}"', ROOT / "firmware" / "src" / "dmk_core.c",                                  # for speed
             "-o", OUT / "core.o"))
     undef = tc("common/bin/objdump", "-t", OUT / "demake.o") + tc("common/bin/objdump", "-t", OUT / "core.o")
     bad = sorted({m.group(0) for m in BANNED.finditer(undef)})
@@ -264,7 +265,7 @@ def check(img, syms, dis, rt):
 def main():
     global PRODUCT, VERSION
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="0.Y[.Z]", help="a release: identity FM-1_965+Y (Y 1..4), version 0.Y; a fix 0.Y.Z keeps 0.Y's identity")
+    ap.add_argument("--release", metavar="X.Y[.Z]", help="a release: version X.Y[.Z] (shown at boot, the file's name); the identity stays FM-1_969")
     ap.add_argument("--sdk", type=Path, help="the JieLi AC79 SDK (default: $AC79_SDK or ~/fw-AC79_AIoT_SDK)")
     ap.add_argument("--diag", action="store_true", help="a test build: the render's load along the top edge")
     ap.add_argument("--bench", action="store_true", help="the meter and a known load on K1, for the device's ratio")
@@ -277,10 +278,9 @@ def main():
         CORE.extend(["-DDMK_BENCH=1"])
         name = "demake-bench.fwsc"
     if a.release:
-        m = re.fullmatch(r"0\.([1-4])(\.[1-9][0-9]?)?", a.release)
-        if not m:
-            raise SystemExit(f"--release {a.release}: 0.1 .. 0.4 (FM-1_966 .. 969), or a fix of one, 0.4.1")
-        PRODUCT, VERSION, name = f"FM-1_{965 + int(m[1])}", a.release, f"demake-{a.release}.fwsc"
+        if not re.fullmatch(r"[0-9]+\.[0-9]+(\.[0-9]+)?", a.release):
+            raise SystemExit(f"--release {a.release}: a version X.Y or X.Y.Z (0.4.8, 0.5, 1.0)")
+        VERSION, name = a.release, f"demake-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk or os.environ.get("AC79_SDK") or str(Path.home() / "fw-AC79_AIoT_SDK")
     for rel, sha in SDK_SHA256.items():
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:

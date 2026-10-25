@@ -268,10 +268,10 @@ The song mode comes early: it costs no CPU, needs no measurement, and turns the 
 Releases: 0.3 (FM-1_968) went out after stage 2, once it ran on the owner's FM-1; 0.4 (FM-1_969) after stage 3 and
 three reviews' fixes, at the owner's word. That was the last identity in Demake's range, so 0.4.1 .. 0.4.4 keep it
 (0.4.4: stage 4, at the owner's word; 0.4.5: its letter white; 0.4.6: twelve landscapes; 0.4.7: the media on the
-mix, a delay a synth, Vary, at the owner's word); a 0.5 needs a new range (section 10).
+mix, a delay a synth, Vary, at the owner's word). Since 0.4.8 every release keeps FM-1_969 (the FM-1 Firmware Hub's
+rule: one identity a firmware, never derived from the version), so a 0.5 needs no new range.
 
-Or the range is widened (section 10). Every package goes to the owner first, as `~/Downloads` builds, before a
-release.
+Every package goes to the owner first, as `~/Downloads` builds, before a release.
 
 ## 10. For the owner
 

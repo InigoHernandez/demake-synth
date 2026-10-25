@@ -44,12 +44,31 @@ dithered, for what is lit.
     and OCT+ held show it full screen.
   - Each sound is named after a plant, in Latin, one word.
 
+![Demake on the FM-1: Home, synth 3's landscape](docs/hub/screen-4x.png)
+
+## On the FM-1
+
+- **What it is to the FM-1.** Identity `FM-1_969`, the same for every release; over USB a MIDI device named
+  "Demake FM-1" (its update loader, Felucca's, shows as "Felucca Update"). It carries Felucca's update loader.
+- **What it keeps.** Its own store: 64 KiB of the FM-1's data area, `0xB0000`–`0xC0000`, holding up to 14 songs and
+  32 of your sounds. Installing Demake writes only its program, never the data area. Demake writes there only when
+  you save (a song, a sound, or a song erased), a 4 KiB sector at a time, and reads only its own records (each has
+  its mark and a checksum): it never loads another firmware's projects or samples. Other firmwares keep things in
+  the same region (Felucca's samples, CoralFlower's loops), so a Demake save can overwrite what they kept there,
+  and they can overwrite Demake's songs. MONO2K's store (`0xC0000`–`0xE0000`) is left alone.
+- **Back it up.** There is no backup tool for Demake yet: its songs and sounds live only on the FM-1. Before you
+  switch to a firmware that saves into `0xB0000`–`0xC0000`, expect Demake's songs to be lost.
+- **Leave it.** Install another firmware as usual (the FM-1 Firmware Hub, or its maker's installer): Demake takes
+  the package over USB and starts the new package's update loader.
+- **Rescue.** Hold OCT− while switching on: the FM-1 starts the update loader only and waits for a package over USB.
+  The [installer page](https://inigohernandez.github.io/demake-synth/install.html) works from there.
+
 ## Build
 
 ```bash
 sh tools/check.sh                              # warnings, soft-float symbols, sanitizers, the self-test and the tour's text audit, wasm
 sh web/build.sh                                # web/dmk.wasm; serve web/ to play it in the browser
-.venv/bin/python tools/fm1/build.py            # build/fm1/demake.fwsc; --release 0.Y, --diag (the load meter), --bench
+.venv/bin/python tools/fm1/build.py            # build/fm1/demake.fwsc; --release X.Y[.Z] (FM-1_969 always), --diag (the load meter), --bench
 ```
 
 The core is C99 and integer only (`firmware/src`, a unity build). The host harness (`host/dmk_host.c`) runs the

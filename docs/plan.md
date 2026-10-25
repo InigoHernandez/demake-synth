@@ -320,6 +320,10 @@ second (which then reads no flash) before every write.
   `961` (FOMAJAM), `970`–`979` (zp12), `98N` (MONO2K, GammaWave, a Doom port), `99N` (Dinghy), `700`/`7XXYYZZ` (AMB-1,
   FuMi), `800`/`8XXYYZZ` (FoMni, FiMba). **`962`–`969` look free: `FM-1_965` for test builds, `966`+ for releases**,
   checked against the Hub's live list before the first release.
+  **Since 0.4.8 (2026-10-25): `FM-1_969` for every build, for good.** The FM-1 Firmware Hub wants one identity a
+  firmware, never derived from the version, and `966` turned out to be GR!MM's. `969` was free in the hub's live
+  catalogue that day. The USB port is "Demake FM-1" (the owner's choice; "FM-1" in it, so the hub's installer finds
+  it), its manufacturer Sequencist; the update loader keeps Felucca's names. The submission: `docs/hub/SUBMIT.md`.
 - **SysEx:** `F0 7D 'D' 'M' 'K' cmd pack7(body) F7` (0x7D, the non-commercial ID, with a magic of its own), MONO2K's
   protocol otherwise.
 

@@ -2232,6 +2232,9 @@ static void boot(uint32_t t)
         if (i == at) round_fill(x - 1, 176, 3, 16, 1, HOLO);
         else fill(x, 180, 1, 8, i < at ? lit : C_LABEL);
     }
+#ifdef DMK_VER
+    if (t >= BOOT_ARRIVE) text_c(DMK_W / 2, 204, DMK_VER, &FS, C_LABEL);   /* the version (the FM-1's build sets it) */
+#endif
 }
 
 static void boot_leave(uint32_t ms)                     /* the held frame's blocks not yet gone, over Home */
