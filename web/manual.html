@@ -89,12 +89,12 @@
         <h1>The panel</h1>
         <p class="msub">Each button opens its page; again, its next row. K1 to K4 turn the values over them, ALGORITHM the one at the foot.</p>
         <div class="mt">
-          <p><b>FX</b><span>Effects: colour, delay, motion, space</span></p>
+          <p><b>FX</b><span>Effects: reverb, delay, motion, space</span></p>
           <p><b>SEL</b><span>Filter</span></p>
           <p><b>ENV</b><span>Amp: the envelope and the level</span></p>
           <p><b>LFO</b><span>LFO: a slow wave on the pitch, cutoff, level, pan or start</span></p>
           <p><b>EDIT</b><span>Sound: the recording; again, its layer; again, the voice</span></p>
-          <p><b>GLO</b><span>Global: the reverb, the echo, the media over the mix; the setup</span></p>
+          <p><b>GLO</b><span>Global: the colour, the echo, the media over the mix; the setup</span></p>
           <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
@@ -302,28 +302,22 @@
       </article>
       <article id="effects" data-group="Sound">
         <h1>Effects</h1>
-        <p class="msub">Four rows a synth on FX, then on GLO the reverb, the echo and the media all three share. SELECT the row, ALGORITHM (or PRESETS) its type.</p>
+        <p class="msub">Four rows a synth on FX: its own reverb, delay and motion, and where it sits. Then on GLO the colour, the echo and the media all three share. SELECT the row, ALGORITHM (or PRESETS) its type.</p>
         <figure class="mfig"><img src="img/screens/06_fx.png" alt="FX" width="240" height="240"><figcaption>Each row names its effect.</figcaption></figure>
         <div class="mt">
-          <p><b>Colour</b><span>Saturate, crush, lossy (a codec's smear), noise, warm, distort</span></p>
+          <p><b>Reverb</b><span>The synth's own: room, plate, spring or hall; Amount, Tone, Size and the type's own knob</span></p>
           <p><b>Delay</b><span>Off, delay or ping-pong (left, then right), in time: Time is a division of the tempo; Mix, Tone, Regen</span></p>
           <p><b>Motion</b><span>Chorus, vibrato, drift, ensemble, phaser, flanger, tremolo (on the tempo)</span></p>
-          <p><b>Space</b><span>The sends to the reverb and the echo, the pan, the width</span></p>
+          <p><b>Space</b><span>The sends: to its reverb (its Amount) and to the echo, the pan, the width; ALGORITHM its reverb's type</span></p>
         </div>
         <p class="note">Each effect names its own four knobs: crush shows bits, tone, rate and jitter. A synth's delay is lofi, at 11 kHz; a long time at a slow tempo plays at half, still in time.</p>
         <div class="mt">
           <p><b>Off</b><span>The first of each: none of it, nothing returned</span></p>
-          <p><b>Room</b><span>Short, close</span></p>
-          <p><b>Hall</b><span>Wide, long</span></p>
-          <p><b>Space</b><span>Bright, nearly endless</span></p>
-          <p><b>Haze</b><span>Dark, deep, slowly moving</span></p>
-          <p><b>Bloom</b><span>A new sound swells into it</span></p>
-          <p><b>Lofi</b><span>Eleven kHz, eight bits, wow</span></p>
-          <p><b>Plate</b><span>Bright and dense, still</span></p>
-          <p><b>Spring</b><span>A tank's chirp, thin and wiry</span></p>
-          <p><b>Shimmer</b><span>An octave up rising in the tail: Shimmer, how much</span></p>
-          <p><b>Reverse</b><span>The sound backwards into the space: Length, its segments</span></p>
-          <p><b>Freeze</b><span>Held: Hold up, the tail stays and lets less in</span></p>
+          <p><b>Room</b><span>Short and close; Diffuse from a few echoes to smooth</span></p>
+          <p><b>Plate</b><span>Bright and dense; Mod sets its slow sway</span></p>
+          <p><b>Spring</b><span>A tank's chirp, thin and wiry; Drip, how much</span></p>
+          <p><b>Hall</b><span>A small hall, wide and long, to 16 s; Mod sets its slow sway</span></p>
+          <p><b>Colour</b><span>On GLO, the whole mix: saturate, crush, lossy (a codec's smear), noise, warm, distort</span></p>
           <p><b>Tape echo</b><span>Darkening repeats</span></p>
           <p><b>Grains</b><span>A cloud of what you played: size, density, texture</span></p>
           <p><b>Media</b><span>The whole mix through tape, cassette, VHS, vinyl, radio or a dictaphone</span></p>
@@ -372,7 +366,7 @@
     <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 <script src="manual.js?v=9"></script>
 </body>
 </html>

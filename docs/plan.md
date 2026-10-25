@@ -96,6 +96,22 @@ way. They still sit in the MOTION row, where the brief puts them.
 
 ### 1.3 Shared: the ECHO and VERB buses
 
+**Decision (the owner, 2026-10-25): the reverb per track, the colour on the mix.** "Reverb should be only per track
+and not global and the color should be in global." Of the options offered the owner chose: a simpler reverb on each
+synth, its own type and knobs on its FX page (Room, Plate, Spring and a small Hall, light enough for three at once),
+the shared reverbs (Hall, Space, Haze, Bloom, Lofi, Plate, Spring, Shimmer, Reverse, Freeze, the eight-line FDN and
+its buffers) gone; and one Colour on the whole mix, on GLO next to the media, FX losing its Colour row. Old songs
+keep the first synth's colour that was on. As built (0.4.17): FX's rows are Reverb (Amount, Tone, Size and the
+type's own: Diffuse, Mod, Drip, Mod), Delay, Motion, Space (the sends: the reverb's amount, the echo, the pan, the
+width; its ALGO the reverb's type); GLO's are Colour, Echo, Media, Setup. Each reverb has 4096 samples of line memory
+at 22.05 kHz (24 KB for the three, against the FDN's 33 KB and its 34 KB of RAM): ROOM and HALL a four-line
+Hadamard network behind two all-passes, PLATE Dattorro's figure of eight at a sixth of his lengths, SPRING a loop of
+eight stretched all-passes; 72 to 124 instructions a sample each [M], the last synth's on the second core with its
+chain, the other two there while the first mixes. Store version 12 maps an old song's verb to each synth's reverb
+(room, plate and spring as they were, the others a hall; the amount the send times the return) and its first colour
+on to the mix; a library sound of form 3 or less drops its colour, its send a hall's amount. The table below is the
+plan of 2026-10-23, kept as it was.
+
 Every synth sends to both; each bus holds one type at a time (GLO, 3.4), stereo, at 22.05 kHz.
 
 | Bus | Type | Algorithm | Source | RAM | Instr / sample |
