@@ -188,6 +188,28 @@ the library's form 2 (a sound) move a type stored at 5, 4, 4 a row to its place 
   depth: it halves the level half the time).
 - Flash and RAM: the code and one 33-point table; no new line (each shares its row's).
 
+### 5.1 The media on the mix, a delay a synth (the owner's, 2026-10-25; in 0.4.7)
+
+The owner: "media fx should be global and echo delay per track". Their choice of three:
+
+- **Media is one, over the whole mix** (GLO's third row: Verb, Echo, Media, Setup), after the verb's and the echo's
+  returns, before the width and the limiter. Its six types and knobs as they were. The tapes run at half the mix's
+  level, so they bend as one synth did; Vinyl, Radio and Dictaphone at its own (their crackle, hiss and level are
+  theirs). Each side its own state, the same settings and dice, so the wow is one. Its left runs on the first core,
+  its right on the second, after the verb's network. Levels against the per-synth media on one synth: within
+  -0.1..+0.9 dB [M] (the verb's return now goes through it too).
+- **Each synth has a Delay** (FX's second row, where Media was): Off, Delay, Ping-pong. Mix, Tone (325 Hz to 5 kHz),
+  Time (1/16 to 1/2, dotted, triplets, of the tempo), Regen. An 8-bit mu-law line at 11.025 kHz, 0.84 s (the
+  ping-pong's right reads twice as late: 0.42 s), a time longer than the line halved till it fits, so still in time.
+  The read glides to a new time; the wet fades in and out on a type change. 28 a sample [M].
+- **The shared Echo keeps Tape and Grains**, its line halved (0.74 s) for the delays' memory: its Time now reaches
+  0.74 s, not 1.45 s. Its Delay and Ping-pong (never released) went to the synths.
+- Store version 7 (never released before): a song of 0.4.6 moves its MIDI row a row down, gives the mix the media
+  of its first synth that had one (none: off), and starts its synths' delays off. A sound of before (library form
+  3) loads its delay off; its media is not a sound's any more.
+- The heaviest case (Noise, Ping-pong, Flanger on all three, Haze, Grains, VHS on the mix): CPU0 1571, CPU1 1247
+  [M]; with a layer under every voice and the LFO on, CPU0 1520, CPU1 1379. Under the proven 1650.
+
 ## 6. Stage 5: the spaces
 
 Shared buses, at 22.05 kHz, one type each at a time, as now.
@@ -245,7 +267,8 @@ The song mode comes early: it costs no CPU, needs no measurement, and turns the 
 
 Releases: 0.3 (FM-1_968) went out after stage 2, once it ran on the owner's FM-1; 0.4 (FM-1_969) after stage 3 and
 three reviews' fixes, at the owner's word. That was the last identity in Demake's range, so 0.4.1 .. 0.4.4 keep it
-(0.4.4: stage 4, at the owner's word; 0.4.5: its letter white; 0.4.6: twelve landscapes); a 0.5 needs a new range (section 10).
+(0.4.4: stage 4, at the owner's word; 0.4.5: its letter white; 0.4.6: twelve landscapes; 0.4.7: the media on the
+mix, a delay a synth, Vary, at the owner's word); a 0.5 needs a new range (section 10).
 
 Or the range is widened (section 10). Every package goes to the owner first, as `~/Downloads` builds, before a
 release.

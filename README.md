@@ -12,7 +12,7 @@ dithered, for what is lit.
   Chrome.
 - **Read the manual:** [the manual](https://inigohernandez.github.io/demake-synth/manual.html).
 
-**Status: Demake 0.4.6** (FM-1_969), on the install page.
+**Status: Demake 0.4.7** (FM-1_969), on the install page.
 
 ## What it does
 
@@ -22,9 +22,10 @@ dithered, for what is lit.
     or on the tempo.
   - A layer: a second recording under a sound. Glide, velocity, the cutoff following the key, and grit (the voice at
     22 or 11 kHz).
-  - Per synth: Colour (saturate, crush, codec, noise), Media (tape, cassette, VHS) and Motion (chorus, vibrato,
-    drift).
-  - Shared spaces: six reverbs (room, hall, space, haze, bloom, lofi), and a tape echo or grains; each can be off.
+  - Per synth: Colour (saturate, crush, codec, noise, warm, distort), a Delay in time (delay or ping-pong) and
+    Motion (chorus, vibrato, drift, ensemble, phaser, flanger, tremolo).
+  - Shared: six reverbs (room, hall, space, haze, bloom, lofi), a tape echo or grains, and Media over the whole mix
+    (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
 - **The music.**
   - Three synths, each with a piano roll of up to 64 steps and eight patterns of its own.
   - Sixteen scenes say which pattern each synth plays, and switch on the bar with HOME held and a white key.

@@ -43,14 +43,14 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
     {"Amp", 1, {"Amp"}, {"Level"}, {{"Attack", "Decay", "Sustain", "Release"}}},
-    {"FX", 4, {"Colour", "Media", "Motion", "Space"}, {"Effect", "Effect", "Effect", ""},
-     {{"Amount", "Tone", "Time", "Spice"}, {"Amount", "Tone", "Time", "Spice"},   /* an effect names its own */
+    {"FX", 4, {"Colour", "Delay", "Motion", "Space"}, {"Effect", "Type", "Effect", ""},
+     {{"Amount", "Tone", "Time", "Spice"}, {"Mix", "Tone", "Time", "Regen"},   /* an effect names its own */
       {"Amount", "Tone", "Time", "Spice"}, {"Verb", "Echo", "Pan", "Width"}}},
     {"Chord", 3, {"Voice", "Key", "Keys"}, {"Prog", "Prog", "Prog"},
      {{"Voicing", "Invert", "Spread", "Strum"}, {"Key", "Mode", "Change", "Rhythm"}, {"Keys", "Type", "", ""}}},
-    {"Global", 4, {"Verb", "Echo", "MIDI", "Theme"}, {"Type", "Type", "", ""},
+    {"Global", 4, {"Verb", "Echo", "Media", "Setup"}, {"Type", "Type", "Type", ""},
      {{"Return", "Tone", "Size", "Mod"}, {"Return", "Tone", "Time", "Regen"},
-      {"In", "Out", "Clock", ""}, {"Theme", "", "", ""}}},
+      {"Amount", "Tone", "Time", "Spice"}, {"MIDI in", "MIDI out", "Clock", "Theme"}}},
     {"LFO", 2, {"Wave", "Sync"}, {"Target", "Target"}, {{"Rate", "Depth", "Shape", "Fade"}, {"Sync", "Restart", "", ""}}},
     {"Songs", 1, {"Songs"}, {""}, {{"Slot", "", "", ""}}},
     {"Song", 2, {"Scene", "Steps"}, {"", ""}, {{"Synth 1", "Synth 2", "Synth 3", "Chords"}, {"Step", "Scene", "Bars", "End"}}},
@@ -75,7 +75,7 @@ static const char *const COLOURS[FX_COLOURS] = {"Off", "Saturate", "Crush", "Los
 static const char *const MEDIAS[FX_MEDIAS] = {"Off", "Tape", "Cassette", "VHS", "Vinyl", "Radio", "Dictaphone"};
 static const char *const MOTIONS[FX_MOTIONS] = {"Off", "Chorus", "Vibrato", "Drift", "Ensemble", "Phaser", "Flanger", "Tremolo"};
 static const char *const TREMS[] = {"1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T"};   /* (dmk_dsp's TREM3) */
-/* each effect's four knobs, by row and type (the off ones: the row's own) */
+/* each effect's four knobs, by row and type (the off ones: the row's own; MEDIA's: the whole mix's, GLO's third row) */
 static const char *const FXK[3][8][4] = {
     {{"Amount", "Tone", "Time", "Spice"}, {"Drive", "Tone", "Bias", "Mix"}, {"Bits", "Tone", "Rate", "Jitter"},
      {"Loss", "Band", "Frame", "Holes"}, {"Hiss", "Tone", "Crackle", "Hum"}, {"Drive", "Tilt", "Body", "Mix"},
@@ -118,21 +118,23 @@ static const int8_t LTUNE[7] = {-24, -12, -7, 0, 7, 12, 24};
 static const char *const GRITS[] = {"Off", "22 kHz", "11 kHz"};
 static const char *const LOOPS[] = {"Off", "Full"};
 static const char *const VERBS[] = {"Off", "Room", "Hall", "Space", "Haze", "Bloom", "Lofi"};   /* (the owner: off too) */
-static const char *const ECHOS[] = {"Off", "Tape", "Grains", "Delay", "Ping-pong"};   /* (later ones after: dmk_store's 7) */
-#define FX_ECHOS 5
+static const char *const ECHOS[] = {"Off", "Tape", "Grains"};   /* (the delays: each synth's, FX's second row) */
+#define FX_ECHOS 3
+static const char *const DELAYS[] = {"Off", "Delay", "Ping-pong"};
 static const char *const KEEPS[] = {"Off", "On"};      /* the roll's Vary: mutations heard, or written in */
 static const char *const DIVS[] = {"1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4", "1/4D", "1/2"};   /* the delay's (dmk_seq: DIV24) */
 #define DIV_N 9
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
-    {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, FX_MEDIAS, MEDIAS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
-    {PG_GLOBAL, 0, 4, 7, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
+    {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, 3, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
+    {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, 7, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS},
+    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
     {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 20, PROGS}, {PG_CHORD, 1, 4, 20, PROGS},
     {PG_CHORD, 1, 0, 12, KEYS}, {PG_CHORD, 1, 1, 6, MODENAMES}, {PG_CHORD, 1, 2, 4, CHANGES}, {PG_CHORD, 1, 3, 5, RHYTHMS},
     {PG_CHORD, 2, 0, 2, KEYMODES}, {PG_CHORD, 2, 1, 8, KTYPES}, {PG_CHORD, 2, 4, 20, PROGS},
-    {PG_GLOBAL, 2, 0, 2, MIDI_INS}, {PG_GLOBAL, 2, 1, 4, MIDI_OUTS}, {PG_GLOBAL, 2, 2, 2, CLOCKS},
+    {PG_GLOBAL, 3, 0, 2, MIDI_INS}, {PG_GLOBAL, 3, 1, 4, MIDI_OUTS}, {PG_GLOBAL, 3, 2, 2, CLOCKS},
 };
 
 static struct {
@@ -344,15 +346,13 @@ static void sp_sync(void)
         v = VS(s, PG_AMP, 0, 4);
         p->level = v * v * 2;                           /* Q15 on a square law: 64 is -12 dB */
         p->colour = (uint8_t)(VS(s, PG_FX, 0, 4) * FX_COLOURS / 128);
-        p->media = (uint8_t)(VS(s, PG_FX, 1, 4) * FX_MEDIAS / 128);
         p->motion = (uint8_t)(VS(s, PG_FX, 2, 4) * FX_MOTIONS / 128);
-        for (v = 0; v < 4; v++) { p->ck[v] = VS(s, PG_FX, 0, v); p->mk[v] = VS(s, PG_FX, 1, v); p->ok[v] = VS(s, PG_FX, 2, v); }
-        p->tape = (uint8_t)(p->media == FM_TAPE);
-        p->tdepth = VS(s, PG_FX, 1, 0) * 800;           /* the wow: up to ~40 cents at its slowest */
-        p->tdrive = 256 + VS(s, PG_FX, 1, 0) * 3;
-        p->thl = T_OP[64 + VS(s, PG_FX, 1, 1) / 2];     /* head loss: 600 Hz .. open */
-        p->twow = 19480u + (uint32_t)VS(s, PG_FX, 1, 2) * 1500u;   /* 0.2 .. 2.2 Hz */
-        p->tflut = 620000u + (uint32_t)VS(s, PG_FX, 1, 3) * 2000u; /* 6.3 .. 7.7 Hz */
+        for (v = 0; v < 4; v++) { p->ck[v] = VS(s, PG_FX, 0, v); p->ok[v] = VS(s, PG_FX, 2, v); }
+        p->dtype = (uint8_t)choice_index(choice_of(PG_FX, 1, 4), VS(s, PG_FX, 1, 4));   /* its DELAY: off, delay, ping-pong */
+        p->dmix = VS(s, PG_FX, 1, 0) * 258;
+        p->dtone = T_OPH[64 + VS(s, PG_FX, 1, 1) / 2];  /* (at a quarter of the rate: 325 Hz .. 5 kHz) */
+        p->ddiv = (uint8_t)choice_index(choice_of(PG_FX, 1, 2), VS(s, PG_FX, 1, 2));
+        p->dfb = VS(s, PG_FX, 1, 3) * 240;
         p->vsend = VS(s, PG_FX, 3, 0) * 258;
         p->esend = VS(s, PG_FX, 3, 1) * 258;
         v = VS(s, PG_FX, 3, 2);
@@ -393,6 +393,18 @@ static void sp_sync(void)
         gp.vmod = MD[t] * VS(0, PG_GLOBAL, 0, 3) / 127;
         gp.vrate = RT[t];
     }
+    {   /* the whole mix's MEDIA (GLO's third row): its type, its knobs (the tape's in its own units) */
+        synth_t *p = &gmed;
+        int v;
+        p->media = (uint8_t)choice_index(choice_of(PG_GLOBAL, 2, 4), VS(0, PG_GLOBAL, 2, 4));
+        for (v = 0; v < 4; v++) p->mk[v] = VS(0, PG_GLOBAL, 2, v);
+        p->tape = (uint8_t)(p->media == FM_TAPE);
+        p->tdepth = VS(0, PG_GLOBAL, 2, 0) * 800;       /* the wow: up to ~40 cents at its slowest */
+        p->tdrive = 256 + VS(0, PG_GLOBAL, 2, 0) * 3;
+        p->thl = T_OP[64 + VS(0, PG_GLOBAL, 2, 1) / 2]; /* head loss: 600 Hz .. open */
+        p->twow = 19480u + (uint32_t)VS(0, PG_GLOBAL, 2, 2) * 1500u;   /* 0.2 .. 2.2 Hz */
+        p->tflut = 620000u + (uint32_t)VS(0, PG_GLOBAL, 2, 3) * 2000u; /* 6.3 .. 7.7 Hz */
+    }
     gp.width = VS(0, PG_HOME, 3, 3) * 4;                /* the whole mix's width: 64 as it is */
     gp.vret = VS(0, PG_GLOBAL, 0, 0) * 258;
     gp.vdamp = T_OPH[VS(0, PG_GLOBAL, 0, 1)];
@@ -400,15 +412,14 @@ static void sp_sync(void)
     gp.eret = VS(0, PG_GLOBAL, 1, 0) * 258;
     gp.elp = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
     gp.etime = T_ETIME[VS(0, PG_GLOBAL, 1, 2)];
-    gp.ediv = (uint8_t)(VS(0, PG_GLOBAL, 1, 2) * DIV_N / 128);   /* (a delay's: dmk_seq makes its time of the tempo) */
     gp.efb = VS(0, PG_GLOBAL, 1, 3) * 240;
     { int t = choice_index(choice_of(PG_GLOBAL, 1, 4), VS(0, PG_GLOBAL, 1, 4)); gp.etype = (uint8_t)(t ? t - 1 : ET_OFF); }   /* Off first */
     gp.glen = 441 + VS(0, PG_GLOBAL, 1, 1) * 62;        /* GRAINS: 20..380 ms */
     gp.gdens = 6 + VS(0, PG_GLOBAL, 1, 2) * 113 / 127;  /* 2..40 a second */
     gp.gtex = VS(0, PG_GLOBAL, 1, 3);
-    midi_chans = (uint8_t)(VS(0, PG_GLOBAL, 2, 0) * 2 / 128);
-    midi_out = (uint8_t)(VS(0, PG_GLOBAL, 2, 1) * 4 / 128);
-    clock_ext = (uint8_t)(VS(0, PG_GLOBAL, 2, 2) * 2 / 128);
+    midi_chans = (uint8_t)(VS(0, PG_GLOBAL, 3, 0) * 2 / 128);   /* the setup */
+    midi_out = (uint8_t)(VS(0, PG_GLOBAL, 3, 1) * 4 / 128);
+    clock_ext = (uint8_t)(VS(0, PG_GLOBAL, 3, 2) * 2 / 128);
     if (!clock_ext) seq_bpm = VS(0, PG_HOME, 0, 4) < 20 ? 20 : VS(0, PG_HOME, 0, 4);   /* outside, the clock's tempo */
     ch.voicing = (uint8_t)(VS(0, PG_CHORD, 0, 0) * 5 / 128);
     ch.invert = (uint8_t)(VS(0, PG_CHORD, 0, 1) * 5 / 128);
@@ -430,6 +441,11 @@ static void roll_vary_defaults(int s)                  /* the roll's Vary: no mu
 {
     uint8_t *v = ui.val[s][PG_ROLL][1];
     v[0] = 0; v[1] = 32; v[2] = 127; v[3] = 0; v[4] = 64;
+}
+static void delay_defaults(int s)                       /* a synth's DELAY: off, a dotted eighth, a few repeats */
+{
+    uint8_t *v = ui.val[s][PG_FX][1];
+    v[0] = 48; v[1] = 80; v[2] = choice_val(5, DIV_N); v[3] = 56; v[4] = 0;
 }
 static void snd_new_defaults(int s)
 {
@@ -456,7 +472,7 @@ DMK_SMALL static void ui_init(void)
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
      * env, level, tape, wow, verb, echo, pan] */
     static const uint8_t FIRST[DMK_SYNTHS] = {DMK_FIRST_PAD, DMK_FIRST_KEY, DMK_FIRST_PLUCK};   /* a pad, keys, a pluck */
-    static const uint8_t SET[DMK_SYNTHS][13] = {
+    static const uint8_t SET[DMK_SYNTHS][13] = {         /* (tape, wow: the mix's since 0.5, the pad's) */
         {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
         {0, 80, 56, 72, 96, 12, 76, 96, 1, 24, 60, 52, 72},
         {0, 60, 0, 64, 112, 24, 80, 92, 0, 0, 72, 76, 40}};
@@ -475,11 +491,10 @@ DMK_SMALL static void ui_init(void)
         ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
         ui.val[s][PG_FILTER][0][0] = t[4]; ui.val[s][PG_FILTER][0][1] = t[5]; ui.val[s][PG_FILTER][0][2] = t[6];
         ui.val[s][PG_FILTER][0][4] = 0;                 /* LP24 */
-        ui.val[s][PG_FX][1][4] = t[8] ? choice_val(FM_TAPE, FX_MEDIAS) : 0;   /* Media: tape, or off */
-        ui.val[s][PG_FX][0][4] = 0;                     /* Colour, Motion: off */
+        ui.val[s][PG_FX][0][4] = 0;                     /* Colour, Delay, Motion: off */
         ui.val[s][PG_FX][2][4] = 0;
+        delay_defaults(s);
         roll_vary_defaults(s);
-        ui.val[s][PG_FX][1][0] = t[9]; ui.val[s][PG_FX][1][1] = 90;
         ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
         snd_new_defaults(s);
     }
@@ -494,15 +509,18 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS);   /* the echo: tape */
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
-    ui.val[0][PG_GLOBAL][2][0] = choice_val(0, 2); ui.val[0][PG_GLOBAL][2][1] = choice_val(1, 4);   /* MIDI: the synth, notes out */
-    ui.val[0][PG_GLOBAL][2][2] = choice_val(0, 2);      /* its own clock */
+    ui.val[0][PG_GLOBAL][2][4] = choice_val(FM_TAPE, FX_MEDIAS);   /* the mix's media: tape, a little wow */
+    ui.val[0][PG_GLOBAL][2][0] = SET[0][9]; ui.val[0][PG_GLOBAL][2][1] = 90;
+    ui.val[0][PG_GLOBAL][3][0] = choice_val(0, 2); ui.val[0][PG_GLOBAL][3][1] = choice_val(1, 4);   /* MIDI: the synth, notes out */
+    ui.val[0][PG_GLOBAL][3][2] = choice_val(0, 2);      /* its own clock */
+    ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* each roll on its own pattern: its notes in view */
         ui.roll_cur[s] = 0;
         ui.roll_pen[s] = 2;
         ui.roll_zoom[s] = (uint8_t)(sq[s].steps > 16);
     }
     ui.roll_view[0] = (uint8_t)degree_of(53); ui.roll_view[1] = (uint8_t)degree_of(64); ui.roll_view[2] = (uint8_t)degree_of(69);
-    ui.row[PG_FX] = 1;                                  /* Media: the first effect built */
+    ui.row[PG_FX] = 1;                                  /* the delay */
     ui.page = PG_HOME;
     ui.octave = 0;
     ui.touch_k = -1;
@@ -557,7 +575,7 @@ static void val_text(char *o, int page, int row, int k)
     if (page == PG_ARR) { arr_text(o, row, k); return; }
     const choice_t *c = choice_of(page, row, k);
     int v = *vp(page, row, k);
-    if (page == PG_GLOBAL && row == 3 && k == 0) { str_cat(o, THEME_NAME[theme]); return; }
+    if (page == PG_GLOBAL && row == 3 && k == 3) { str_cat(o, THEME_NAME[theme]); return; }
     if (page == PG_DISCS && k == 0) { if (ui.song_pick < 9) *o++ = '0'; fmt_int(o, ui.song_pick + 1); return; }
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
@@ -580,10 +598,7 @@ static void val_text(char *o, int page, int row, int k)
         str_cat(fmt_int(o, v * 100 / 127), "%");
         return;
     }
-    if (page == PG_GLOBAL && row == 1 && k == 2) {     /* the echo's time: a delay's, its division of the tempo */
-        int t = choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4));
-        if (t >= 3) { str_cat(o, DIVS[v * DIV_N / 128]); return; }
-    }
+    if (page == PG_FX && row == 1 && k == 0 && !v) { str_cat(o, "Off"); return; }
     if (page == PG_FX && row == 2 && k == 2 && choice_index(choice_of(PG_FX, 2, 4), *vp(PG_FX, 2, 4)) == FO_TREM) {
         str_cat(o, TREMS[v * TREM_N / 128]);            /* the tremolo's rate: its division of the tempo */
         return;
@@ -665,7 +680,7 @@ static int sel_scrolls(int page)
 static int row_off(int page, int row)
 {
     if (page == PG_FX && row < 3) return choice_index(choice_of(PG_FX, row, 4), *vp(PG_FX, row, 4)) == 0;
-    if (page == PG_GLOBAL && row < 2) return choice_index(choice_of(PG_GLOBAL, row, 4), *vp(PG_GLOBAL, row, 4)) == 0;
+    if (page == PG_GLOBAL && row < 3) return choice_index(choice_of(PG_GLOBAL, row, 4), *vp(PG_GLOBAL, row, 4)) == 0;
     return 0;
 }
 
@@ -839,7 +854,8 @@ static void fields_band(void)
     }
     for (k = 0; k < 4; k++) {
         const char *l = pg->k[r][k];
-        if (ui.page == PG_FX && r < 3) l = FXK[r][choice_index(choice_of(PG_FX, r, 4), *vp(PG_FX, r, 4))][k];
+        if (ui.page == PG_FX && r != 1 && r < 3) l = FXK[r][choice_index(choice_of(PG_FX, r, 4), *vp(PG_FX, r, 4))][k];
+        if (ui.page == PG_GLOBAL && r == 2) l = FXK[1][choice_index(choice_of(PG_GLOBAL, 2, 4), *vp(PG_GLOBAL, 2, 4))][k];
         if (ui.page == PG_GLOBAL && r == 1 && choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4)) == 2) { static const char *const GK[4] = {"Return", "Size", "Density", "Texture"}; l = GK[k]; }
         field(k, l, ui.page, r);
     }
@@ -917,7 +933,7 @@ static void foot(void)
         }
         return;
     }
-    if (ui.page == PG_GLOBAL && r >= 2) {               /* GLO's last rows: how the machine is doing (the owner heard
+    if (ui.page == PG_GLOBAL && r == 3) {               /* GLO's setup: how the machine is doing (the owner heard
                                                            it overload): the load of the sound and the second core, the
                                                            times the sound ran short, the mix past full */
         char t[28], *o = t;
@@ -934,7 +950,7 @@ static void foot(void)
     }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
-        int typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2) || ui.page == PG_FILTER, nd = rows_built(ui.page), x;
+        int typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 3) || ui.page == PG_FILTER, nd = rows_built(ui.page), x;
         int end = nd > 1 ? (DMK_W - dots_w(nd)) / 2 - 4 : 130;   /* where its words end: short of the dots */
         val_text(v, ui.page, r, 4);
         if (PAD + 1 + text_w(pg->algo[r], &FS) + 6 + text_w(v, &FS) <= end)   /* its name, then the value; a long value */
@@ -1718,13 +1734,13 @@ static void stage_rows(int page, const char *const *names, int n, int open)
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
         text(SX + 14, y + (h - 20) / 2 - 1, names[i], &FM, row_soon(page, i) ? C_LABEL : C_INK);
         if (row_soon(page, i)) { text_r(SX + SW - PAD - 4, y + (h - 12) / 2, "Soon", &FS, C_LABEL); continue; }
-        if (page == PG_GLOBAL && i == 2) {              /* MIDI: what goes out, at a glance */
+        if (page == PG_GLOBAL && i == 3) {              /* the setup: what MIDI sends, at a glance */
             char v[24];
-            str_cat(str_cat(v, "Out: "), MIDI_OUTS[choice_index(choice_of(PG_GLOBAL, 2, 1), ui.val[0][PG_GLOBAL][2][1])]);
+            str_cat(str_cat(v, "MIDI out: "), MIDI_OUTS[choice_index(choice_of(PG_GLOBAL, 3, 1), ui.val[0][PG_GLOBAL][3][1])]);
             text_r(SX + SW - PAD - 4, y + (h - 12) / 2, v, &FS, C_LABEL);
             continue;
         }
-        if (page != PG_FX && i >= 2) continue;              /* the setup is not an effect: no switch */
+        if (page != PG_FX && i >= 3) continue;              /* the setup is not an effect: no switch */
         if ((page == PG_FX && i < 3) || page == PG_GLOBAL) {   /* the row's effect, by name, left of its switch */
             char v[16];
             val_text(v, page, i, 4);
@@ -2262,10 +2278,11 @@ static void overlays(void)
 #ifndef DMK_FM1_DIAG
 #define DMK_FM1_DIAG 0
 #endif
-/* the test build's load case (docs/sound-design.md, stage 1): HOME and SAVE held, then REC. Every synth lossy, VHS and
- * chorus, the haze and the grains, twelve notes struck again every two seconds; the same keys put it all back */
-static struct { uint8_t on, kept[DMK_SYNTHS][3], gkept[2]; uint32_t at; } stress;
-static uint8_t stress_row(int r) { return choice_val(r == 0 ? FC_NOISE : r == 1 ? FM_VHS : FO_FLANGER, r == 0 ? FX_COLOURS : r == 1 ? FX_MEDIAS : FX_MOTIONS); }   /* the rows' heaviest [M] */
+/* the test build's load case (docs/sound-design.md, stage 1): HOME and SAVE held, then REC. Every synth noise, a
+ * ping-pong and a flanger, the haze, the grains and VHS on the mix, twelve notes struck again every two seconds; the
+ * same keys put it all back */
+static struct { uint8_t on, kept[DMK_SYNTHS][3], gkept[3]; uint32_t at; } stress;
+static uint8_t stress_row(int r) { return r == 1 ? choice_val(2, 3) : choice_val(r == 0 ? FC_NOISE : FO_FLANGER, r == 0 ? FX_COLOURS : FX_MOTIONS); }   /* the rows' heaviest [M] */
 static void stress_notes(int on)
 {
     int i;
@@ -2282,8 +2299,9 @@ static void stress_set(int on)
             if (on) { stress.kept[s][r] = ui.val[s][PG_FX][r][4]; ui.val[s][PG_FX][r][4] = stress_row(r); }
             else ui.val[s][PG_FX][r][4] = stress.kept[s][r];
         }
-    for (r = 0; r < 2; r++) {
-        if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = r ? choice_val(2, FX_ECHOS) : 74; }   /* haze, grains */
+    for (r = 0; r < 3; r++) {
+        const uint8_t HEAVY[3] = {74, choice_val(2, FX_ECHOS), choice_val(FM_VHS, FX_MEDIAS)};   /* haze, grains, VHS */
+        if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = HEAVY[r]; }
         else ui.val[0][PG_GLOBAL][r][4] = stress.gkept[r];
     }
     sp_sync();
@@ -2702,9 +2720,9 @@ DMK_SMALL static void ui_encoder(int e, int d)
         sp_sync();
         return;
     }
-    if (e == E_PRESET && ((ui.page == PG_FX && ui.row[PG_FX] < 3) || (ui.page == PG_GLOBAL && ui.row[PG_GLOBAL] < 2) || ui.page == PG_FILTER)) {
-        /* on a page of types, PRESET is the row's type: the effect, the verb, the echo, the filter (the owner: not
-         * the whole sound there) */
+    if (e == E_PRESET && ((ui.page == PG_FX && ui.row[PG_FX] < 3) || (ui.page == PG_GLOBAL && ui.row[PG_GLOBAL] < 3) || ui.page == PG_FILTER)) {
+        /* on a page of types, PRESET is the row's type: the effect, the delay, the verb, the echo, the media, the
+         * filter (the owner: not the whole sound there) */
         int r0 = ui.row[ui.page], n;
         const choice_t *c = choice_of(ui.page, r0, 4);
         uint8_t *v = vp(ui.page, r0, 4);
@@ -2819,10 +2837,10 @@ DMK_SMALL static void ui_encoder(int e, int d)
         }
     }
     if (ui.page == PG_CHORD && k == 4) { prog_step(d); return; }   /* a progression: its own mode and voicing with it */
-    if (k == 4 && ((ui.page == PG_FX && r == 3) || (ui.page == PG_GLOBAL && r >= 2))) return;   /* (a row with no type) */
-    if (ui.page == PG_GLOBAL && r == 3 && k == 0) {    /* theme */
-        int t = theme + (d > 0 ? 1 : -1);
-        theme = (uint8_t)(t < 0 ? DMK_THEMES - 1 : t >= DMK_THEMES ? 0 : t);
+    if (k == 4 && ((ui.page == PG_FX && r == 3) || (ui.page == PG_GLOBAL && r == 3))) return;   /* (a row with no type) */
+    if (ui.page == PG_GLOBAL && r == 3 && k == 3) {    /* theme */
+        theme = (uint8_t)wrap(theme + (d > 0 ? 1 : -1), DMK_THEMES);
+        ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);   /* (its dots) */
         return;
     }
     v = vp(ui.page, r, k);

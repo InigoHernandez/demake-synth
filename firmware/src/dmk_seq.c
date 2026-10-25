@@ -370,13 +370,13 @@ static void lfo_sync(void)
         }
         lfo[s].rst = 0;
     }
-    if (gp.etype == ET_DELAY || gp.etype == ET_PING) {  /* the ECHO's delays: their time a division of the tempo, halved
-                                                           till the line holds it (so still in time) */
+    for (s = 0; s < DMK_SYNTHS; s++) {                  /* each synth's DELAY: its time a division of the tempo, halved
+                                                           till its line holds it (so still in time) */
         static const uint8_t DIV24[9] = {6, 8, 9, 12, 16, 18, 24, 36, 48};   /* in 24ths of a beat (the screen's DIVS) */
-        uint32_t t = 55125u * DIV24[gp.ediv < 9 ? gp.ediv : 6] / (uint32_t)(seq_bpm > 0 ? seq_bpm : 120);   /* 22050 * 60 / 24 */
-        uint32_t most = gp.etype == ET_PING ? EL_LEN / 2u - 2u : EL_LEN - 2u;
+        uint32_t t = 55125u * DIV24[syn[s].ddiv < 9 ? syn[s].ddiv : 6] / (2u * (uint32_t)(seq_bpm > 0 ? seq_bpm : 120));   /* 11025 * 60 / 24 */
+        uint32_t most = syn[s].dtype == 2 ? DL_LEN / 2u - 2u : DL_LEN - 2u - DL_LEN / 64u;   /* (its right a hair, or twice, later) */
         while (t > most) t /= 2u;
-        gp.edt = t;
+        syn[s].dtime = t;
     }
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* MOTION's tremolo: its step at the tempo, in time with the bars */
         uint32_t n3, blocks;

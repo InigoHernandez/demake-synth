@@ -89,12 +89,12 @@
         <h1>The panel</h1>
         <p class="msub">Each button opens its page; again, its next row. K1 to K4 turn the values over them, ALGORITHM the one at the foot.</p>
         <div class="mt">
-          <p><b>FX</b><span>Effects: colour, media, motion, space</span></p>
+          <p><b>FX</b><span>Effects: colour, delay, motion, space</span></p>
           <p><b>SEL</b><span>Filter</span></p>
           <p><b>ENV</b><span>Amp: the envelope and the level</span></p>
           <p><b>LFO</b><span>LFO: a slow wave on the pitch, cutoff, level, pan or start</span></p>
           <p><b>EDIT</b><span>Sound: the recording; again, its layer; again, the voice</span></p>
-          <p><b>GLO</b><span>Global: the reverb, the echo, the theme</span></p>
+          <p><b>GLO</b><span>Global: the reverb, the echo, the media over the mix; the setup</span></p>
           <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
@@ -272,15 +272,15 @@
       </article>
       <article id="effects" data-group="Sound">
         <h1>Effects</h1>
-        <p class="msub">Four rows a synth, then the reverb and the echo all three share. SELECT the row, ALGORITHM (or PRESETS) its type.</p>
+        <p class="msub">Four rows a synth on FX, then on GLO the reverb, the echo and the media all three share. SELECT the row, ALGORITHM (or PRESETS) its type.</p>
         <figure class="mfig"><img src="img/screens/06_fx.png" alt="FX" width="240" height="240"><figcaption>Each row names its effect.</figcaption></figure>
         <div class="mt">
           <p><b>Colour</b><span>Saturate, crush, lossy (a codec's smear), noise, warm, distort</span></p>
-          <p><b>Media</b><span>Tape, cassette, VHS, vinyl, radio, dictaphone</span></p>
+          <p><b>Delay</b><span>Off, delay or ping-pong (left, then right), in time: Time is a division of the tempo; Mix, Tone, Regen</span></p>
           <p><b>Motion</b><span>Chorus, vibrato, drift, ensemble, phaser, flanger, tremolo (on the tempo)</span></p>
           <p><b>Space</b><span>The sends to the reverb and the echo, the pan, the width</span></p>
         </div>
-        <p class="note">Each effect names its own four knobs: crush shows bits, tone, rate and jitter.</p>
+        <p class="note">Each effect names its own four knobs: crush shows bits, tone, rate and jitter. A synth's delay is lofi, at 11 kHz; a long time at a slow tempo plays at half, still in time.</p>
         <div class="mt">
           <p><b>Off</b><span>The first of each: none of it, nothing returned</span></p>
           <p><b>Room</b><span>Short, close</span></p>
@@ -291,15 +291,14 @@
           <p><b>Lofi</b><span>Eleven kHz, eight bits, wow</span></p>
           <p><b>Tape echo</b><span>Darkening repeats</span></p>
           <p><b>Grains</b><span>A cloud of what you played: size, density, texture</span></p>
-          <p><b>Delay</b><span>Clean repeats in time: Time is a division of the tempo</span></p>
-          <p><b>Ping-pong</b><span>The same, left, then right</span></p>
+          <p><b>Media</b><span>The whole mix through tape, cassette, VHS, vinyl, radio or a dictaphone</span></p>
         </div>
       </article>
       <article id="midi" data-group="Reference">
         <h1>MIDI</h1>
         <p class="msub">Over USB on the FM-1, in on its TRS jack too; in the emulator, the computer's MIDI ports.</p>
         <div class="mt">
-          <p><b>GLO, the MIDI row</b><span>In, Out and Clock</span></p>
+          <p><b>GLO, the Setup row</b><span>MIDI in, MIDI out and Clock; its last knob the theme</span></p>
           <p><b>In: Synth</b><span>Notes play the synth selected, as the keys do</span></p>
           <p><b>In: Ch 1-3</b><span>Channel 1, 2, 3 plays synth 1, 2, 3; the others the synth selected</span></p>
           <p><b>Out: Notes</b><span>Every note each synth plays, on its channel 1 to 3</span></p>
@@ -338,7 +337,7 @@
     <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 <script src="manual.js?v=9"></script>
 </body>
 </html>

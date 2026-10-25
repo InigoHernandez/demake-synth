@@ -16,14 +16,16 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 7u   /* 7: the rolls' Vary row, the echo's delays (its types' places moved); 6: more effects in each FX
+#define ST_VER 7u   /* 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
+                       a row down; 6: more effects in each FX
                        row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
 
-static uint8_t st_buf[ST_SECTOR] POOL;                  /* a sector as it is written or was read */
-static uint8_t lib[ST_USER][ST_SOUND] POOL;             /* the library, as the flash holds it: [used, its form, the values]:
+static uint8_t st_buf[ST_SECTOR];                       /* a sector as it is written or was read (in RAM: the pool is
+                                                           the sound's) */
+static uint8_t lib[ST_USER][ST_SOUND];                  /* the library, as the flash holds it: [used, its form, the values]:
                                                            form 0, 45 values (before 0.4); 1, 55; 2, 55 with the
-                                                           FX rows' later types (0.5) */
+                                                           FX rows' later types; 3, the delay for the media (0.5) */
 static uint32_t st_gen;                                 /* the newest song's generation */
 static uint32_t song_gen[ST_SONGS];                     /* each slot's (0: empty) */
 static uint8_t song_prog[ST_SONGS];                     /* each slot's progression, for its name */
@@ -119,6 +121,7 @@ static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of
     for (r = 0; r < (form ? SND_ROWS_N : 9); r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = v[r * 5 + k];
     if (!form) snd_new_defaults(s);                     /* its layer, voice, drive and LFO did nothing then: off */
     if (form < 2) fx_types_moved(s);
+    if (form < 3) delay_defaults(s);                    /* its media: the mix's now, so not the sound's */
     sp_sync();
 }
 /* synth s's sound into the library's first free slot: its number (1..32), 0 full, -1 not written */
@@ -127,7 +130,7 @@ static int sound_save(int s)
     int i, j;
     for (i = 0; i < ST_USER && lib[i][0]; i++) {}
     if (i == ST_USER) return 0;
-    lib[i][0] = 1; lib[i][1] = 2;
+    lib[i][0] = 1; lib[i][1] = 3;
     sound_put(s, &lib[i][2]);
     for (j = 0; j < (int)(ST_USER * ST_SOUND); j++) st_buf[ST_HDR + j] = lib[j / ST_SOUND][j % ST_SOUND];
     if (st_save(ST_LIB, ST_MAGIC_LIB, ST_USER * ST_SOUND, 0)) { lib[i][0] = 0; return -1; }
@@ -208,7 +211,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     if (n < 1u + DMK_SYNTHS * PG_SAVED * 20u + 1u + DMK_SYNTHS + 4u * (3u + PROG_SLOTS * 4u) + DMK_SYNTHS * 4u + DMK_SYNTHS * 2u) return -1;
     seq_play(0);
     for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
-    for (k = 0; k < 3; k++) if (ui.val[0][PG_GLOBAL][2][k] == 64) {   /* the MIDI row never set (a song of 0.2, before
+    if (st_ver < 7u) for (k = 0; k < 3; k++) if (ui.val[0][PG_GLOBAL][2][k] == 64) {   /* the MIDI row never set (a song of 0.2, before
                                                            it was there; no choice is 64): In Synth, Out Notes, the
                                                            own clock. It loaded as Ch 1-3, Clock out, an outside
                                                            clock: PLAY waited for one */
@@ -222,12 +225,18 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 6 / 128 + 1, 7);
         ui.val[0][PG_GLOBAL][1][4] = choice_val(ui.val[0][PG_GLOBAL][1][4] * 2 / 128 + 1, 3);
     }
-    if (st_ver < 7u) {                                  /* before 0.5: the rolls' Vary off; the echo's type at its place of five */
-        int t = ui.val[0][PG_GLOBAL][1][4] * 3 / 128;
-        for (s = 0; s < DMK_SYNTHS; s++) roll_vary_defaults(s);
-        ui.val[0][PG_GLOBAL][1][4] = t ? choice_val(t, FX_ECHOS) : 0;
+    if (st_ver < 7u) {                                  /* before 0.5: the rolls' Vary off; the MIDI row a row down; the
+                                                           media of the first synth that had one the mix's (its
+                                                           knobs; none: off, the pad's knobs), the synths' delays off */
+        uint8_t *m = ui.val[0][PG_GLOBAL][2], *g = ui.val[0][PG_GLOBAL][3];
+        int from = 0;
+        for (k = 0; k < 3; k++) g[k] = m[k];
+        for (s = DMK_SYNTHS - 1; s >= 0; s--) if (ui.val[s][PG_FX][1][4] * FX_MEDIAS / 128) from = s;
+        for (k = 0; k < 5; k++) m[k] = ui.val[from][PG_FX][1][k];
+        for (s = 0; s < DMK_SYNTHS; s++) { roll_vary_defaults(s); delay_defaults(s); }
     }
     theme = *p++ % DMK_THEMES;
+    ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);   /* (its dots) */
     for (s = 0; s < DMK_SYNTHS; s++) { ch.follow[s] = *p++; if (ch.follow[s] >= FW_COUNT) ch.follow[s] = FW_FREE; }
     for (i = 0; i < 4; i++) {
         uprog[i].mode = *p++; uprog[i].voicing = *p++; uprog[i].n = *p++;

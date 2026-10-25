@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.6.fwsc",
-  "version": "0.4.6",
+  "file": "demake-0.4.7.fwsc",
+  "version": "0.4.7",
   "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "ce595b5f13b0c51e001493376379c3068eeb0c04aceaae5784c80d77ae72f1f5",
-  "note": "Six more landscapes: a forest, a living room, a villa over the sea, a California street, a harbour in fog, a lighthouse. Lists go round. The sounds that moved there named for them."
+  "sha256": "a8ec7ca045c820a47ab7b4cf02592eb2d081db1b5c497a94d19dc5c039f0e81d",
+  "note": "A delay on each synth, in time (delay or ping-pong); the media over the whole mix, on GLO. The roll's Vary: notes that move in the scale and a chance to play. Keys write the roll only with REC. Song names, palms, a pool house."
 }
