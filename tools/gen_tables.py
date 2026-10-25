@@ -188,8 +188,11 @@ def main():
                                    / (math.tan(math.pi * 150 * 2 ** (5 * i / 32) / SR) + 1)) for i in range(33)])
     # equal-power pan, Q15: the right's gain at v, the left's at 127 - v
     arr("T_PAN", "uint16_t", [round(32767 * math.sin(v / 127 * math.pi / 2)) for v in range(128)])
-    # the echo's time, half-rate samples: 30 ms .. 1.45 s on an exponential law
-    arr("T_ETIME", "uint16_t", [round(SR / 2 * 0.03 * (1.45 / 0.03) ** (v / 127)) for v in range(128)])
+    # the echo's time, half-rate samples: 30 ms .. 0.69 s on an exponential law (its line is 0.74 s, and the right
+    # side reads 1/16 later: the top, 15215, keeps both inside it; 1.45 s wrapped round past 105)
+    arr("T_ETIME", "uint16_t", [round(SR / 2 * 0.03 * (0.69 / 0.03) ** (v / 127)) for v in range(128)])
+    # 2^(-i / 64), Q16, i = 0..64: the reverbs' decay gains from their lines' lengths (2^-x, x's fraction between)
+    arr("T_EXP2", "uint32_t", [round(65536 * 2 ** (-i / 64)) for i in range(65)])
     lines.append("")
     bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
     lines.append("static const uint8_t T_BAYER[16] = {" + ",".join(map(str, bayer)) + "};")
