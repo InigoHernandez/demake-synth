@@ -95,8 +95,6 @@ kbd {
 .nav span { color: var(--label); }
 .n1 { grid-column: 3 / span 2; } .n2 { grid-column: 6 / span 2; } .n3 { grid-column: 9 / span 2; } .n4 { grid-column: 12 / span 2; }
 .kofi { grid-column: 21 / span 4; grid-row: 2; }
-.head .mi, .head .mm { display: none; }          /* (a phone's: the index's two as buttons, under Play it) */
-.pill[aria-current] { box-shadow: inset 0 0 0 1px var(--ink); }   /* the page you are on: its line doubled */
 .cta { grid-column: 21 / span 4; grid-row: 1; }
 .pill, .lit {
   width: calc(100% + 1px); height: calc(var(--m) + 1px); display: flex; align-items: center; justify-content: center;
@@ -414,13 +412,15 @@ code { font: inherit; color: var(--ink); }
 /* ---- 7 modules (a phone) */
 @media (max-width: 799px) {
   :root { --cols: 7; --ph: 192px; --l: 32px; --xl: 96px; }
-  .nav { display: none; }
-  .head { grid-template-rows: repeat(5, var(--m)); }   /* Play it, Install, Manual, Ko-fi, then air (the owner: the
-                                                           installer and the manual in reach, as buttons) */
+  /* the index (the owner: the installer and the manual in reach): Install and Manual as the page's ruled rows, the
+   * name, then what it is in the actions' column; Play is the action, the source is in the footer */
+  .head { grid-template-rows: repeat(6, var(--m)); }   /* Play it, Ko-fi, air, the index's two rows, air */
+  .n1, .n4 { display: none; }
+  .nav { grid-column: 1 / -1; flex-direction: row; box-shadow: inset 0 1px 0 var(--ink); }
+  .nav b { width: calc(3 * var(--m)); }
+  .n3 { grid-row: 4; } .n2 { grid-row: 5; box-shadow: inset 0 1px 0 var(--line); }
   .cta { grid-column: -5 / -1; }
-  .head .mi { display: flex; grid-column: -5 / -1; grid-row: 2; }
-  .head .mm { display: flex; grid-column: -5 / -1; grid-row: 3; }
-  .kofi { grid-column: -5 / -1; grid-row: 4; }
+  .kofi { grid-column: -5 / -1; grid-row: 2; }
   /* the wordmark stacked, after Kiloy's specimen: "dem" over "ake", edge to edge */
   .mark { grid-column: 1 / -1; grid-row: 1 / span 5; aspect-ratio: 7 / 5; background-image: url("img/wordmark_stack.png"); }
   .hero { grid-template-rows: repeat(11, var(--m)); }
@@ -466,9 +466,10 @@ code { font: inherit; color: var(--ink); }
   .legend { grid-column: 1 / -1; grid-row: 10 / span 10; }
   .legend li { grid-auto-rows: auto; }
   .index { grid-column: 1 / -1; grid-row: 10 / span 13; grid-template-columns: 1fr; }
-  .bandrow { grid-template-rows: repeat(11, var(--m)); }
-  .band { grid-row: 2 / span 9; aspect-ratio: 168 / 216; background-image: url("img/band_stack.png"); }   /* stacked, a word
-                                                           in two or one, as big as the width (the owner: like the hero's) */
+  .bandrow { grid-template-rows: repeat(12, var(--m)); }
+  .band { grid-row: 2 / span 10; aspect-ratio: 168 / 240; background-image: url("img/band_stack.png?v=2"); }   /* stacked, a
+                                                           word in two or one at Kiloy's own spacing, as big as the width
+                                                           (the owner: like the hero's) */
   .links { grid-template-rows: repeat(6, var(--m)); }
   .links > * { grid-column: 1 / -1; }
   .fin { grid-template-rows: repeat(7, var(--m)); }

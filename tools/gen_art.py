@@ -239,8 +239,7 @@ def marks():
     sprite(lit_frames(glyph_mask("demake", 92, 384, 96, span=True)), IMG / "wordmark.png")
     stack()
     stack(("ambi", "ent"), "plate_stack.png", plate=True)
-    stack(("ambi", "ent", "lofi", "mach", "ine"), "band_stack.png", lit=(3, 8, 15))   # the band for a phone (the owner:
-                                                                                  # as big as the word), its letters lit
+    band_stack()
     sprite(lit_frames(glyph_mask("d", 44, 48, 48, fit=True)), IMG / "iso.png")
     Image.fromarray(lit_frames(glyph_mask("d", 58, 64, 64, fit=True))[0], "RGBA").save(IMG / "icon.png", optimize=True)
     print("web/img/wordmark.png, iso.png (six frames each), icon.png")
@@ -308,6 +307,33 @@ def stack(words=("dem", "ake"), path="wordmark_stack.png", plate=False, lit=None
             frames.append(out)
     sprite(frames, IMG / path)
     print(f"web/img/{path}: {W} x {H} cells ({H // 24} modules), rows {rh} tall, six frames")
+
+
+def band_stack():
+    """the band for a phone (the owner: as big as the word; Kiloy's spacing kept, split over lines): a line a row, all
+    of one size (the widest line's ink from edge to edge), each at its own spacing from the left, one letter lit as
+    the band has them; whole modules tall"""
+    rows = [("ambi", 3), ("ent", -1), ("lofi", 1), ("mach", -1), ("ine", 0)]
+    W, lead = 168, 6
+    f4 = ImageFont.truetype(str(KILOY), 800)
+    nat = [f4.getbbox(w) for w, _ in rows]
+    k = W / max(b[2] - b[0] for b in nat)
+    rh = max(round((b[3] - b[1]) * k) for b in nat)
+    H = (len(rows) * rh + lead * (len(rows) - 1) + 23) // 24 * 24
+    masks = [letters(w, 200, round((b[2] - b[0]) * k), rh) for (w, _), b in zip(rows, nat)]
+    frames = []
+    for fk in range(6):
+        out = np.zeros((H, W, 4), np.uint8)
+        y = (H - (len(rows) * rh + lead * (len(rows) - 1))) // 2
+        for ms, (word, hot) in zip(masks, rows):
+            for i, m in enumerate(ms):
+                sl = out[y:y + rh, :m.shape[1]]
+                sl[m, :3] = lit_rgb(m, fk)[m] if i == hot else INK
+                sl[m, 3] = 255
+            y += rh + lead
+        frames.append(out)
+    sprite(frames, IMG / "band_stack.png")
+    print(f"web/img/band_stack.png: {W} x {H} cells ({H // 24} modules), rows {rh} tall, six frames")
 
 
 def graphics():
