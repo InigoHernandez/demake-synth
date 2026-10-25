@@ -12,7 +12,7 @@ dithered, for what is lit.
   Chrome.
 - **Read the manual:** [the manual](https://inigohernandez.github.io/demake-synth/manual.html).
 
-**Status: Demake 0.4.9** (FM-1_969), on the install page.
+**Status: Demake 0.4.11** (FM-1_969), on the install page.
 
 ## What it does
 
@@ -24,8 +24,8 @@ dithered, for what is lit.
     22 or 11 kHz).
   - Per synth: Colour (saturate, crush, codec, noise, warm, distort), a Delay in time (delay or ping-pong) and
     Motion (chorus, vibrato, drift, ensemble, phaser, flanger, tremolo).
-  - Shared: six reverbs (room, hall, space, haze, bloom, lofi), a tape echo or grains, and Media over the whole mix
-    (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
+  - Shared: eleven reverbs (room, hall, space, haze, bloom, lofi, plate, spring, shimmer, reverse, freeze), a tape
+    echo or grains, and Media over the whole mix (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
 - **The music.**
   - Three synths, each with a piano roll of up to 64 steps and eight patterns of its own.
   - Sixteen scenes say which pattern each synth plays, and switch on the bar with HOME held and a white key.
@@ -38,7 +38,7 @@ dithered, for what is lit.
 - **The rest.**
   - MIDI in and out over USB (and in on the TRS jack): notes by synth channel, the clock in or out.
   - Fourteen songs and 32 of your own sounds are saved on the FM-1.
-  - Each start shows one of thirteen pixel landscapes (peaks, a lake, a coast, the night, a city from a bedroom, a
+  - Each start shows one of thirteen pixel landscapes (peaks, a lake, a beach at sunset, the night, a city from a bedroom, a
     2000s desk, spruces in a blue fog after sunset, a living room with a CRT and a VHS deck, a pool house by the sea, a
     street of palms in California, a harbour in fog, a lighthouse on a cliff, a city skyline at night), and Home keeps
     one moving while you play; OCT− and OCT+ held show it full screen.

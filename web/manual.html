@@ -98,7 +98,7 @@
           <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
-          <p><b>SAVE</b><span>The song into its slot; held, the songs</span></p>
+          <p><b>SAVE</b><span>The save screen: a slot, its name; again, saved</span></p>
           <p><b>PLAY, REC</b><span>Play the rolls and chords; record the keys</span></p>
           <p><b>OCT&minus; OCT+</b><span>The octave as you let go; with a note held, delete or copy</span></p>
         </div>
@@ -159,7 +159,7 @@
           <p><b>Keys: All</b><span>A key writes its chord at the cursor; the foot names the chord there</span></p>
         </div>
         <div class="mt">
-          <p><b>SEQ again</b><span>The Vary row, this synth's</span></p>
+          <p><b>SEQ again</b><span>The Vary row, each synth's own (SELECT: the synth)</span></p>
           <p><b>Mutate</b><span>How often a note plays another of the scale, Range steps up or down</span></p>
           <p><b>Chance</b><span>How often a note plays at all</span></p>
           <p><b>Keep</b><span>On: the notes moved stay, so the roll evolves by itself</span></p>
@@ -225,11 +225,14 @@
       <article id="saving" data-group="Playing">
         <h1>Saving</h1>
         <p class="msub">Fourteen songs and thirty-two sounds, kept in the machine. The newest song opens at start.</p>
-        <figure class="mfig"><img src="img/screens/18_discs.png" alt="Songs" width="240" height="240"><figcaption>Songs: the one open has a dot.</figcaption></figure>
+        <figure class="mfig"><img src="img/screens/25_save.png" alt="Save" width="240" height="240"><figcaption>Save: a slot, empty or not; a new one's name.</figcaption></figure>
         <div class="mt">
-          <p><b>SAVE</b><span>The song into its slot, while stopped</span></p>
-          <p><b>A new song saved</b><span>Gets a name of its own, two words</span></p>
-          <p><b>SAVE held</b><span>Songs: K1 picks a slot</span></p>
+          <p><b>SAVE</b><span>The save screen, on the song's own slot</span></p>
+          <p><b>K1 or SELECT</b><span>A slot, empty or not; an empty one shows the name a save there takes</span></p>
+          <p><b>K2, Name</b><span>Another name, made up: two words</span></p>
+          <p><b>K3, Init</b><span>Twice: the synth selected back to its first sound</span></p>
+          <p><b>SAVE again</b><span>Saved there, while stopped; then back to the page you were on</span></p>
+          <p><b>SAVE held</b><span>Songs, to open one</span></p>
           <p><b>On Songs, PLAY twice</b><span>Opens it (the song open is left, unsaved changes too); an empty slot starts a new song</span></p>
           <p><b>On Songs, SAVE</b><span>Saves there; twice over another song</span></p>
           <p><b>On Songs, OCT&minus;</b><span>Twice: empties the slot</span></p>
@@ -289,6 +292,11 @@
           <p><b>Haze</b><span>Dark, deep, slowly moving</span></p>
           <p><b>Bloom</b><span>A new sound swells into it</span></p>
           <p><b>Lofi</b><span>Eleven kHz, eight bits, wow</span></p>
+          <p><b>Plate</b><span>Bright and dense, still</span></p>
+          <p><b>Spring</b><span>A tank's chirp, thin and wiry</span></p>
+          <p><b>Shimmer</b><span>An octave up rising in the tail: Shimmer, how much</span></p>
+          <p><b>Reverse</b><span>The sound backwards into the space: Length, its segments</span></p>
+          <p><b>Freeze</b><span>Held: Hold up, the tail stays and lets less in</span></p>
           <p><b>Tape echo</b><span>Darkening repeats</span></p>
           <p><b>Grains</b><span>A cloud of what you played: size, density, texture</span></p>
           <p><b>Media</b><span>The whole mix through tape, cassette, VHS, vinyl, radio or a dictaphone</span></p>
@@ -337,7 +345,7 @@
     <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=23"></script>
 <script src="manual.js?v=9"></script>
 </body>
 </html>

@@ -274,6 +274,35 @@ DMK_SMALL static void land_band(int sc, int dk, int lt)
             if ((q >> 26) % 5u == 0) cv_put(fx, fy + 1, C_HOLO0);   /* its stem */
         }
         fo_near(dk, 0);                                 /* the near spruces, dark */
+    } else if (sc == 2) {                               /* BEACH (the owner: improve it): the sun on the sea, swells, a wave
+                                                           breaking, the wet sand mirroring the sky, the dry, two palms, a
+                                                           lifeguard's tower */
+        for (y = 72; y < 92; y++) for (x = 0; x < SC_W; x++) {   /* the sea: lit near the sun's horizon, deeper nearer */
+            int d = y - 72, sw = (y * 3 + tri(x + y * 7, 53, 4)) % 11 == 0 && (hsh((uint32_t)(x / 9 + y * 13)) & 3u);   /* (swells, broken) */
+            cv_put(x, y, !d ? (bay(x, y) < 12 ? C_HOLO6 : C_HOLO5) : d < 5 ? (bay(x, y) < 9 - d ? C_HOLO4 : C_HOLO3)
+                   : sw && bay(x, y) < 6 ? C_HOLO3 : bay(x, y) < 12 - d / 2 ? C_HOLO1 : C_HOLO0);
+        }
+        for (x = 0; x < SC_W; x++) {                    /* the wave: its face, its crest's foam */
+            int top = 90 + tri(x, 29, 2) + tri(x + 11, 11, 1);
+            for (y = top; y < top + 4; y++) cv_put(x, y, y == top ? (bay(x, y) < 12 ? lt : C_HOLO6) : y == top + 1 ? C_HOLO5 : C_HOLO1);
+        }
+        for (y = 95; y < 104; y++) for (x = 0; x < SC_W; x++) {   /* the wet sand, the sky in it, the sun's road */
+            int dx = x - 143 < 0 ? 143 - x : x - 143;
+            cv_put(x, y, dx < 7 - (y - 95) / 3 && bay(x, y) < 10 ? C_HOLO6 : bay(x + y, y) < 9 - (y - 95) / 2 ? C_HOLO4 : C_HOLO3);
+        }
+        for (y = 104; y < SC_H; y++) for (x = 0; x < SC_W; x++)   /* the dry sand, rising a little to the left */
+            if (y >= 104 + (x > 100 ? 0 : (100 - x) / 40) - (x < 60 ? (60 - x) / 12 : 0))
+                cv_put(x, y, y == 104 && bay(x, y) < 8 ? C_HOLO2 : bay(x + y / 4, y) < 7 ? C_LINE : !(hsh((uint32_t)(x * 31 + y * 7)) % 61u) ? dk : C_A_LABEL);
+        cv_palm(24, 110, 84, 14, dk);                   /* two palms leaning out over it, backlit */
+        cv_palm(50, 107, 62, 18, dk);
+        cv_rect(183, 79, 2, 30, dk); cv_rect(205, 79, 2, 30, dk);   /* the tower: its posts, braced, */
+        cv_line(184, 82, 205, 104, dk); cv_line(205, 82, 184, 104, dk); cv_rect(183, 92, 24, 1, dk);
+        cv_rect(180, 64, 30, 15, dk);                   /* its cabin, a window lit, */
+        cv_rect(185, 68, 8, 5, C_HOLO3); cv_rect(197, 68, 8, 5, C_HOLO3);
+        for (k = 0; k < 6; k++) cv_rect(177 + k, 64 - k, 36 - k * 2, 1, dk);   /* its roof, */
+        cv_rect(195, 44, 1, 16, dk); cv_rect(196, 44, 7, 4, C_HOLO4);   /* its flag */
+        for (k = 0; k < 14; k++) cv_put(214 + k / 2, 79 + k * 2, dk);   /* its ladder */
+        cv_rim(dk, C_HOLO5, 8);                         /* the sunset on their edges */
     } else if (sc == 7) {                               /* LIVING: the TV's light on the wall, the blinds, the set */
         for (y = 0; y < SC_H; y++) for (x = 0; x < SC_W; x++) {
             int dx = x - 96, dy = (y - 56) * 3 / 2, d = dx * dx + dy * dy;
@@ -596,6 +625,20 @@ DMK_SMALL static void land_anim(int sc, uint32_t tick, int dk, int lt)
             if (hsh(h + tick / 4u) % 3u) px_put(SX + fx, SY + fy, C_HOLO7);
         }
     }
+    if (sc == 2) {                                      /* the BEACH: the foam washing in and out, two gulls */
+        int reach = 96 + (sinp(tick * 0x02000000u) * 4) / 32768;   /* (a wave every 7 s) */
+        for (x = 0; x < SC_W; x++) {
+            int fy = reach + tri(x + (int)tick, 23, 2);
+            for (y = 94; y <= fy && y < 104; y++) if (bay(x, y) < (y == fy ? 13 : 4)) px_put(SX + x, SY + y, y == fy ? lt : C_HOLO6);
+        }
+        for (i = 0; i < 2; i++) {
+            int bx = (int)(((uint32_t)(60 + i * 70) + tick / 3u) % (uint32_t)(SC_W + 40)) - 20, by = 20 + i * 8 + tri((int)tick + i * 13, 50, 5), up = ((tick + (uint32_t)i * 2u) / 3u) & 1u;
+            if (bx < 4 || bx > SC_W - 6) continue;
+            px_put(SX + bx, SY + by, dk);
+            px_put(SX + bx - 1, SY + by - up, dk); px_put(SX + bx + 1, SY + by - up, dk);
+            px_put(SX + bx - 2, SY + by - up, dk); px_put(SX + bx + 2, SY + by - up, dk);
+        }
+    }
     if (sc == 7) {                                      /* the TV: a tape playing, scanlines, the tracking rolling */
         int band = (int)(tick * 3u % 52u);
         for (y = 34; y < 74; y++) for (x = 66; x < 112; x++) {
@@ -684,6 +727,12 @@ DMK_SMALL static void land_anim(int sc, uint32_t tick, int dk, int lt)
 DMK_SMALL static void land_light(int sc, int i, int on, uint32_t tick)
 {
     int x, y;
+    if (sc == 2) {                                      /* the tower's lamp and its two windows */
+        if (i == 2) { fill(SX + 194, SY + 60, 3, 3, on ? C_HOLO7 : C_HOLO2); if (on) px_put(SX + 195, SY + 63, C_HOLO5); }
+        else fill(SX + 186 + i * 12, SY + 69, 6, 3, on ? C_HOLO6 : C_HOLO3);
+        (void)tick;
+        return;
+    }
     if (sc == 6) {                                      /* three flowers in the meadow, glowing as a synth plays */
         static const uint8_t GX[3] = {58, 120, 174}, GY[3] = {110, 113, 108};
         x = GX[i]; y = GY[i];

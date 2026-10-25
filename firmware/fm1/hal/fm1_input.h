@@ -18,11 +18,16 @@
  * fm1_input_scan() runs one full frame (11 columns, ~0.6 ms) and calls
  * FM1_INPUT_IDLE() while it waits.
  * Keys/buttons: integrating debounce of FM1_DEBOUNCE frames.
- * Encoders: quadrature decoder (2-sample filter, + = clockwise) with detent
- * counting: states an encoder rests in for >= FM1_REST_FRAMES are learned, and
- * a step is emitted only on reaching a rest state after >= 2 net transitions.
- * One click = one step at any speed, whether a detent is a half or a full
- * quadrature cycle. fm1_enc_take() returns the steps.
+ * Encoders: quadrature decoder (+ = clockwise) with detent counting: a step is
+ * emitted only on reaching the rest state after >= 2 net transitions. The FM-1's
+ * knobs click once a full quadrature cycle (M-VAVE's own decoder, fm1_open's
+ * app/board/fm1_input.h, keeps one rest state and counts four edges a step), so
+ * there is one rest state, learned where the knob stays still FM1_REST_FRAMES.
+ * It used to learn a second (the complementary state, for knobs that click
+ * twice a cycle) after 25 ms still: a hand pausing halfway through a click made
+ * the halfway state a detent, and every click after it counted twice (MONO2K's
+ * fix, 687335e; Demake's owner: the chord page's knobs jumping between values).
+ * fm1_enc_take() returns the steps.
  * LEDs: set fm1_led[col] (packed row bits, bit1 PA5..bit4 PA8); they are lit
  * while that column is selected. fm1_led_key/btn helpers address them by id.
  */
@@ -82,7 +87,7 @@
 #endif
 #define FM1_DEBOUNCE 8u           /* frames (~0.6 ms each) */
 #define FM1_SETTLE_US 10u
-#define FM1_REST_FRAMES 40u       /* ~25 ms still = a detent position */
+#define FM1_REST_FRAMES 800u      /* ~0.5 s still = the detent position (a pause mid-click is shorter) */
 #define FM1_NCOL 11u
 #define FM1_NKEY 41u              /* ids: 0..13 buttons, 14..40 note keys */
 #define FM1_NENC 7u
@@ -114,8 +119,8 @@ static volatile struct {
     uint8_t raw[FM1_NCOL];       /* last frame, packed rows, 1 = closed */
     uint8_t cnt[FM1_NKEY];
     uint8_t enc_prev[FM1_NENC], enc_last[FM1_NENC];
-    uint8_t enc_rest[FM1_NENC];  /* learned rest (detent) states, bit per state */
-    uint8_t enc_still[FM1_NENC]; /* frames since the last state change */
+    uint8_t enc_rest[FM1_NENC];  /* the learned rest (detent) state, as a bit */
+    uint16_t enc_still[FM1_NENC]; /* frames since the last state change */
     int8_t enc_sub[FM1_NENC];    /* net transitions since the last rest state */
     int8_t enc_dir[FM1_NENC];    /* the last valid transition: +1 / -1 (0: none yet) */
     int16_t enc_steps[FM1_NENC]; /* + = clockwise */
@@ -283,14 +288,8 @@ static void fm1__frame(void)
             fm1_in.enc_prev[e] = (uint8_t)cur;
             fm1_in.enc_rest[e] = (uint8_t)(1u << cur);
         }
-        if (fm1_in.enc_still[e] < 255u && ++fm1_in.enc_still[e] == FM1_REST_FRAMES) {
-            /* learn detent states: one state, or a complementary pair (00/11 or
-             * 01/10). Anything else restarts the set; with 3-4 rest states every
-             * arrival would look like a detent with |sub| < 2. */
-            uint32_t r = fm1_in.enc_rest[e], bit = 1u << cur, comp = 1u << (cur ^ 3u);
-            if (!(r & bit))
-                fm1_in.enc_rest[e] = (uint8_t)(r == comp ? (r | bit) : bit);
-        }
+        if (fm1_in.enc_still[e] < 65535u && ++fm1_in.enc_still[e] == FM1_REST_FRAMES)
+            fm1_in.enc_rest[e] = (uint8_t)(1u << cur);     /* still long enough: the detent is here */
         if (cur == fm1_in.enc_prev[e])
             continue;
         idx = (uint32_t)fm1_in.enc_prev[e] << 2 | cur;

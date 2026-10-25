@@ -52,7 +52,7 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Return", "Tone", "Size", "Mod"}, {"Return", "Tone", "Time", "Regen"},
       {"Amount", "Tone", "Time", "Spice"}, {"MIDI in", "MIDI out", "Clock", "Theme"}}},
     {"LFO", 2, {"Wave", "Sync"}, {"Target", "Target"}, {{"Rate", "Depth", "Shape", "Fade"}, {"Sync", "Restart", "", ""}}},
-    {"Songs", 1, {"Songs"}, {""}, {{"Slot", "", "", ""}}},
+    {"Songs", 1, {"Songs"}, {""}, {{"Slot", "Name", "Init", ""}}},   /* (SAVE tapped: titled Save) */
     {"Song", 2, {"Scene", "Steps"}, {"", ""}, {{"Synth 1", "Synth 2", "Synth 3", "Chords"}, {"Step", "Scene", "Bars", "End"}}},
 };
 
@@ -117,7 +117,9 @@ static const char *const LTUNES[] = {"\xE2\x88\x92" "2 oct", "\xE2\x88\x92" "1 o
 static const int8_t LTUNE[7] = {-24, -12, -7, 0, 7, 12, 24};
 static const char *const GRITS[] = {"Off", "22 kHz", "11 kHz"};
 static const char *const LOOPS[] = {"Off", "Full"};
-static const char *const VERBS[] = {"Off", "Room", "Hall", "Space", "Haze", "Bloom", "Lofi"};   /* (the owner: off too) */
+static const char *const VERBS[] = {"Off", "Room", "Hall", "Space", "Haze", "Bloom", "Lofi", "Plate", "Spring", "Shimmer",
+                                     "Reverse", "Freeze"};   /* (the owner: off too; more, the owner's, later: dmk_store's 8) */
+#define FX_VERBS 12
 static const char *const ECHOS[] = {"Off", "Tape", "Grains"};   /* (the delays: each synth's, FX's second row) */
 #define FX_ECHOS 3
 static const char *const DELAYS[] = {"Off", "Delay", "Ping-pong"};
@@ -127,7 +129,7 @@ static const char *const DIVS[] = {"1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, 3, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
-    {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, 7, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS},
+    {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, FX_VERBS, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS},
     {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
@@ -158,6 +160,9 @@ static struct {
     uint8_t clear_arm;                                  /* OCT- once: 1 this synth's roll, 2 all three, armed */
     uint32_t clear_at;
     uint8_t song, song_pick, song_arm;                  /* the song open's slot; the SONGS page's; a save over, armed */
+    uint8_t save_mode, save_from, nm_prop[3], init_arm;  /* SAVE tapped: the save screen, the page it came from, the name
+                                                           it saves with (dmk_store's NM_), INIT armed (its synth + 1) */
+    uint32_t init_at, nm_n;
     uint32_t song_arm_at;
     uint8_t preset[DMK_SYNTHS];                         /* PRESETS: 0-63 the recordings, then the library's sounds */
     uint8_t arr_cur, arr_bars;                          /* Arrange: the step cursor; the bars a key writes a step with */
@@ -286,6 +291,8 @@ static int song_save(int i);
 static int song_load(int i);
 static int song_used(int i);
 static int song_erase(int i);
+static void nm_roll(uint8_t *v, uint32_t salt);         /* (dmk_store.c: a song's name, made up; written out) */
+static void nm_of(char *o, const uint8_t *v);
 static void song_new(void);
 static const char *song_name(int i);
 static int sound_save(int s);
@@ -305,6 +312,8 @@ static uint8_t *vp(int page, int row, int k)
     if (page == PG_HOME && k == 4) return &ui.val[0][PG_HOME][0][4];   /* the tempo, on every row */
     if (page == PG_CHORD && k == 4) return &ui.val[0][PG_CHORD][0][4];  /* the progression, on both rows */
     if (page == PG_LFO && k == 4) return &ui.val[ui.synth][PG_LFO][0][4];   /* the LFO's target, on both rows */
+    if (page == PG_ROLL && row == 1 && k < 4) return &ui.val[ui.synth][PG_ROLL][1][k];   /* Vary: each synth's own (it
+                                                           was the first synth's whichever was picked: the owner) */
     if (page == PG_HOME && k < 3) {
         static const uint8_t PG[4] = {PG_AMP, PG_FX, PG_FX, PG_FX}, RW[4] = {0, 3, 3, 3}, KK[4] = {4, 0, 1, 2};
         return &ui.val[k][PG[row]][RW[row]][KK[row]];
@@ -383,15 +392,26 @@ static void sp_sync(void)
     }
     {   /* the VERB's type: its loop's gain from SIZE (Q15, a ninth of a dB a pass at the most for HAZE), its sweep's
          * depth at full MOD (Q8 samples) and its rate (0.3, 0.13, 0.2, 0.5 Hz at 22.05 kHz) */
-        static const uint16_t G0[7] = {0, 24000, 26000, 25000, 25000, 19000, 0}, G1[7] = {0, 31900, 32600, 32450, 32300, 30500, 0};
-        static const uint16_t MD[7] = {0, 4096, 8192, 12288, 3072, 15360, 0};
-        static const uint32_t RT[7] = {0, 58435, 31165, 25322, 38957, 97392, 0};
-        int t = choice_index(choice_of(PG_GLOBAL, 0, 4), VS(0, PG_GLOBAL, 0, 4)), sz = VS(0, PG_GLOBAL, 0, 2);
+        /* the later five (the owner's): PLATE the lines at half length, bright, still; SPRING at a quarter, through a
+         * chain of all-passes, thin; SHIMMER HALL's with its sound an octave up fed back in (MOD, as much); REVERSE
+         * the sound read backwards in segments (SIZE: as long) into a mid hall; FREEZE nearly lossless, only so much
+         * new sound let in (SIZE is HOLD: all of it held at the top) */
+        static const uint16_t G0[VB_OFF + 1] = {0, 24000, 26000, 25000, 25000, 19000, 23000, 27000, 25000, 27500, 30000, 0};
+        static const uint16_t G1[VB_OFF + 1] = {0, 31900, 32600, 32450, 32300, 30500, 30400, 31500, 31900, 30500, 32700, 0};
+        static const uint16_t MD[VB_OFF + 1] = {0, 4096, 8192, 12288, 3072, 15360, 0, 2048, 4096, 4096, 6144, 0};
+        static const uint32_t RT[VB_OFF + 1] = {0, 58435, 31165, 25322, 38957, 97392, 0, 77913, 31165, 31165, 19478, 0};
+        static const uint16_t GN[VB_OFF + 1] = {256, 256, 256, 256, 256, 256, 230, 256, 215, 360, 256, 256};   /* (levels: each as
+                                                           loud as HALL at the demos' settings, REVERSE's swell lifted) */
+        int t = choice_index(choice_of(PG_GLOBAL, 0, 4), VS(0, PG_GLOBAL, 0, 4)), sz = VS(0, PG_GLOBAL, 0, 2), md = VS(0, PG_GLOBAL, 0, 3);
         t = t ? t - 1 : VB_OFF;                         /* the list's first is Off */
         gp.vtype = (uint8_t)t;
-        gp.vfbq = (G0[t] + (G1[t] - G0[t]) * sz / 127) * 11585 >> 15;   /* the Hadamard's sqrt(8) taken out */
-        gp.vmod = MD[t] * VS(0, PG_GLOBAL, 0, 3) / 127;
+        gp.vfbq = (G0[t] + (G1[t] - G0[t]) * (t == VB_REVERSE ? 64 : sz) / 127) * 11585 >> 15;   /* the Hadamard's sqrt(8) taken out */
+        gp.vmod = t == VB_SHIMMER ? MD[t] : MD[t] * md / 127;
         gp.vrate = RT[t];
+        gp.vgin = t == VB_FREEZE ? (127 - sz) * 258 + 512 : 32768;
+        gp.vsh = t == VB_SHIMMER ? md * 90 : 0;         /* (the octave's share of the loop: under its runaway) */
+        gp.vrlen = 2048 + sz * 48;                      /* 93 .. 370 ms */
+        gp.vgain = GN[t];
     }
     {   /* the whole mix's MEDIA (GLO's third row): its type, its knobs (the tape's in its own units) */
         synth_t *p = &gmed;
@@ -401,6 +421,7 @@ static void sp_sync(void)
         p->tape = (uint8_t)(p->media == FM_TAPE);
         p->tdepth = VS(0, PG_GLOBAL, 2, 0) * 800;       /* the wow: up to ~40 cents at its slowest */
         p->tdrive = 256 + VS(0, PG_GLOBAL, 2, 0) * 3;
+        p->tcomp = (256 << 15) / p->tdrive;
         p->thl = T_OP[64 + VS(0, PG_GLOBAL, 2, 1) / 2]; /* head loss: 600 Hz .. open */
         p->twow = 19480u + (uint32_t)VS(0, PG_GLOBAL, 2, 2) * 1500u;   /* 0.2 .. 2.2 Hz */
         p->tflut = 620000u + (uint32_t)VS(0, PG_GLOBAL, 2, 3) * 2000u; /* 6.3 .. 7.7 Hz */
@@ -505,7 +526,7 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
     ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* keys: chords on CHORD, sevenths */
     ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the verb: a hall */
-    ui.val[0][PG_GLOBAL][0][4] = choice_val(2, 7); ui.val[0][PG_GLOBAL][0][3] = 64;
+    ui.val[0][PG_GLOBAL][0][4] = choice_val(2, FX_VERBS); ui.val[0][PG_GLOBAL][0][3] = 64;
     ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS);   /* the echo: tape */
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
@@ -577,6 +598,8 @@ static void val_text(char *o, int page, int row, int k)
     int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 3) { str_cat(o, THEME_NAME[theme]); return; }
     if (page == PG_DISCS && k == 0) { if (ui.song_pick < 9) *o++ = '0'; fmt_int(o, ui.song_pick + 1); return; }
+    if (page == PG_DISCS && k == 1) { nm_of(o, ui.nm_prop); if (!o[0]) str_cat(o, "\xE2\x80\x94"); return; }   /* the name it saves */
+    if (page == PG_DISCS && k == 2) { fmt_int(str_cat(o, "Synth "), ui.synth + 1); return; }   /* INIT: this synth */
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
@@ -655,6 +678,14 @@ static void note_name(char *o, int n)
 }
 
 static int lit(int k) { return ui.touch_k == k && ui.now - ui.touch_ms < 1000u; }
+/* the save screen's name: an empty slot a new one, made up (the owner: new projects' names random); else the open
+ * song's own (one of before, without a name: made up too) */
+static void save_propose(void)
+{
+    const uint8_t *v = ui.val[0][PG_DISCS][1];
+    if (!song_used(ui.song_pick) || v[2] != 0xA5u) nm_roll(ui.nm_prop, ++ui.nm_n * 40503u ^ ui.now ^ (uint32_t)ui.song_pick * 977u);
+    else { ui.nm_prop[0] = v[0]; ui.nm_prop[1] = v[1]; ui.nm_prop[2] = v[2]; }
+}
 /* a row not built yet: shown, marked soon, passed over (none now) */
 static int row_soon(int page, int row)
 {
@@ -746,14 +777,14 @@ static void field(int i, const char *label, int page, int row)
     text_mfit(x, Y_FIELDS + 16, w, v, on ? HOLO : C_INK);
     meter(x, Y_FIELDS + 44, w, page == PG_SOUND && row == 0 && i == 0 ? *vp(page, row, i) * 127 / (DMK_SAMPLES_N - 1)
           : page == PG_DISCS && i == 0 ? ui.song_pick * 127 / (ST_SONGS - 1) : page == PG_ARR ? arr_meter(row, i) : *vp(page, row, i),
-          choice_of(page, row, i), on, 0);
+          choice_of(page, row, i), on, page == PG_DISCS && i > 0);   /* (a name, a synth: no level to show) */
 }
 
 /* the title, its row as the grey half (one size, one line), and the synths at the right: the current one filled */
 static void head(void)
 {
     const page_t *pg = &PAGE[ui.page];
-    int x = text(PAD + 1, 6, pg->name, &FH, C_INK), i;
+    int x = text(PAD + 1, 6, ui.page == PG_DISCS && ui.save_mode ? "Save" : pg->name, &FH, C_INK), i;
     if (pg->rows > 1 && !(ui.page == PG_ROLL && !ui.row[PG_ROLL])) text(x + 7, 6, pg->row[ui.row[ui.page]], &FH, C_LABEL);
     else if (ui.page == PG_ROLL) {                      /* which of the synth's patterns (its Vary row: named) */
         char t[12];
@@ -857,6 +888,12 @@ static void fields_band(void)
         if (ui.page == PG_FX && r != 1 && r < 3) l = FXK[r][choice_index(choice_of(PG_FX, r, 4), *vp(PG_FX, r, 4))][k];
         if (ui.page == PG_GLOBAL && r == 2) l = FXK[1][choice_index(choice_of(PG_GLOBAL, 2, 4), *vp(PG_GLOBAL, 2, 4))][k];
         if (ui.page == PG_GLOBAL && r == 1 && choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4)) == 2) { static const char *const GK[4] = {"Return", "Size", "Density", "Texture"}; l = GK[k]; }
+        if (ui.page == PG_GLOBAL && r == 0) {           /* the later verbs' own knobs */
+            int t = choice_index(choice_of(PG_GLOBAL, 0, 4), *vp(PG_GLOBAL, 0, 4));
+            if (t == 9 && k == 3) l = "Shimmer";
+            if (t == 10 && k == 2) l = "Length";
+            if (t == 11 && k == 2) l = "Hold";
+        }
         field(k, l, ui.page, r);
     }
 }
@@ -1087,7 +1124,7 @@ DMK_SMALL static void scene_build(int sc, int dk, int lt)
 {
     int x, y, k;
     for (k = 0; k < SC_W * SC_H; k++) sc_fg[k] = 0xFF;
-    if (sc >= 6) { land_band(sc, dk, lt); return; }
+    if (sc >= 6 || sc == 2) { land_band(sc, dk, lt); return; }   /* (the later ones, and the beach since 0.4.11) */
     if (sc == 0) {                                      /* PEAKS: the mountain, its snow in the last light */
         for (x = 0; x < SC_W; x++) {
             int peak = 14 + (x < 114 ? (114 - x) * 3 / 4 : (x - 114) * 2 / 3) + tri(x, 11, 3), lo = 62 + tri(x + 9, 40, 8);
@@ -1295,10 +1332,10 @@ static void scene_frame(int sc, uint32_t tick)
             uint8_t *b = &fb[((SY + y) * DMK_W + SX) >> 1];
             for (x = 0; x < SC_W / 2; x++, i++) if (sc_fgm[i]) b[x] = (uint8_t)((b[x] & ~sc_fgm[i]) | sc_fgp[i]);
         }
-        if (sc >= 6) land_anim(sc, tick, dk, lt);
+        if (sc >= 6 || sc == 2) land_anim(sc, tick, dk, lt);
         if (sc == 1 || sc == 2) {                       /* the sun on the water: glints that move */
             int sea = sc == 1 ? 84 : 74, cx = sc == 1 ? 151 : 143;
-            for (y = sea; y < SC_H; y += 2) {
+            for (y = sea; y < (sc == 2 ? 90 : SC_H); y += 2) {   /* (the beach's: to its wave) */
                 int w = 4 + (y - sea) * (sc == 2 ? 2 : 1) / 2, n = 2 + (y - sea) / 6, k;
                 for (k = 0; k < n; k++) {
                     uint32_t h = hsh((uint32_t)(y * 131 + k) + tick);
@@ -1367,7 +1404,7 @@ static void scene_frame(int sc, uint32_t tick)
             } else if (sc == 5) {                       /* the screen's LEDs */
                 lx = 88 + i * 5; ly = 81;
                 fill(SX + lx, SY + ly, 3, 2, on ? C_HOLO6 : C_LABEL);
-            } else if (sc >= 6) land_light(sc, i, on, tick);
+            } else if (sc >= 6 || sc == 2) land_light(sc, i, on, tick);
             else if (sc == 3) {                         /* fireflies, wandering over the forest */
                 lx = 40 + i * 64 + tri((int)tick + i * 11, 40, 14); ly = 80 + tri((int)tick * 2 + i * 7, 26, 8);
                 if (on || (hsh(tick + (uint32_t)i) & 1u)) fill(SX + lx, SY + ly, 2, 2, on ? C_HOLO7 : C_HOLO4);
@@ -1882,7 +1919,12 @@ static void stage_songs(void)
         if (pick) sel_ring(SX, y, SW, h);
         else round_line(SX, y, SW, h, h / 2, 1, C_LINE);
         text(SX + 14, y + (h - 12) / 2, t, &FS, C_LABEL);
-        text_fit(SX + 40, y + (h - 20) / 2 - 1, SW - 70, used ? song_name(n) : "Empty", &FM, used ? C_INK : C_LABEL);
+        if (pick && !used) {                            /* an empty slot picked: the name a save there takes */
+            char nm[24];
+            nm_of(nm, ui.nm_prop);
+            text_fit(SX + 40, y + (h - 20) / 2 - 1, SW - 84, nm[0] ? nm : "Empty", &FM, C_INK);
+            text_r(SX + SW - 14, y + (h - 12) / 2, "New", &FS, C_LABEL);
+        } else text_fit(SX + 40, y + (h - 20) / 2 - 1, SW - 70, used ? song_name(n) : "Empty", &FM, used ? C_INK : C_LABEL);
         if (n == ui.song && used) round_fill(SX + SW - 22, y + h / 2 - 3, 6, 6, 3, C_INK);   /* the song open */
     }
 }
@@ -2051,15 +2093,19 @@ DMK_SMALL static void lf_bottom(int sc, int dk, int lt)
         lrect(178, 14, 2, 8, dk); lrect(193, 14, 2, 8, dk);   /* its posts at the end, in the water */
         return;
     }
-    if (sc == 2) {                                      /* COAST: the sea nearer, then the wet sand, the dry; the cliff */
+    if (sc == 2) {                                      /* the BEACH nearer: the dry sand on, its ripples, steps, a board */
         for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
-            int c;
-            if (y < 14) c = bay(x, y) < 5 ? C_HOLO1 : C_HOLO0;
-            else if (y < 34) c = bay(x, y) < (y - 14) / 3 + 4 ? C_HOLO3 : C_HOLO2;   /* wet: the sunset in it */
-            else { c = bay(x, y) < 8 ? C_LINE : C_A_LABEL; if (!(hsh((uint32_t)(x * 7 + y * 131)) % 61u)) c = dk; }   /* dry, pebbles */
+            int c = bay(x + y / 4, y) < 7 ? C_LINE : C_A_LABEL;
+            if ((y * 2 + tri(x, 41, 3)) % 13 == 0 && bay(x, y) < 6) c = C_LABEL;   /* the wind's ripples */
+            if (!(hsh((uint32_t)(x * 7 + y * 131)) % 71u)) c = dk;              /* pebbles */
             lp(x, y, c);
         }
-        for (y = 0; y < LF_H; y++) for (x = 0; x < 96 + LF_X0 - y * 2; x++) lp(x, y, bay(x, y) < 13 ? dk : C_HOLO0);   /* the cliff's foot */
+        for (k = 0; k < 9; k++) {                       /* steps along it, going away */
+            int fx = 150 - k * 9 + (k & 1) * 5, fy = LF_H - 4 - k * 5;
+            lp(fx, fy, C_LABEL); lp(fx + 1, fy, C_LABEL); lp(fx, fy - 1, C_LABEL);
+        }
+        for (y = 22; y < 44; y++) for (x = -3; x <= 3; x++)   /* a surfboard stood in the sand */
+            if (x * x * 22 < (y - 22) * (44 - y) * 4) lp(204 + x, y, x == -3 + (y > 33) ? C_HOLO5 : x == 0 ? C_HOLO2 : C_HOLO4);
         return;
     }
     if (sc == 3) {                                      /* NIGHT: a meadow, its grass */
@@ -2179,15 +2225,7 @@ static void land_full(int sc, uint32_t t, int hold)
             int sx = (int)(h % (uint32_t)DMK_W), sy = (int)((h >> 12) % (uint32_t)LF_H);
             if (sky_full(sc, sx, sy, dk) == dk && hsh(h + t / 420u) & 3u) px_put(sx, sy, k % 5 ? lt : C_A_LABEL);
         }
-    if (sc == 2)                                        /* the waves coming in, their foam */
-        for (k = 0; k < 2; k++) {
-            int base = LF_Y0 + SC_H + 13 + k * 7 + (sinp((t * 2400u) + (uint32_t)k * 0x55555555u) * 2) / 32768;
-            for (x = 96 + LF_X0 - (base - LF_Y0 - SC_H) * 2; x < DMK_W; x++) {
-                int yy = base + tri(x + (int)(t / 60u) * (k ? 1 : -1), 37, 2);
-                if (bay(x, yy) < 12) px_put(x, yy, lt);
-                if (bay(x, yy + 1) < 6) px_put(x, yy + 1, C_HOLO6);
-            }
-        }
+    /* (the BEACH's waves: on its band, land_anim; nearer, dry sand) */
     if (sc == 3)                                        /* fireflies over the meadow */
         for (k = 0; k < 14; k++) {
             uint32_t h = hsh((uint32_t)k * 2654435761u + 77u);
@@ -2305,7 +2343,7 @@ static void stress_set(int on)
             else ui.val[s][PG_FX][r][4] = stress.kept[s][r];
         }
     for (r = 0; r < 3; r++) {
-        const uint8_t HEAVY[3] = {74, choice_val(2, FX_ECHOS), choice_val(FM_VHS, FX_MEDIAS)};   /* haze, grains, VHS */
+        const uint8_t HEAVY[3] = {choice_val(VB_HEAVY + 1, FX_VERBS), choice_val(2, FX_ECHOS), choice_val(FM_VHS, FX_MEDIAS)};   /* the heaviest verb, grains, VHS */
         if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = HEAVY[r]; }
         else ui.val[0][PG_GLOBAL][r][4] = stress.gkept[r];
     }
@@ -2622,11 +2660,16 @@ DMK_SMALL static void ui_button(int b, int down)
         notice(t);
         return;
     }
-    if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { ui.page = PG_DISCS; ui.song_pick = ui.song; return; }
+    if (ui.now - ui.btn_down_at[b] > 1000u && b == B_SAVE) { ui.page = PG_DISCS; ui.save_mode = 0; ui.song_pick = ui.song; save_propose(); return; }
     if (ui.now - ui.btn_down_at[b] > 350u) return;      /* a hold showed its layer: no tap */
-    if (b == B_SAVE) {                                  /* the song into its slot (SONGS: the slot picked) */
-        char t[24];
-        int at = ui.page == PG_DISCS ? ui.song_pick : ui.song;
+    if (b == B_SAVE && ui.page != PG_DISCS) {           /* the save screen (the owner): the slots, the name, INIT */
+        if (!store_on()) { notice("No store here"); return; }
+        ui.save_from = ui.page; ui.page = PG_DISCS; ui.save_mode = 1;
+        ui.song_pick = ui.song; save_propose();
+        return;
+    }
+    if (b == B_SAVE) {                                  /* SONGS: the song into the slot picked */
+        int at = ui.song_pick;
         if (!store_on()) { notice("No store here"); return; }
         if (seq_on) { notice("Stop to save"); return; }
         if (ui.page == PG_DISCS && song_used(at) && at != ui.song && !(ui.song_arm && ui.now - ui.song_arm_at < 2000u)) {
@@ -2635,13 +2678,16 @@ DMK_SMALL static void ui_button(int b, int down)
             return;
         }
         ui.song_arm = 0;
-        { int fresh = !song_used(at);
-        if (song_save(at)) { notice("Not saved"); return; }
-        ui.song = (uint8_t)at;
-        if (fresh) { char m[32]; str_cat(str_cat(m, "Saved: "), song_name(at)); notice(m); return; }   /* its new name */
+        { uint8_t *v = ui.val[0][PG_DISCS][1], keep[3];
+          char m[32];
+          keep[0] = v[0]; keep[1] = v[1]; keep[2] = v[2];
+          v[0] = ui.nm_prop[0]; v[1] = ui.nm_prop[1]; v[2] = ui.nm_prop[2];   /* the name the screen shows */
+          if (song_save(at)) { v[0] = keep[0]; v[1] = keep[1]; v[2] = keep[2]; notice("Not saved"); return; }
+          ui.song = (uint8_t)at;
+          str_cat(str_cat(m, "Saved: "), song_name(at));
+          notice(m);
         }
-        fmt_int(str_cat(t, at < 9 ? "Saved in song 0" : "Saved in song "), at + 1);
-        notice(t);
+        if (ui.save_mode) { ui.page = ui.save_from; ui.save_mode = 0; }   /* back where it was */
         return;
     }
     if (b == B_PLAY && ui.page == PG_DISCS) {           /* SONGS, PLAY twice: the slot picked loaded (empty: a new song),
@@ -2681,7 +2727,7 @@ DMK_SMALL static void ui_button(int b, int down)
         int p = BTN_PAGE[b];
         if (ui.page == p) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);   /* again: the next row built */
         else {
-            ui.page = (uint8_t)p;
+            ui.page = (uint8_t)p; ui.save_mode = 0;
             if (row_soon(p, ui.row[p])) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);
             if (rows_built(p) > 1 && !(ui.hinted >> p & 1u)) {   /* the first time: how to reach the next row */
                 char t[32];
@@ -2713,7 +2759,7 @@ DMK_SMALL static void ui_encoder(int e, int d)
         if (!(ui.btn_held >> B_HOME & 1u) && sel_scrolls(ui.page)) {   /* it scrolls (the owner's feedback: the most
                                                            intuitive): a page's rows, the songs' slots */
             ui.touch_k = -1;
-            if (ui.page == PG_DISCS) { ui.song_pick = (uint8_t)wrap(ui.song_pick + dir, ST_SONGS); return; }
+            if (ui.page == PG_DISCS) { ui.song_pick = (uint8_t)wrap(ui.song_pick + dir, ST_SONGS); save_propose(); return; }
             {                                           /* round, past the rows not built */
                 int n = r, i;
                 for (i = 0; i < PAGE[ui.page].rows; i++) { n = wrap(n + dir, PAGE[ui.page].rows); if (!row_soon(ui.page, n)) break; }
@@ -2811,8 +2857,24 @@ DMK_SMALL static void ui_encoder(int e, int d)
         } else if (t && k == 1) t->scene = (uint8_t)((t->scene + SCENES + dir) % SCENES);
         return;
     }
-    if (ui.page == PG_DISCS) {                          /* SONGS: K1 picks the slot */
-        if (k == 0) ui.song_pick = (uint8_t)wrap(ui.song_pick + (d > 0 ? 1 : -1), ST_SONGS);
+    if (ui.page == PG_DISCS) {                          /* SONGS: K1 the slot, K2 another name, K3 INIT this synth */
+        if (k == 0) { ui.song_pick = (uint8_t)wrap(ui.song_pick + (d > 0 ? 1 : -1), ST_SONGS); save_propose(); }
+        if (k == 1) { nm_roll(ui.nm_prop, ++ui.nm_n * 2654435761u ^ ui.now); ui.touch_k = 1; ui.touch_ms = ui.now; }
+        if (k == 2) {                                   /* twice: it resets the synth's sound */
+            if (ui.init_arm == ui.synth + 1 && ui.now - ui.init_at < 2000u && ui.now - ui.init_at > 150u) {
+                char t[24];
+                sound_init(ui.synth);
+                ui.preset[ui.synth] = ui.val[ui.synth][PG_SOUND][0][0];
+                ui.init_arm = 0;
+                fmt_int(str_cat(t, "Synth "), ui.synth + 1); str_cat(t, ": Init");
+                notice(t);
+            } else if (ui.init_arm != ui.synth + 1 || ui.now - ui.init_at >= 2000u) {
+                char t[28];
+                ui.init_arm = (uint8_t)(ui.synth + 1); ui.init_at = ui.now;
+                fmt_int(str_cat(t, "Turn again: synth "), ui.synth + 1); str_cat(t, " init");
+                notice(t);
+            }
+        }
         return;
     }
     if (ui.page == PG_CHORD) {

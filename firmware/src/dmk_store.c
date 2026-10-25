@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 7u   /* 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
+#define ST_VER 8u   /* 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
                        a row down; 6: more effects in each FX
                        row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
@@ -39,6 +39,13 @@ static const char *const NM_B[24] = {"harbour", "radio", "window", "tape", "mote
 #define NM_MARK 0xA5u
 static char song_nm[ST_SONGS][20];                      /* each slot's name, if it has one ("" : its progression's) */
 static void nm_of(char *o, const uint8_t *v) { o[0] = 0; if (v[2] == NM_MARK && v[0] < 24u && v[1] < 24u) str_cat(str_cat(str_cat(o, NM_A[v[0]]), " "), NM_B[v[1]]); }
+static void nm_roll(uint8_t *v, uint32_t salt)          /* a name made up: two words, never the same twice running */
+{
+    uint32_t r = hsh(salt ^ (st_gen + 1u) * 40503u);
+    uint8_t a = (uint8_t)(r % 24u), b = (uint8_t)((r >> 8) % 24u);
+    if (v[2] == NM_MARK && a == v[0] && b == v[1]) b = (uint8_t)((b + 1u) % 24u);
+    v[0] = a; v[1] = b; v[2] = NM_MARK;
+}
 
 /* a sound: the rows a synth owns (SOUND, LAYER, FILTER, AMP, the four FX rows, LFO; then VOICE and the LFO's sync,
  * after the first nine so a sound of before 0.4 is these nine), five values each */
@@ -225,6 +232,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 6 / 128 + 1, 7);
         ui.val[0][PG_GLOBAL][1][4] = choice_val(ui.val[0][PG_GLOBAL][1][4] * 2 / 128 + 1, 3);
     }
+    if (st_ver < 8u)                                    /* before 0.4.11: the verb's type of seven at its place of twelve */
+        ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 7 / 128, FX_VERBS);
     if (st_ver < 7u) {                                  /* before 0.5: the rolls' Vary off; the MIDI row a row down; the
                                                            media of the first synth that had one the mix's (its
                                                            knobs; none: off, the pad's knobs), the synths' delays off */
@@ -342,11 +351,8 @@ static const char *song_name(int i) { return song_nm[i][0] ? song_nm[i] : PROGS[
 static int song_save(int i)
 {
     int n;
-    if (!song_used(i)) {                                /* a new song: a name made up for it */
-        uint8_t *v = ui.val[0][PG_DISCS][1];
-        uint32_t r = hsh(ui.now * 2654435761u ^ (st_gen + 1u) * 40503u ^ (uint32_t)i);
-        v[0] = (uint8_t)(r % 24u); v[1] = (uint8_t)((r >> 8) % 24u); v[2] = NM_MARK;
-    }
+    if (ui.val[0][PG_DISCS][1][2] != NM_MARK)           /* a song without a name: one made up for it */
+        nm_roll(ui.val[0][PG_DISCS][1], ui.now * 2654435761u ^ (uint32_t)i);
     n = song_pack(st_buf + ST_HDR);
     if (n < 0 || st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
     st_gen = (st_gen + 1u) & 0xFFFFu;

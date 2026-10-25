@@ -43,7 +43,9 @@ enum { FT_LP24, FT_LP12, FT_HP, FT_BP, FT_NOTCH, FT_PEAK, FT_VOWEL, FT_OFF };
 enum { FC_OFF, FC_SAT, FC_CRUSH, FC_LOSSY, FC_NOISE, FC_WARM, FC_DIST };                  /* COLOUR */
 enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS, FM_VINYL, FM_RADIO, FM_DICTA };                  /* MEDIA */
 enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT, FO_ENS, FO_PHASER, FO_FLANGER, FO_TREM };      /* MOTION */
-enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI, VB_OFF };   /* the VERB's types (off: nothing run) */
+enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI, VB_PLATE, VB_SPRING, VB_SHIMMER, VB_REVERSE, VB_FREEZE, VB_OFF };
+                                                        /* the VERB's types (off: nothing run; the later five 0.4.11's) */
+#define VB_HEAVY VB_FREEZE                              /* the costliest (the load test's, --cpu's): measured, 0.4.11 */
 enum { ET_TAPE, ET_GRAINS, ET_OFF };                                     /* the ECHO's (its delays: each synth's since 0.5) */
 typedef struct {
     uint8_t smp, loops, ftype, tape;
@@ -54,7 +56,7 @@ typedef struct {
     int32_t sus, level, gl, gr, vsend, esend;   /* Q24; Q15 ... */
     int32_t pan;                   /* 0..127 as turned (the LFO swings it) */
     int32_t width;                 /* its stereo's width, Q8 (256 as it is, 0 one, 508 twice) */
-    int32_t tdepth, tdrive;        /* the tape's wow depth (Q8 samples a unit of the sine), drive Q8 */
+    int32_t tdepth, tdrive, tcomp; /* the tape's wow depth (Q8 samples a unit of the sine), drive Q8, its makeup Q15 */
     uint16_t thl;                  /* its head loss, a one-pole Q15 */
     uint32_t twow, tflut;          /* its wow's and flutter's phase steps */
     uint8_t colour, media, motion; /* the rows' effects (FC_, FM_, FO_), 0 off (media: the whole mix's, gmed's) */
@@ -84,7 +86,9 @@ enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's t
 static synth_t syn[DMK_SYNTHS];
 
 /* the shared buses' controls */
-static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex, width; uint32_t vrate; uint8_t vtype, etype; } gp;
+static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex, width, vgin, vsh, vrlen, vgain; uint32_t vrate; uint8_t vtype, etype; } gp;
+/* (vgin: FREEZE's share of new sound in, Q15; vsh: SHIMMER's octave fed back, Q15; vrlen: REVERSE's segment, half-rate
+ * samples; vgain: the type's level, Q8, so each sits as loud as HALL) */
 /* the VERB's and ECHO's types as they run: a new one is taken once the return has faded out (5.8 ms), then faded in */
 static uint8_t v_cur, e_cur;
 static int32_t v_g = 32768, e_g = 32768;
@@ -336,7 +340,8 @@ static void colour_block(int sy, int32_t *x, int type)
         int32_t drive = 256 + k0 * 14, bias = k2 * 60, base = curve(T_SAT, (bias * drive) >> 8), mix = k3 * 258;
         for (i = 0; i < DMK_SUB; i++) {
             int32_t y = curve(T_SAT, ((x[i] + bias) * drive) >> 8) - base;
-            y = y * 256 / (160 + drive / 3);            /* about the level it went in at */
+            y = y * 256 / (160 + drive / 3 + (drive - 256) * 2 / 7);   /* about the level it went in at (0.4.11: driven
+                                                           hard it was 4 dB over) */
             fx[sy].sdc += (y * 256 - fx[sy].sdc) >> 10; /* the bias's DC, out (~7 Hz, Q8) */
             y -= fx[sy].sdc >> 8;
             fx[sy].clp += ((y - fx[sy].clp) * tone) >> 15;
@@ -493,6 +498,7 @@ static void media_block(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: t
         if (t == FM_TAPE) {
             fx[sy].hl += ((y - fx[sy].hl) * p->thl) >> 15;
             y = curve(T_LIM, (fx[sy].hl * p->tdrive) >> 8);   /* clean until AMOUNT drives it */
+            y = (y * p->tcomp) >> 15;                   /* its gain taken back: AMOUNT bends, not louder (it was 5 dB) */
         } else if (t == FM_CASS) {
             a = y < 0 ? -y : y;
             fx[sy].fol += (a - fx[sy].fol) >> 8;
@@ -611,7 +617,7 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
         uint32_t fr = 680000u + (uint32_t)k2 * 3800u, mi;   /* the capstan: 7 .. 12 Hz */
         /* the level control: from what it heard (in fast, out over ~0.2 s), the gain toward 6000, at most SQUASH's
          * (8x), glided; a block's step across it */
-        a1 = fx[sy].agc * gmax > (6000 << 8) ? (6000 << 8) / (fx[sy].agc + 1) : gmax;
+        a1 = fx[sy].agc * gmax > (3800 << 8) ? (3800 << 8) / (fx[sy].agc + 1) : gmax;   /* (0.4.11: 4 dB under) */
         a1 = 256 + (((a1 - 256) * k3) >> 7);
         fx[sy].agc_g += (a1 - fx[sy].agc_g) >> 3;
         as = (fx[sy].agc_g - a0) / DMK_SUB;
@@ -699,8 +705,8 @@ static void ens_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
         sd = (int32_t)(((int64_t)(t[0] - t[1]) * w) >> 16);
         fx[sy].chlp[0] += ((c + sd - fx[sy].chlp[0]) * tone) >> 15;
         fx[sy].chlp[1] += ((c - sd - fx[sy].chlp[1]) * tone) >> 15;
-        l[i] = (x[i] >> 1) + ((fx[sy].chlp[0] * 7) >> 3);
-        r[i] = (x[i] >> 1) + ((fx[sy].chlp[1] * 7) >> 3);
+        l[i] = (((x[i] >> 1) + ((fx[sy].chlp[0] * 7) >> 3)) * 11) >> 3;   /* (x 1.4: as loud as it came in) */
+        r[i] = (((x[i] >> 1) + ((fx[sy].chlp[1] * 7) >> 3)) * 11) >> 3;
     }
 }
 
@@ -733,7 +739,7 @@ static void phaser_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
             u = y;
         }
         fx[sy].pfb[0] = clampi(y, -32767, 32767);
-        l[i] = r[i] = (xs + y) * 5 >> 1;                /* (x + y) / 2 * 1.25: x at a quarter above */
+        l[i] = r[i] = (xs + y) * 13 >> 2;               /* (x + y) / 2 * 1.6: x at a quarter above, as loud as it came in */
     }
 }
 
@@ -841,7 +847,13 @@ static const uint16_t FD_LEN[FD_N] = {1153, 1327, 1559, 1699, 1877, 2069, 2297, 
 static const uint16_t DF_LEN[4] = {142, 107, 379, 277};
 static int16_t fd_buf[1153 + 1327 + 1559 + 1699 + 1877 + 2069 + 2297 + 2477] POOL;
 static int16_t df_buf[142 + 107 + 379 + 277] POOL;
-static struct { uint16_t pos[FD_N], dpos[4]; int32_t lp[FD_N], m[FD_N], fast, slow, hold, acc, ol, orr, dci, dcl, dcr; uint32_t lfo[2]; uint8_t half, step, vhalf; } fd;
+static struct { uint16_t pos[FD_N], dpos[4]; int32_t lp[FD_N], m[FD_N], fast, slow, hold, acc, ol, orr, dci, dcl, dcr, sx[8], sy[8], sfb, shp, shf, rvw, rva, hpo; uint32_t lfo[2]; uint8_t half, step, vhalf; } fd;
+/* (sx, sy: SPRING's all-passes; sfb: the network's last output, for SHIMMER; shp: its shifter's phase; rvw, rva:
+ * REVERSE's write place and its heads' age; hpo: SPRING's thinning) */
+#define SH_LEN 1024u                                    /* SHIMMER: the shifter's window, 46 ms at 22.05 kHz */
+#define RV_LEN 16384u                                   /* REVERSE: 0.74 s of mu-law, read backwards */
+static int16_t sh_buf[SH_LEN];                          /* (both in RAM: the pool is the sound's lines') */
+static uint8_t rv_buf[RV_LEN];
 static const uint16_t FD_OFF[FD_N] = {0, 1153, 2480, 4039, 5738, 7615, 9684, 11981};
 static const uint16_t DF_OFF[4] = {0, 142, 249, 628};
 #define EL_LEN 16384u                                   /* ECHO: 0.74 s of 8-bit mu-law at 22.05 kHz (its other half: the
@@ -901,10 +913,58 @@ static void room_step(int32_t vin)
  * lines, stored at 8 bits, two lines wowing deep */
 static void fdn_step(int32_t vin)
 {
-    int k, h, j, nmod = v_cur == VB_HAZE || v_cur == VB_SPACE ? 8 : v_cur == VB_LOFI ? 2 : 4;
-    int32_t x = vin / 2, y[FD_N], ol, orr, damp = v_cur == VB_HAZE ? gp.vdamp * 3 / 4 : v_cur == VB_LOFI ? gp.vdamp / 2 : gp.vdamp;
+    int k, h, j, nmod = v_cur == VB_HAZE || v_cur == VB_SPACE || v_cur == VB_FREEZE ? 8 : v_cur == VB_LOFI || v_cur == VB_SPRING ? 2 : v_cur == VB_PLATE ? 0 : 4;
+    int32_t x = vin / 2, y[FD_N], ol, orr, damp = v_cur == VB_HAZE ? gp.vdamp * 3 / 4 : v_cur == VB_LOFI || v_cur == VB_SPRING ? gp.vdamp / 2
+                                                  : v_cur == VB_PLATE ? gp.vdamp + (32767 - gp.vdamp) / 2
+                                                  : v_cur == VB_SHIMMER ? gp.vdamp + (32767 - gp.vdamp) / 3 : gp.vdamp;   /* (a plate, the octaves: bright) */
+    int rd = v_cur == VB_PLATE ? 1 : v_cur == VB_SPRING ? 2 : 0;   /* the lines read at a half (PLATE), a quarter (SPRING) */
     fd.dci += (x * 256 - fd.dci) >> 9;                  /* no DC in: a loop this long would hold it a hundredfold */
     x -= fd.dci >> 8;
+    if (v_cur == VB_REVERSE) {                          /* the sound backwards: two heads reading the last segment from
+                                                           its end, each faded in and out (a triangle), half apart */
+        int32_t s = 0, len = gp.vrlen, a;
+        rv_buf[fd.rvw] = mulaw_enc(curve(T_SAT, x));
+        for (k = 0; k < 2; k++) {
+            a = (fd.rva + (k ? len / 2 : 0)) % len;
+            {
+                uint32_t at = (fd.rvw + RV_LEN - (uint32_t)(2 * a)) & (RV_LEN - 1);   /* back from its start twice as fast */
+                int32_t g = a < len / 2 ? a * 65536 / len : (len - a) * 65536 / len;
+                s += (T_MULAW[rv_buf[at]] * g) >> 15;
+            }
+        }
+        if (++fd.rva >= len) fd.rva = 0;
+        fd.rvw = (fd.rvw + 1) & (RV_LEN - 1);
+        x = s;
+    }
+    if (v_cur == VB_SHIMMER) {                          /* the network's sound an octave up, fed back in: a pitch
+                                                           shifter, two taps sliding through a short line, crossfaded */
+        int32_t s = 0, d;
+        sh_buf[fd.shp & (SH_LEN - 1)] = (int16_t)sat16(fd.sfb);
+        for (k = 0; k < 2; k++) {
+            d = (int32_t)SH_LEN - 1 - ((fd.shf + (k ? (int32_t)SH_LEN / 2 : 0)) & (int32_t)(SH_LEN - 1));
+            {
+                int32_t g = d < (int32_t)SH_LEN / 2 ? d * 65536 / (int32_t)SH_LEN : ((int32_t)SH_LEN - d) * 65536 / (int32_t)SH_LEN;
+                s += (sh_buf[(fd.shp - (uint32_t)d) & (SH_LEN - 1)] * g) >> 15;
+            }
+        }
+        fd.shp++; fd.shf++;
+        fd.hpo += ((s * 256) - fd.hpo) >> 1;            /* (its very top softened: octaves on octaves turn to hiss) */
+        x += ((fd.hpo >> 8) * gp.vsh) >> 15;
+    }
+    if (v_cur == VB_SPRING) {                           /* dispersion: eight all-passes in a row (the spring's chirp), its
+                                                           lows thinned */
+        for (k = 0; k < 8; k++) {
+            int32_t yy = ((x - fd.sy[k]) * -21299 >> 15) + fd.sx[k];   /* a = -0.65 */
+            fd.sx[k] = x; fd.sy[k] = yy; x = yy;
+        }
+        fd.hpo += (x * 256 - fd.hpo) >> 5;
+        x -= fd.hpo >> 8;
+    }
+    if (v_cur == VB_FREEZE) {                           /* FREEZE: only so much new sound in, and held as it lets less
+                                                           in: its damping opening, none at the top */
+        x = (x * gp.vgin) >> 15;
+        damp += (int32_t)(((int64_t)(32767 - damp) * (32768 - gp.vgin)) >> 15);
+    }
     if (!(fd.step++ & 3)) {                             /* the sweep, every fourth step: four sines, the lines take turns */
         int32_t sv[4];
         sv[0] = sinp(fd.lfo[0]); sv[1] = sinp(fd.lfo[0] + 0x40000000u); sv[2] = sinp(fd.lfo[1]); sv[3] = sinp(fd.lfo[1] + 0x40000000u);
@@ -931,6 +991,7 @@ static void fdn_step(int32_t vin)
     for (k = 0; k < FD_N; k++) {                        /* each line's end, the first ones swept, then damped */
         const int16_t *b = &fd_buf[FD_OFF[k]];
         uint32_t p = fd.pos[k];
+        if (rd) { p += FD_LEN[k] - (FD_LEN[k] >> rd); if (p >= FD_LEN[k]) p -= FD_LEN[k]; }   /* (a shorter line) */
         int32_t v;
         if (k < nmod) {
             int32_t m = fd.m[k], f = m & 255;
@@ -960,8 +1021,9 @@ static void fdn_step(int32_t vin)
     }
     fd.dcl += (ol * 256 - fd.dcl) >> 10;                /* nor out: what the loop's rounding leaves */
     fd.dcr += (orr * 256 - fd.dcr) >> 10;
-    fd.ol = ((ol - (fd.dcl >> 8)) * gp.vret) >> 16;
-    fd.orr = ((orr - (fd.dcr >> 8)) * gp.vret) >> 16;
+    fd.sfb = (ol + orr) / 4;                             /* (SHIMMER's: the sound to shift) */
+    fd.ol = ((((ol - (fd.dcl >> 8)) * gp.vgain) >> 8) * gp.vret) >> 16;
+    fd.orr = ((((orr - (fd.dcr >> 8)) * gp.vgain) >> 8) * gp.vret) >> 16;
 }
 
 /* the network's own pass, a run of the verb's input at a time, half rate, its output held for the sample between:
@@ -1232,6 +1294,8 @@ static void verb_clear(void)
     for (i = 0; i < sizeof fd_buf / sizeof fd_buf[0]; i++) fd_buf[i] = 0;
     for (i = 0; i < sizeof df_buf / sizeof df_buf[0]; i++) df_buf[i] = 0;
     { uint8_t *z = (uint8_t *)&fd; uint32_t k; for (k = 0; k < sizeof fd; k++) z[k] = 0; }
+    for (i = 0; i < SH_LEN; i++) sh_buf[i] = 0;
+    for (i = 0; i < RV_LEN; i++) rv_buf[i] = 0xFF;      /* (mu-law's silence) */
     for (i = 0; i < 4; i++) bus.cb_lp[i] = 0;
     bus.vl = bus.vr = 0;
 }
@@ -1254,6 +1318,8 @@ static void dsp_reset(void)
     for (i = 0; i < sizeof ap_buf / sizeof ap_buf[0]; i++) ap_buf[i] = 0;
     for (i = 0; i < sizeof fd_buf / sizeof fd_buf[0]; i++) fd_buf[i] = 0;
     for (i = 0; i < sizeof df_buf / sizeof df_buf[0]; i++) df_buf[i] = 0;
+    for (i = 0; i < SH_LEN; i++) sh_buf[i] = 0;
+    for (i = 0; i < RV_LEN; i++) rv_buf[i] = 0xFF;
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) dl_clear((int)i);
     gm_cur = 0; gm_g = 0; gm_pend = 0;
@@ -1531,7 +1597,7 @@ static void dsp_render(int16_t *lr, int frames)
         /* the chains, the last on the second core with the network (the last run's input: the mix takes what it
          * made), the rest here */
         if (v_cur != gp.vtype && !v_g) {
-            if (v_cur == VB_OFF || (v_cur == VB_ROOM) != (gp.vtype == VB_ROOM)) verb_clear();
+            if (v_cur == VB_OFF || (v_cur == VB_ROOM) != (gp.vtype == VB_ROOM) || gp.vtype == VB_SHIMMER || gp.vtype == VB_REVERSE) verb_clear();
             v_cur = gp.vtype;
         }   /* faded out: the new
                                                            type, from the next run; out of off, from silence (not

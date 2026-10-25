@@ -210,6 +210,27 @@ The owner: "media fx should be global and echo delay per track". Their choice of
 - The heaviest case (Noise, Ping-pong, Flanger on all three, Haze, Grains, VHS on the mix): CPU0 1571, CPU1 1247
   [M]; with a layer under every voice and the LFO on, CPU0 1520, CPU1 1379. Under the proven 1650.
 
+### 5.2 More spaces, the effects' levels (the owner's, 2026-10-25; in 0.4.11)
+
+The owner chose more shared types over a reverb a synth. Five more on the verb's network, little new memory:
+
+- **Plate:** the lines read at half their length, damping opened halfway, no sweep: dense, bright.
+- **Spring:** at a quarter, behind eight all-passes in a row (a = -0.65, the chirp), its lows thinned, dark.
+- **Shimmer:** HALL's, its output an octave up (two taps sliding through 46 ms, crossfaded) fed back in; MOD is
+  how much (to 0.35), the octave's very top softened. At full, the energy from 1 to 4 kHz rises from 0.5 % to 13 %
+  of the tail [M]; it does not run away.
+- **Reverse:** the sound read backwards, two heads half a segment apart, faded in and out (SIZE: 93 to 370 ms), into
+  a mid hall. 16 KiB of mu-law in RAM.
+- **Freeze:** nearly lossless (0.998 a pass at the top); SIZE is HOLD: as it rises, less new sound enters and the
+  damping opens, so turning it up while playing holds the tail.
+- The heaviest case with each: Freeze the most, CPU0 1578, CPU1 1257 [M] (the load test uses it).
+
+Levels, each effect at the demos' settings against its sound dry: every colour, media, motion, delay and echo type
+within 2 dB, Tremolo excepted (-3: it halves the level half the time) [M]. Fixed: Saturate +3.9 (its level match
+stronger at high drive), Tape +5.2 (its drive's gain taken back, 1/drive after the curve), Dictaphone +4.3 (its
+level control aims 4 dB lower), Ensemble -3.5 and Phaser -2.3 (made up). The verbs against HALL on the same sound:
+within 1 dB but Space's longer tail (+2), Plate's (+3.4), Shimmer's (+2.9) and Freeze's, held (+5.9).
+
 ## 6. Stage 5: the spaces
 
 Shared buses, at 22.05 kHz, one type each at a time, as now.

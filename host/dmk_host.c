@@ -260,7 +260,8 @@ static void tour(const char *dir)
     dmk_button(B_HOME, 1); wait_ms(500); dmk_key(4, 1); dmk_key(4, 0); dmk_key(3, 1); dmk_key(3, 0); wait_ms(60); shot(dir, "home_held");
     dmk_key(0, 1); dmk_key(0, 0); dmk_key(3, 1); dmk_key(3, 0); dmk_button(B_HOME, 0); wait_ms(60);   /* pattern 3 made, synth 2 muted and back */
     tap(B_OCTU); wait_ms(300); shot(dir, "notice");
-    tap(B_SAVE); wait_ms(100); shot(dir, "saved"); wait_ms(1500);   /* SAVE: the song into its slot */
+    tap(B_SAVE); wait_ms(100); shot(dir, "save");        /* SAVE: the save screen, the slot, the name */
+    tap(B_SAVE); wait_ms(100); shot(dir, "saved"); wait_ms(1500);   /* again: saved, back where it was */
     dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); dmk_encoder(E_K1, 1); wait_ms(60); shot(dir, "discs");
     tap(B_GLO); tap(B_GLO); tap(B_GLO); tap(B_GLO);     /* to SETUP: its K4 the theme */
     for (int t = 1; t < DMK_THEMES; t++) {
@@ -453,8 +454,10 @@ static void selftest(void)
         seq_add(0, 5, 3, 62, 90); notes = sq[0].count;
         ui.val[0][PG_FILTER][0][0] = 33; cut = 33; sp_sync();
         tap(B_SAVE);
-        if (strncmp(ui.note, "Saved: ", 7) || !song_used(0)) { fails++; printf("selftest: SAVE does not save (%s)\n", ui.note); }   /* (a new song: its name) */
-        seq_play(1); tap(B_SAVE); seq_play(0);
+        if (ui.page != PG_DISCS || !ui.save_mode || song_used(0)) { fails++; printf("selftest: SAVE does not open the save screen\n"); }
+        tap(B_SAVE);
+        if (strncmp(ui.note, "Saved: ", 7) || !song_used(0) || ui.page != PG_HOME) { fails++; printf("selftest: SAVE twice does not save and go back (%s)\n", ui.note); }   /* (a new song: its name) */
+        seq_play(1); tap(B_SAVE); tap(B_SAVE); seq_play(0);
         if (strcmp(ui.note, "Stop to save")) { fails++; printf("selftest: SAVE while playing is not refused\n"); }
         dmk_init(10); now_ms = 0; wait_ms(60);
         if (sq[0].count != notes || ui.val[0][PG_FILTER][0][0] != cut || seq_find(0, 5, 62) < 0) { fails++; printf("selftest: a start does not load the saved song\n"); }
@@ -519,7 +522,7 @@ static void selftest(void)
         { int on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 0; if (!(pat_mute & 1u) || on) { fails++; printf("selftest: a muted synth still plays (%d)\n", on); } }
         seq_play(0);
         host_store_on(1, 1);
-        tap(B_SAVE); dmk_init(13); now_ms = 0; wait_ms(60);
+        tap(B_SAVE); tap(B_SAVE); dmk_init(13); now_ms = 0; wait_ms(60);
         if (!scn[0].used || !scn[1].used || scn[2].used || scn_cur != 1 || syn_pat(1) != 1 || sq[1].count != n0 + 1 || !(pat_mute & 1u))
             { fails++; printf("selftest: a song does not keep its scenes and patterns\n"); }
         host_store_on(0, 0);
@@ -582,7 +585,7 @@ static void selftest(void)
         wait_ms(2 * bar); tap(B_PLAY); seq_rec = 0;
         if (song_n != 2 || song[0].scene != 0 || song[1].scene != 2 || !song_mode) { fails++; printf("selftest: a take is not the song (%d steps)\n", song_n); }
         host_store_on(1, 1);
-        tap(B_SAVE); dmk_init(16); now_ms = 0; wait_ms(60);
+        tap(B_SAVE); tap(B_SAVE); dmk_init(16); now_ms = 0; wait_ms(60);
         if (song_n != 2 || song[1].scene != 2 || !song_mode) { fails++; printf("selftest: the song is not saved\n"); }
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -672,7 +675,7 @@ static void selftest(void)
         host_store_on(1, 1);
         dmk_init(28); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         ui.val[0][PG_GLOBAL][2][0] = ui.val[0][PG_GLOBAL][2][1] = ui.val[0][PG_GLOBAL][2][2] = 64;   /* (its row then) */
-        tap(B_SAVE);
+        tap(B_SAVE); tap(B_SAVE);
         for (int k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 6;
         dmk_init(29); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         if (clock_ext || midi_chans || midi_out != 1) { fails++; printf("selftest: an old song's MIDI row loads as set (clock %d, in %d, out %d)\n", clock_ext, midi_chans, midi_out); }
@@ -718,7 +721,7 @@ static void selftest(void)
         int i, v, pk = 0;
         dmk_init(25); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         ui.val[0][PG_FX][3][0] = 127; ui.val[0][PG_FX][3][1] = 127;   /* a lot sent */
-        ui.val[0][PG_GLOBAL][0][4] = choice_val(0, 7); ui.val[0][PG_GLOBAL][1][4] = choice_val(0, FX_ECHOS); sp_sync();
+        ui.val[0][PG_GLOBAL][0][4] = choice_val(0, FX_VERBS); ui.val[0][PG_GLOBAL][1][4] = choice_val(0, FX_ECHOS); sp_sync();
         note_on_s(0, 60);
         for (i = 0; i < 40; i++) dmk_render(ob, 512);
         if (v_cur != VB_OFF || e_cur != ET_OFF) { fails++; printf("selftest: the verb and the echo do not go off (%d %d)\n", v_cur, e_cur); }
@@ -726,7 +729,7 @@ static void selftest(void)
         for (i = 0; i < 20; i++) dmk_render(ob, 512);
         for (v = 0; v < 1024; v++) { int a = ob[v] < 0 ? -ob[v] : ob[v]; if (a > pk) pk = a; }
         if (pk > 64) { fails++; printf("selftest: with the spaces off a note leaves a tail (%d)\n", pk); }
-        ui.val[0][PG_GLOBAL][0][4] = choice_val(2, 7); ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS); sp_sync();
+        ui.val[0][PG_GLOBAL][0][4] = choice_val(2, FX_VERBS); ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS); sp_sync();
         for (i = 0; i < 4; i++) dmk_render(ob, 512);
         if (v_cur != VB_HALL || e_cur != ET_TAPE) { fails++; printf("selftest: the verb and the echo do not come back\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -888,7 +891,7 @@ static void selftest(void)
         /* the store: a song keeps the new controls; one of before 0.4 (version 4) loads with them off */
         host_store_on(1, 1);
         ui.val[0][PG_LFO][0][1] = 64; ui.val[0][PG_SOUND][1][0] = 50; ui.val[0][PG_SOUND][2][0] = 33; ui.val[0][PG_FILTER][0][3] = 20;
-        tap(B_SAVE); dmk_init(22); now_ms = 0; wait_ms(60);
+        tap(B_SAVE); tap(B_SAVE); dmk_init(22); now_ms = 0; wait_ms(60);
         if (ui.val[0][PG_LFO][0][1] != 64 || ui.val[0][PG_SOUND][1][0] != 50 || ui.val[0][PG_SOUND][2][0] != 33 || ui.val[0][PG_FILTER][0][3] != 20)
             { fails++; printf("selftest: a song does not keep the layer, the voice, the drive or the LFO\n"); }
         for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 4;   /* as 0.3 wrote it */
@@ -901,14 +904,14 @@ static void selftest(void)
         /* a song and a sound of before 0.5 (fewer types a row: 5, 4, 4) keep their effects; one of now keeps the later */
         ui.val[0][PG_FX][0][4] = choice_val(FC_LOSSY, 5); ui.val[0][PG_FX][1][4] = choice_val(FM_VHS, 4);
         ui.val[0][PG_FX][2][4] = choice_val(FO_CHORUS, 4); ui.val[1][PG_FX][1][4] = 0;
-        tap(B_SAVE);
+        tap(B_SAVE); tap(B_SAVE);
         for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 5;   /* as 0.4 wrote it */
         dmk_init(24); now_ms = 0; wait_ms(60);
         if (syn[0].colour != FC_LOSSY || gmed.media != FM_VHS || syn[0].motion != FO_CHORUS || syn[0].dtype || syn[1].dtype)
             { fails++; printf("selftest: a song of 0.4 loads with other effects (%d %d %d, %d)\n", syn[0].colour, gmed.media, syn[0].motion, syn[0].dtype); }
         ui.val[0][PG_FX][0][4] = choice_val(FC_DIST, FX_COLOURS); ui.val[0][PG_GLOBAL][2][4] = choice_val(FM_DICTA, FX_MEDIAS);
         ui.val[0][PG_FX][2][4] = choice_val(FO_TREM, FX_MOTIONS); ui.val[1][PG_FX][1][4] = choice_val(2, 3); sp_sync();
-        tap(B_SAVE); dmk_init(25); now_ms = 0; wait_ms(60);
+        tap(B_SAVE); tap(B_SAVE); dmk_init(25); now_ms = 0; wait_ms(60);
         if (syn[0].colour != FC_DIST || gmed.media != FM_DICTA || syn[0].motion != FO_TREM || syn[1].dtype != 2 || syn[0].dtype)
             { fails++; printf("selftest: a song does not keep the later effects, the media or the delays\n"); }
         sound_put(0, &lib[0][2]); lib[0][0] = 1; lib[0][1] = 1;   /* a sound of 0.4: its types where 0.4 put them */
@@ -928,7 +931,7 @@ static void selftest(void)
         ui.val[0][PG_GLOBAL][2][0] = choice_val(1, 2); ui.val[0][PG_GLOBAL][2][1] = choice_val(2, 4); ui.val[0][PG_GLOBAL][2][2] = choice_val(0, 2);
         ui.val[0][PG_FX][1][4] = 0; ui.val[1][PG_FX][1][4] = choice_val(FM_VHS, FX_MEDIAS); ui.val[1][PG_FX][1][0] = 99;
         ui.val[2][PG_FX][1][4] = choice_val(FM_TAPE, FX_MEDIAS);
-        tap(B_SAVE);
+        tap(B_SAVE); tap(B_SAVE);
         for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 6;
         dmk_init(27); now_ms = 0; wait_ms(60);
         if (gp.etype != ET_GRAINS || ui.val[1][PG_ROLL][1][0] || ui.val[1][PG_ROLL][1][2] != 127 || sq[1].chance != 32768u)
@@ -941,16 +944,48 @@ static void selftest(void)
         #undef QUIET
         #undef PEAK
     }
+    {   /* the save screen: an empty slot proposes a new name, K2 another, K3 twice INIT the synth; a used slot its own */
+        char a1[24], a2[24];
+        host_store_on(1, 1);
+        dmk_init(34); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_SEQ); tap(B_SAVE);
+        nm_of(a1, ui.nm_prop);
+        dmk_encoder(E_K2, 1); wait_ms(30);
+        nm_of(a2, ui.nm_prop);
+        if (ui.page != PG_DISCS || !strchr(a1, ' ') || !strcmp(a1, a2)) { fails++; printf("selftest: the save screen's name (%s, then %s)\n", a1, a2); }
+        ui.synth = 2; ui.val[2][PG_FILTER][0][1] = 99; sp_sync();
+        dmk_encoder(E_K3, 1); wait_ms(300);
+        if (ui.val[2][PG_FILTER][0][1] != 99) { fails++; printf("selftest: one turn of Init resets the synth\n"); }
+        dmk_encoder(E_K3, 1); wait_ms(30);
+        if (ui.val[2][PG_FILTER][0][1] == 99) { fails++; printf("selftest: Init turned twice does not reset the synth (%s)\n", ui.note); }
+        tap(B_SAVE);
+        if (!song_used(0) || strcmp(song_name(0), a2) || ui.page != PG_ROLL) { fails++; printf("selftest: the save screen saves another name or stays (%s)\n", song_used(0) ? song_name(0) : "-"); }
+        tap(B_SAVE);
+        nm_of(a1, ui.nm_prop);
+        if (strcmp(a1, a2)) { fails++; printf("selftest: the song's own slot proposes another name (%s)\n", a1); }
+        tap(B_HOME);
+        host_store_on(0, 0);
+    }
+    {   /* Vary is each synth's: the Vary row's knobs change the synth picked, not the first (the owner) */
+        dmk_init(35); now_ms = 0; wait_ms(60); ui.boot_done = 1; ui.synth = 0;
+        tap(B_SEQ); tap(B_SEQ);                         /* the roll's Vary row */
+        dmk_encoder(E_SELECT, 1); wait_ms(200); dmk_encoder(E_SELECT, 1); wait_ms(200);   /* synth 3 */
+        for (int i = 0; i < 40; i++) dmk_encoder(E_K1, 1);
+        for (int i = 0; i < 40; i++) dmk_encoder(E_K3, -1);
+        if (ui.synth != 2 || !sq[2].mut || sq[0].mut || sq[1].mut || sq[2].chance == 32768u || sq[0].chance != 32768u)
+            { fails++; printf("selftest: Vary's knobs are not the synth's own (synth %d, mut %u %u %u)\n", ui.synth, sq[0].mut, sq[1].mut, sq[2].mut); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* a new song saved: a name made up for it (two words), shown on Songs; kept through a load */
         host_store_on(1, 1);
         dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        ui.song = 3; tap(B_SAVE);
+        ui.song = 3; tap(B_SAVE); tap(B_SAVE);
         if (!song_used(3) || !strchr(song_name(3), ' ') || !strcmp(song_name(3), "First snow")) { fails++; printf("selftest: a new song has no name of its own (%s)\n", song_used(3) ? song_name(3) : "-"); }
         else {
             char was[24]; strcpy(was, song_name(3));
             songs_scan();
             if (strcmp(was, song_name(3))) { fails++; printf("selftest: a song's name changed in the store (%s, %s)\n", was, song_name(3)); }
-            tap(B_SAVE);                                /* saved again over itself: its name kept */
+            tap(B_SAVE); tap(B_SAVE);                   /* saved again over itself: its name kept */
             if (strcmp(was, song_name(3))) { fails++; printf("selftest: a song saved again was renamed\n"); }
         }
         host_store_on(0, 0);
@@ -1096,12 +1131,12 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
     ui.val[0][PG_FX][3][0] = verb ? 100 : 30;           /* a little verb, or a lot for the verbs */
     ui.val[0][PG_FX][3][1] = 0;
     if (page >= 0) {
-        int nch = page == PG_GLOBAL ? (row == 2 ? FX_MEDIAS : row ? FX_ECHOS : 7) : page == PG_FILTER ? 8 : row == 0 ? FX_COLOURS : row == 1 ? 3 : FX_MOTIONS;
+        int nch = page == PG_GLOBAL ? (row == 2 ? FX_MEDIAS : row ? FX_ECHOS : FX_VERBS) : page == PG_FILTER ? 8 : row == 0 ? FX_COLOURS : row == 1 ? 3 : FX_MOTIONS;
         if (page == PG_GLOBAL && row < 2) type++;       /* (Off first) */
         ui.val[0][page][row][4] = (uint8_t)(type * 128 / nch + 128 / nch / 2);
         for (j = 0; j < 4; j++) if (k[j] != 255) ui.val[0][page][row][j] = k[j];
     }
-    if (page != PG_GLOBAL || row) ui.val[0][PG_GLOBAL][0][4] = choice_val(2, 7);   /* the hall under the others */
+    if (page != PG_GLOBAL || row) ui.val[0][PG_GLOBAL][0][4] = choice_val(2, FX_VERBS);   /* the hall under the others */
     if (page == PG_GLOBAL && row == 1) { ui.val[0][PG_FX][3][1] = 110; ui.val[0][PG_FX][3][0] = 70; }   /* grains: a lot sent */
     sp_sync();
     for (i = 0; i < n; i += DMK_SUB) {
@@ -1124,11 +1159,12 @@ static void fx_demo(const char *dir)
     static const uint8_t LO[4] = {95, 80, 0, 70}, NO[4] = {60, 50, 70, 25}, TA[4] = {70, 70, 60, 64};
     static const uint8_t CA[4] = {80, 60, 60, 80}, VH[4] = {90, 50, 50, 90}, CH[4] = {90, 100, 40, 100};
     static const uint8_t VI[4] = {60, 255, 70, 40}, DR[4] = {110, 90, 40, 255}, FI[4] = {255, 100, 64, 255};
-    static const char *const VN[6] = {"verb_1_room", "verb_2_hall", "verb_3_space", "verb_4_haze", "verb_5_bloom", "verb_6_lofi"};
+    static const char *const VN[11] = {"verb_1_room", "verb_2_hall", "verb_3_space", "verb_4_haze", "verb_5_bloom", "verb_6_lofi",
+                                       "verb_7_plate", "verb_8_spring", "verb_9_shimmer", "verb_10_reverse", "verb_11_freeze"};
     static const uint8_t VL[4] = {100, 60, 124, 100}, GR[4] = {110, 70, 70, 60};
     static const char *const FN[3] = {"filter_notch", "filter_peak", "filter_vowel"};
     int t;
-    for (t = 0; t < 6; t++) fx_one(dir, VN[t], t == 4 ? "Lunaria" : "Nymphaea", PG_GLOBAL, 0, t, t == 1 || t == 2 || t == 3 ? VL : VB, 1, 0);
+    for (t = 0; t < 11; t++) fx_one(dir, VN[t], t == 4 || t == 9 ? "Lunaria" : "Nymphaea", PG_GLOBAL, 0, t, t == 1 || t == 2 || t == 3 || t == 8 ? VL : VB, 1, 0);
     fx_one(dir, "echo_grains", "Nymphaea", PG_GLOBAL, 1, ET_GRAINS, GR, 1, 0);
     fx_one(dir, "colour_1_saturate", "Nymphaea", PG_FX, 0, FC_SAT, SAT, 0, 0);
     fx_one(dir, "colour_2_crush", "Nymphaea", PG_FX, 0, FC_CRUSH, CR, 0, 0);
@@ -1252,7 +1288,7 @@ static double cpu_case(int fx)
         ui.val[s][PG_SOUND][1][0] = 90; ui.val[s][PG_LFO][0][1] = 60; ui.val[s][PG_LFO][0][4] = choice_val(LT_CUTOFF, 5);
     }
     if (fx == 3) fx = 2;
-    ui.val[0][PG_GLOBAL][0][4] = fx == 2 ? choice_val(4, 7) : choice_val(1, 7);   /* the heaviest: haze; else the room */
+    ui.val[0][PG_GLOBAL][0][4] = fx == 2 ? choice_val(VB_HEAVY + 1, FX_VERBS) : choice_val(1, FX_VERBS);   /* the heaviest; else the room */
     ui.val[0][PG_GLOBAL][1][4] = fx == 2 ? choice_val(2, FX_ECHOS) : choice_val(1, FX_ECHOS);   /* and the grains; else the tape */
     sp_sync();
     for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
@@ -1310,11 +1346,11 @@ static void cpu(void)
     z = instructions();
     printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with the mix's tape, room and echo %.0f instructions a sample\n",
            (double)(z - a) / frames, cpu_case(0), cpu_case(1));
-    {   /* the heaviest: every synth noise, a ping-pong and flanger (each row's heaviest), the haze, the grains, VHS on the
+    {   /* the heaviest: every synth noise, a ping-pong and flanger (each row's heaviest), the freeze, the grains, VHS on the
          * mix; each core's share */
         double all = cpu_case(2), c0, c1;
         cpu_cores(&c0, &c1);
-        printf("cpu: the heaviest (noise, ping-pong, flanger x3, haze, grains, VHS) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
+        printf("cpu: the heaviest (noise, ping-pong, flanger x3, freeze, grains, VHS) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
                all, c0, c1);
         all = cpu_case(3);
         cpu_cores(&c0, &c1);
