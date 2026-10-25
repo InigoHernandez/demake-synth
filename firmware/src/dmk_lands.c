@@ -171,6 +171,18 @@ static void ca_near(int dk, int above)
     cv_palm(SC_W - 12 + ox, 106 + oy, 152, -7, dk);
 }
 
+/* the VILLA's stone pine: is (x, y) in its crown, six flat clumps */
+static int pine_in(int x, int y)
+{
+    static const int8_t LB[6][4] = {{10, 14, 11, 4}, {22, 10, 12, 5}, {36, 8, 13, 5}, {50, 11, 11, 5}, {60, 15, 7, 3}, {32, 15, 18, 3}};
+    int k;
+    for (k = 0; k < 6; k++) {
+        int dx = x - LB[k][0], dy = y - LB[k][1], rx = LB[k][2], ry = LB[k][3];
+        if (dx * dx * ry * ry + dy * dy * rx * rx <= rx * rx * ry * ry) return 1;
+    }
+    return 0;
+}
+
 /* ---- the bands */
 DMK_SMALL static void land_band(int sc, int dk, int lt)
 {
@@ -266,7 +278,8 @@ DMK_SMALL static void land_band(int sc, int dk, int lt)
     } else if (sc == 8) {                               /* VILLA: a pool house in the Californian way (the owner's
                                                            picture): a flat white roof on pink walls and dark glass, a
                                                            pink deck, the pool before it in perspective (its ripples
-                                                           move: land_anim), the sea and its hills to the right */
+                                                           move: land_anim), the sea and its hills to the right, a
+                                                           stone pine at the left */
         for (x = 150; x < SC_W; x++) {                  /* the hills, the sea */
             int top = 46 - tri(x, 41, 5) - tri(x + 7, 13, 2);
             for (y = top; y < 52; y++) cv_put(x, y, bay(x, y) < 6 ? C_HOLO3 : C_HOLO2);
@@ -284,16 +297,19 @@ DMK_SMALL static void land_band(int sc, int dk, int lt)
         cv_rect(26, 20, 138, 4, lt); cv_rect(26, 24, 138, 1, C_LABEL);   /* the roof, a white slab over all */
         for (y = 58; y < 67; y++) for (x = 0; x < SC_W; x++) cv_put(x, y, y >= 65 ? C_HOLO4 : bay(x, y) < 9 ? C_HOLO6 : lt);   /* the deck */
         cv_line(60, 62, 72, 56, lt); cv_line(60, 63, 72, 57, lt); cv_rect(61, 63, 1, 2, C_LABEL); cv_rect(71, 58, 1, 6, C_LABEL);   /* a lounger */
-        for (y = 14; y < 66; y++) {                     /* a stone pine at the left: a tall trunk, bent, lit on its side */
+        for (y = 14; y < 66; y++) {                     /* the stone pine: a tall trunk, bent, lit on its side */
             int tx = 14 + (66 - y) * (66 - y) / 220;
             cv_rect(tx, y, 3, 1, dk); cv_put(tx + 2, y, C_HOLO2);
         }
-        cv_line(26, 20, 36, 12, dk); cv_line(25, 20, 12, 13, dk);   /* its limbs */
-        for (x = 0; x < 66; x++) {                      /* its crown: flat, wide, one mass; lit on top, shaded under */
-            int top = 4 + tri(x * 3, 23, 2) + (x < 6 ? 6 - x : 0) + (x > 56 ? (x - 56) : 0), bot = 21 + tri(x * 2 + 5, 17, 2) - (x > 58 ? x - 58 : 0);
-            for (y = top; y < bot; y++)
-                cv_put(x, y, y < top + 2 ? (bay(x, y) < 8 ? C_HOLO3 : C_HOLO2) : y > bot - 3 ? (bay(x, y) < 6 ? C_HOLO0 : dk) : bay(x, y) < 7 ? C_HOLO2 : C_HOLO1);
-        }
+        cv_line(27, 18, 13, 14, dk); cv_line(27, 18, 44, 13, dk); cv_line(27, 18, 30, 12, dk);   /* its limbs, fanned up */
+        for (y = 0; y < 22; y++) for (x = 0; x < 72; x++)   /* its crown: flat clumps of needles overlapping into one
+                                                           umbrella, a lumpy dome, dark against the sky as the palms;
+                                                           the sunset along its top */
+            if (pine_in(x, y)) {
+                int j = (int)(hsh((uint32_t)(x * 37 + y * 11)) % 9u);
+                cv_put(x, y, !pine_in(x, y - 1) ? (bay(x, y) < 9 ? C_HOLO4 : C_HOLO5) : !pine_in(x, y + 1) ? dk
+                       : !j ? C_HOLO1 : bay(x, y) < (y < 10 ? 4 : 1) ? C_HOLO0 : dk);
+            }
         for (y = 67; y < SC_H; y++) for (x = 0; x < SC_W; x++) {   /* the pool: lighter far, deeper near; the house in it */
             int m = 66 - (y - 67) - 1, c = y < 82 ? cv_get(x + tri(y * 3, 5, 1), m) : 0xFF;
             if (c == dk) c = C_HOLO0;                   /* (its glass, deep in the water) */
