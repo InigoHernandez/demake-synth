@@ -1212,7 +1212,7 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
 /* the ARP's ways, each for the owner to hear: Am7 held on the third synth (the pluck), two octaves, sixteenths at 100 */
 static void arp_demo(const char *dir)
 {
-    static const char *const NM[AR_N] = {"", "up", "down", "updown", "downup", "bounce", "converge", "diverge", "random", "walk",
+    static const char *const NM[AR_N] = {"", "up", "down", "hill", "valley", "bounce", "fold", "unfold", "dice", "walk",
                                          "played", "chord", "thumb", "pinky"};
     static const uint8_t CH[4] = {57, 67, 60, 64};      /* (played in this order: Played shows it) */
     int m, n = DMK_SR * 7, i, k;
