@@ -331,6 +331,8 @@ static int song_newer(int i);
 static void song_new(void);
 static const char *song_name(int i);
 static int sound_save(int s);
+static int sound_over(int s, int slot);
+static int sound_del(int slot);
 static void sound_init(int s);
 static void sound_put(int s, uint8_t *o);
 static int lib_count(void);
@@ -772,13 +774,6 @@ static int row_next(int page, int row)                  /* the page's next row t
 }
 static int rows_built(int page) { int r, n = 0; for (r = 0; r < PAGE[page].rows; r++) n += !row_soon(page, r); return n; }
 
-/* SELECT scrolls a page's rows where it has more than one (Home's are views of the synths, and there SELECT picks
- * the synth, as on the roll, the filter and the amp), and the songs' slots */
-static int sel_scrolls(int page)
-{
-    return PAGE[page].rows > 1 && page != PG_HOME && page != PG_ROLL && page != PG_DISCS;   /* (the roll's: SEQ again; Save's:
-                                                           ALGO, its SELECT the project or the track) */
-}
 
 /* a row with nothing behind it: those not built, MEDIA while its effect is off */
 static int row_off(int page, int row)
@@ -1071,9 +1066,10 @@ static void foot(void)
     if (ui.page == PG_DISCS) {                          /* SAVE: what the buttons do with the one picked */
         int at = ui.song_pick, used = song_used(at);
         if (!store_on()) { text(PAD + 1, Y_FOOT + 2, "No store here", &FS, C_LABEL); return; }
-        if (r) {
-            text(PAD + 1, Y_FOOT + 2, "SAVE: keep it", &FS, C_LABEL);
-            text_r(DMK_W - PAD - 1, Y_FOOT + 2, "OCT\xE2\x88\x92: init", &FS, C_LABEL);
+        if (r) {                                        /* (a kept one picked: over it, delete it) */
+            int kept = ui.preset[ui.synth] >= DMK_SAMPLES_N;
+            text(PAD + 1, Y_FOOT + 2, kept ? "SAVE: keep over" : "SAVE: keep it", &FS, C_LABEL);
+            text_r(DMK_W - PAD - 1, Y_FOOT + 2, kept ? "OCT\xE2\x88\x92: delete" : "OCT\xE2\x88\x92: init", &FS, C_LABEL);
             return;
         }
         text(PAD + 1, Y_FOOT + 2, !used ? "SAVE: save here" : at == ui.song ? "SAVE: save over" : "PLAY: open", &FS, C_LABEL);
@@ -1141,15 +1137,13 @@ static void foot(void)
     }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
-        int typed = ui.page == PG_FX || (ui.page == PG_GLOBAL && r < 3) || ui.page == PG_FILTER, nd = rows_built(ui.page), x;
+        int nd = rows_built(ui.page), x;
         int end = nd > 1 ? (DMK_W - dots_w(nd)) / 2 - 4 : 130;   /* where its words end: short of the dots */
         val_text(v, ui.page, r, 4);
         if (PAD + 1 + text_w(pg->algo[r], &FS) + 6 + text_w(v, &FS) <= end)   /* its name, then the value; a long value */
             x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL) + 6;   /* alone (the page above names it): never cut */
         else x = PAD + 1;
         text_fit(x, Y_FOOT + 2, end - x, v, &FS, lit(4) ? HOLO : C_INK);
-        if (typed && !sel_scrolls(ui.page)) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "PRESET too", &FS, C_LABEL);   /* (where SELECT
-                                                           scrolls the rows, the dots say so: page_dots) */
         if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, seq_on ? (seq_rec ? "Recording" : "REC: record") : seq_rec ? "Keys write" : "REC: write", &FS, C_LABEL);
 
         if (ui.page == PG_HOME) {                       /* where the music is: the pattern, or the song */
@@ -2848,8 +2842,30 @@ DMK_SMALL static void ui_button(int b, int down)
         }
         if (b == B_OCTD && ui.page == PG_DISCS && ui.row[PG_DISCS]) {   /* Sounds, OCT- twice: the track's sound INIT
                                                            (twice on that track: armed on another, it was this one) */
-            char t[24];
+            char t[32];
+            int slot = ui.preset[ui.synth] >= DMK_SAMPLES_N ? lib_nth(ui.preset[ui.synth] - DMK_SAMPLES_N) : -1;
             ui.btn_used |= bit;                         /* (not the octave as well) */
+            if (slot >= 0) {                            /* a kept one picked (K3): deleted, twice (the owner) */
+                int nth = ui.preset[ui.synth] - DMK_SAMPLES_N, q;
+                if (seq_on) { notice("Stop to delete"); return; }
+                if (!(ui.clear_arm == 8 && ui.arm_at == slot && ui.now - ui.clear_at < 2000u)) {
+                    ui.clear_arm = 8; ui.arm_at = (uint8_t)slot; ui.clear_at = ui.now;
+                    fmt_int(str_cat(t, slot < 9 ? "OCT\xE2\x88\x92 again: delete User 0" : "OCT\xE2\x88\x92 again: delete User "), slot + 1);
+                    notice(t);
+                    return;
+                }
+                ui.clear_arm = 0;
+                if (sound_del(slot)) { notice("Not deleted"); return; }
+                for (q = 0; q < DMK_SYNTHS; q++)        /* the others' numbers in the library after it, one less */
+                    if (ui.preset[q] >= DMK_SAMPLES_N) {
+                        int m = ui.preset[q] - DMK_SAMPLES_N;
+                        if (m == nth) ui.preset[q] = VS(q, PG_SOUND, 0, 0);
+                        else if (m > nth) ui.preset[q]--;
+                    }
+                fmt_int(str_cat(t, slot < 9 ? "Deleted User 0" : "Deleted User "), slot + 1);
+                notice(t);
+                return;
+            }
             if (ui.clear_arm == 6 && ui.arm_at == ui.synth && ui.now - ui.clear_at < 2000u) {
                 sound_init(ui.synth);
                 ui.preset[ui.synth] = ui.val[ui.synth][PG_SOUND][0][0];
@@ -2920,11 +2936,25 @@ DMK_SMALL static void ui_button(int b, int down)
         save_open();
         return;
     }
-    if (b == B_SAVE && ui.row[PG_DISCS]) {              /* Sounds: the track's sound into the library */
-        char t[24];
-        int n;
+    if (b == B_SAVE && ui.row[PG_DISCS]) {              /* Sounds: the track's sound into the library: over the kept one
+                                                           K3 picked (twice, the owner), else a new one */
+        char t[28];
+        int n, slot = ui.preset[ui.synth] >= DMK_SAMPLES_N ? lib_nth(ui.preset[ui.synth] - DMK_SAMPLES_N) : -1;
         if (!store_on()) { notice("No store here"); return; }
         if (seq_on) { notice("Stop to save"); return; }
+        if (slot >= 0) {
+            if (!(ui.clear_arm == 7 && ui.arm_at == slot && ui.now - ui.clear_at < 2000u)) {
+                ui.clear_arm = 7; ui.arm_at = (uint8_t)slot; ui.clear_at = ui.now;
+                fmt_int(str_cat(t, slot < 9 ? "SAVE again: over User 0" : "SAVE again: over User "), slot + 1);
+                notice(t);
+                return;
+            }
+            ui.clear_arm = 0;
+            if (sound_over(ui.synth, slot)) { notice("Not kept"); return; }
+            fmt_int(str_cat(t, slot < 9 ? "Kept over User 0" : "Kept over User "), slot + 1);
+            notice(t);
+            return;
+        }
         n = sound_save(ui.synth);
         if (n <= 0) { notice(n ? "Not saved" : "The library is full"); return; }
         fmt_int(str_cat(t, n < 10 ? "Kept as User 0" : "Kept as User "), n);
@@ -3003,8 +3033,7 @@ DMK_SMALL static void ui_button(int b, int down)
             if (row_soon(p, ui.row[p])) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);
             if (rows_built(p) > 1 && !(ui.hinted >> p & 1u)) {   /* the first time: how to reach the next row */
                 char t[32];
-                if (sel_scrolls(p)) str_cat(t, "SELECT: the rows");
-                else str_cat(str_cat(t, BTN_NAME[b]), " again: the next row");
+                str_cat(str_cat(str_cat(t, "PRESET, or "), BTN_NAME[b]), " again: rows");
                 notice(t);
                 ui.hinted |= (uint16_t)(1u << p);
             }
@@ -3029,33 +3058,23 @@ DMK_SMALL static void ui_encoder(int e, int d)
         if (dir == ui.sel_dir && ui.now - ui.sel_at < 120u) return;
         ui.sel_dir = (int8_t)dir; ui.sel_at = ui.now;
         if (ui.page == PG_DISCS && !ui.row[PG_DISCS] && !(ui.btn_held >> B_HOME & 1u)) { ui.touch_k = -1; save_pick(ui.song_pick + dir); return; }   /* the projects */
-        if (!(ui.btn_held >> B_HOME & 1u) && sel_scrolls(ui.page)) {   /* it scrolls (the owner's feedback: the most
-                                                           intuitive): a page's rows, the songs' slots */
-            ui.touch_k = -1;
-            {                                           /* round, past the rows not built */
-                int n = r, i;
-                for (i = 0; i < PAGE[ui.page].rows; i++) { n = wrap(n + dir, PAGE[ui.page].rows); if (!row_soon(ui.page, n)) break; }
-                ui.row[ui.page] = (uint8_t)n;
-            }
-            return;
-        }
-        ui.synth = (uint8_t)wrap(s, DMK_SYNTHS);        /* the synth (HOME held: on any page) */
+        ui.synth = (uint8_t)wrap(s, DMK_SYNTHS);        /* the synth, on every page (the owner, 2026-10-26: SELECT the
+                                                           synth, PRESET the rows) */
         sp_sync();
         return;
     }
-    if (e == E_PRESET && (ui.page == PG_FX || (ui.page == PG_GLOBAL && ui.row[PG_GLOBAL] < 3) || ui.page == PG_FILTER)) {
-        /* on a page of types, PRESET is the row's type: the reverb, the delay, the motion, the colour, the echo, the
-         * media, the filter (the owner: not the whole sound there) */
-        int r0 = ui.row[ui.page], n;
-        const choice_t *c = choice_of(ui.page, r0, 4);
-        uint8_t *v = vp(ui.page, r0, 4);
-        n = wrap(choice_index(c, *v) + (d > 0 ? 1 : -1), c->n);
-        *v = choice_val(n, c->n);
-        ui.touch_k = 4; ui.touch_ms = ui.now;
-        sp_sync();
+    if (e == E_PRESET && ui.page != PG_HOME) {         /* the page's rows, round, past those not built (the owner: it
+                                                           only repeated ALGO's type or K1's sound there); Home keeps
+                                                           the sounds */
+        int n = r, i, rows = PAGE[ui.page].rows, dir = d > 0 ? 1 : -1;
+        if (rows < 2) return;
+        for (i = 0; i < rows; i++) { n = wrap(n + dir, rows); if (!row_soon(ui.page, n)) break; }
+        if (ui.page == PG_DISCS) ren_flush();
+        ui.row[ui.page] = (uint8_t)n;
+        ui.touch_k = -1;
         return;
     }
-    if (e == E_PRESET) {                                /* the synth's sound: the next recording, then the library's */
+    if (e == E_PRESET) {                                /* Home: the synth's sound, the next recording, then the library's */
         uint8_t *sv = &ui.val[ui.synth][PG_SOUND][0][0], *pr = &ui.preset[ui.synth];
         int tot = DMK_SAMPLES_N + lib_count(), n;
         if (*pr < DMK_SAMPLES_N || *pr >= tot) *pr = *sv;   /* from the recording it plays, if not one of the library's */
@@ -3151,12 +3170,13 @@ DMK_SMALL static void ui_encoder(int e, int d)
             ui.preset[s] = *v;
             sp_sync();
         }
-        if (k == 2) {                                   /* a sound kept in the library, whole */
-            int n = lib_count(), at = ui.preset[s] >= DMK_SAMPLES_N ? ui.preset[s] - DMK_SAMPLES_N : dir > 0 ? -1 : n;
+        if (k == 2) {                                   /* a sound kept in the library, whole; before the first, none
+                                                           (what SAVE and OCT- then do: keep a new one, INIT) */
+            int n = lib_count(), at = ui.preset[s] >= DMK_SAMPLES_N ? ui.preset[s] - DMK_SAMPLES_N : -1;
             if (!n) { notice("None kept yet"); return; }
-            at = wrap(at + dir, n);
-            lib_load(s, lib_nth(at));
-            ui.preset[s] = (uint8_t)(DMK_SAMPLES_N + at);
+            at = wrap(at + 1 + dir, n + 1) - 1;
+            if (at < 0) ui.preset[s] = VS(s, PG_SOUND, 0, 0);   /* (the sound as it is: no more that one) */
+            else { lib_load(s, lib_nth(at)); ui.preset[s] = (uint8_t)(DMK_SAMPLES_N + at); }
         }
         return;
     }

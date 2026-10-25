@@ -147,16 +147,40 @@ static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of
     sp_sync();
 }
 /* synth s's sound into the library's first free slot: its number (1..32), 0 full, -1 not written */
+static int lib_write(void)                              /* the library to its sector: 0, or -1 */
+{
+    int j;
+    for (j = 0; j < (int)(ST_USER * ST_SOUND); j++) st_buf[ST_HDR + j] = lib[j / ST_SOUND][j % ST_SOUND];
+    return st_save(ST_LIB, ST_MAGIC_LIB, ST_USER * ST_SOUND, 0);
+}
 static int sound_save(int s)
 {
-    int i, j;
+    int i;
     for (i = 0; i < ST_USER && lib[i][0]; i++) {}
     if (i == ST_USER) return 0;
     lib[i][0] = 1; lib[i][1] = 4;
     sound_put(s, &lib[i][2]);
-    for (j = 0; j < (int)(ST_USER * ST_SOUND); j++) st_buf[ST_HDR + j] = lib[j / ST_SOUND][j % ST_SOUND];
-    if (st_save(ST_LIB, ST_MAGIC_LIB, ST_USER * ST_SOUND, 0)) { lib[i][0] = 0; return -1; }
+    if (lib_write()) { lib[i][0] = 0; return -1; }
     return i + 1;
+}
+/* the owner's: a kept sound kept over (synth s's now) or deleted, its slot free for the next: 0, or -1 */
+static int sound_over(int s, int slot)
+{
+    uint8_t was[ST_SOUND];
+    int j;
+    if (slot < 0 || slot >= ST_USER || !lib[slot][0]) return -1;
+    for (j = 0; j < (int)ST_SOUND; j++) was[j] = lib[slot][j];
+    lib[slot][1] = 4;
+    sound_put(s, &lib[slot][2]);
+    if (lib_write()) { for (j = 0; j < (int)ST_SOUND; j++) lib[slot][j] = was[j]; return -1; }
+    return 0;
+}
+static int sound_del(int slot)
+{
+    if (slot < 0 || slot >= ST_USER || !lib[slot][0]) return -1;
+    lib[slot][0] = 0;
+    if (lib_write()) { lib[slot][0] = 1; return -1; }
+    return 0;
 }
 static void lib_load(int s, int slot) { if (slot >= 0 && slot < ST_USER && lib[slot][0]) sound_get(s, &lib[slot][2], lib[slot][1]); }
 

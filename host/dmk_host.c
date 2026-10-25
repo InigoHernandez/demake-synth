@@ -417,24 +417,24 @@ static void selftest(void)
     wait_ms(1600);
     tap(B_FX); if (ui.page != PG_FX || ui.row[PG_FX] != 1) { fails++; printf("selftest: FX does not open FX on Media\n"); }
     tap(B_FX); if (ui.row[PG_FX] != 2) { fails++; printf("selftest: FX again is not the next row\n"); }
-    /* SELECT scrolls the rows (the owner: the most intuitive), round past the ends (the owner: a list goes round);
-     * ALGORITHM is the row's type; HOME held + SELECT is the synth, on any page */
+    /* PRESET turns the rows, round past the ends (the owner, 2026-10-26: SELECT the synth, PRESET the rows; a list
+     * goes round); ALGORITHM is the row's type; SELECT is the synth, on every page */
     { int s0 = ui.synth;
-    wait_ms(150); dmk_encoder(E_SELECT, 1); if (ui.row[PG_FX] != 3 || ui.synth != s0) { fails++; printf("selftest: SELECT does not scroll FX's rows\n"); }
-    wait_ms(150); dmk_encoder(E_SELECT, 1); if (ui.row[PG_FX] != 0) { fails++; printf("selftest: SELECT past the last row is not the first\n"); }
-    wait_ms(150); dmk_encoder(E_SELECT, -1); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: SELECT back past the first row is not the last\n"); }
-    wait_ms(150); dmk_encoder(E_SELECT, 1);
-    if (ui.row[PG_FX] != 0) { fails++; printf("selftest: SELECT does not reach the first row\n"); }
+    dmk_encoder(E_PRESET, 1); if (ui.row[PG_FX] != 3 || ui.synth != s0) { fails++; printf("selftest: PRESET does not turn FX's rows\n"); }
+    dmk_encoder(E_PRESET, 1); if (ui.row[PG_FX] != 0) { fails++; printf("selftest: PRESET past the last row is not the first\n"); }
+    dmk_encoder(E_PRESET, -1); if (ui.row[PG_FX] != 3) { fails++; printf("selftest: PRESET back past the first row is not the last\n"); }
+    dmk_encoder(E_PRESET, 1);
+    if (ui.row[PG_FX] != 0) { fails++; printf("selftest: PRESET does not reach the first row\n"); }
     { int t0 = syn[ui.synth].rtype;
       dmk_encoder(E_ALGO, 1); wait_ms(30);
       if (syn[ui.synth].rtype != (t0 + 1) % FX_REVERBS || ui.row[PG_FX] != 0) { fails++; printf("selftest: ALGORITHM does not pick the reverb\n"); } }
     dmk_encoder(E_ALGO, -1); wait_ms(150);              /* (past SELECT's 120 ms: a click, not the last one's twin) */
-    dmk_button(B_HOME, 1); wait_ms(30); dmk_encoder(E_SELECT, 1); dmk_button(B_HOME, 0); wait_ms(30);
-    if (ui.synth != (s0 + 1) % DMK_SYNTHS || ui.page != PG_FX) { fails++; printf("selftest: HOME + SELECT does not pick the synth on FX\n"); }
-    wait_ms(150); dmk_button(B_HOME, 1); wait_ms(30); dmk_encoder(E_SELECT, -1); dmk_button(B_HOME, 0); wait_ms(30);
+    dmk_encoder(E_SELECT, 1); wait_ms(30);
+    if (ui.synth != (s0 + 1) % DMK_SYNTHS || ui.page != PG_FX || ui.row[PG_FX]) { fails++; printf("selftest: SELECT does not pick the synth on FX\n"); }
+    wait_ms(150); dmk_encoder(E_SELECT, -1); wait_ms(30);
     tap(B_FX); tap(B_HOME); tap(B_FX);                  /* (back on FX, its second row: as the rolls' check starts) */
-    while (ui.row[PG_FX] != 1) { wait_ms(150); dmk_encoder(E_SELECT, ui.row[PG_FX] > 1 ? -1 : 1); }
-    if (ui.synth != s0) { fails++; printf("selftest: SELECT on FX moved the synth\n"); } }
+    for (int i = 0; i < 8 && ui.row[PG_FX] != 1; i++) dmk_encoder(E_PRESET, ui.row[PG_FX] > 1 ? -1 : 1);
+    if (ui.synth != s0) { fails++; printf("selftest: PRESET on FX moved the synth\n"); } }
     /* the rolls: every synth its own; stopped, a key only plays until REC is lit (the owner: it recorded without REC),
      * then writes at the cursor, OCT- takes a held note away, PLAY sounds them */
     {
@@ -610,10 +610,22 @@ static void selftest(void)
         ui.val[1][PG_FILTER][0][1] = 77; sp_sync();
         tap(B_SAVE);
         if (ui.synth != 1 || lib_count() != 1 || strncmp(ui.note, "Kept as User", 12)) { fails++; printf("selftest: SAVE on Sounds does not keep the track's sound (%s)\n", ui.note); }
+        dmk_encoder(E_K3, -1);                          /* K3 to none: OCT- twice is INIT */
+        if (ui.preset[1] >= DMK_SAMPLES_N) { fails++; printf("selftest: K3 before the first kept sound is not none\n"); }
         tap(B_OCTD); tap(B_OCTD);
         if (ui.val[1][PG_FILTER][0][1] == 77) { fails++; printf("selftest: OCT- twice on Sounds is not INIT\n"); }
         dmk_encoder(E_K3, 1);
         if (ui.val[1][PG_FILTER][0][1] != 77) { fails++; printf("selftest: K3 on Sounds does not bring the kept sound back\n"); }
+        /* a kept one picked (the owner): SAVE twice keeps over it, OCT- twice deletes it */
+        ui.val[1][PG_FILTER][0][1] = 33; sp_sync();
+        tap(B_SAVE);
+        if (strncmp(ui.note, "SAVE again: over User 01", 24) || lib_count() != 1) { fails++; printf("selftest: SAVE over a kept sound does not ask (%s)\n", ui.note); }
+        tap(B_SAVE);
+        if (lib_count() != 1 || lib[lib_nth(0)][2 + 2 * 5 + 1] != 33) { fails++; printf("selftest: SAVE twice does not keep over the sound picked\n"); }
+        tap(B_OCTD);
+        if (lib_count() != 1) { fails++; printf("selftest: one OCT- deletes a kept sound\n"); }
+        tap(B_OCTD);
+        if (lib_count() || ui.preset[1] >= DMK_SAMPLES_N) { fails++; printf("selftest: OCT- twice does not delete the kept sound picked\n"); }
         { int r0 = ui.val[1][PG_SOUND][0][0]; dmk_encoder(E_K2, 1);
           if (ui.val[1][PG_SOUND][0][0] != (r0 + 1) % DMK_SAMPLES_N) { fails++; printf("selftest: K2 on Sounds is not the next recording\n"); } }
         tap(B_HOME);
@@ -952,22 +964,25 @@ static void selftest(void)
         dmk_midi(0xFC, 0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    /* PRESET on a page of types turns the row's type, not the sound */
+    /* ALGO on a page of types turns the row's type, round; PRESET there turns the rows, never the sound or the type */
     {
         int smp = ui.val[ui.synth][PG_SOUND][0][0];
-        tap(B_FX); while (ui.row[PG_FX] != 0) { wait_ms(150); dmk_encoder(E_SELECT, -1); }
+        tap(B_FX); for (int i = 0; i < 8 && ui.row[PG_FX] != 0; i++) dmk_encoder(E_PRESET, -1);
         ui.val[ui.synth][PG_FX][0][4] = 0; sp_sync();   /* (the reverb from off) */
-        dmk_encoder(E_PRESET, 1); dmk_encoder(E_PRESET, 1);
-        if (syn[ui.synth].rtype != RV_PLATE || ui.val[ui.synth][PG_SOUND][0][0] != smp) { fails++; printf("selftest: PRESET on FX does not turn the reverb (%d)\n", syn[ui.synth].rtype); }
-        dmk_encoder(E_PRESET, -1); dmk_encoder(E_PRESET, -1); dmk_encoder(E_PRESET, -1);
-        if (ui.val[ui.synth][PG_FX][0][4] != choice_val(FX_REVERBS - 1, FX_REVERBS)) { fails++; printf("selftest: PRESET on FX back past Off is not the last type\n"); }
-        dmk_encoder(E_PRESET, 1);
-        if (ui.val[ui.synth][PG_FX][0][4] != choice_val(RV_OFF, FX_REVERBS)) { fails++; printf("selftest: PRESET on FX past the last type is not Off\n"); }
+        dmk_encoder(E_ALGO, 1); dmk_encoder(E_ALGO, 1);
+        if (syn[ui.synth].rtype != RV_PLATE || ui.val[ui.synth][PG_SOUND][0][0] != smp) { fails++; printf("selftest: ALGO on FX does not turn the reverb (%d)\n", syn[ui.synth].rtype); }
+        dmk_encoder(E_ALGO, -1); dmk_encoder(E_ALGO, -1); dmk_encoder(E_ALGO, -1);
+        if (ui.val[ui.synth][PG_FX][0][4] != choice_val(FX_REVERBS - 1, FX_REVERBS)) { fails++; printf("selftest: ALGO on FX back past Off is not the last type\n"); }
+        dmk_encoder(E_ALGO, 1);
+        if (ui.val[ui.synth][PG_FX][0][4] != choice_val(RV_OFF, FX_REVERBS)) { fails++; printf("selftest: ALGO on FX past the last type is not Off\n"); }
+        { int t0 = ui.val[ui.synth][PG_FX][0][4]; dmk_encoder(E_PRESET, 1);
+          if (ui.val[ui.synth][PG_FX][0][4] != t0 || ui.val[ui.synth][PG_SOUND][0][0] != smp || ui.row[PG_FX] != 1) { fails++; printf("selftest: PRESET on FX is not its rows\n"); }
+          dmk_encoder(E_PRESET, -1); }
         for (int i = 0; i < 140; i++) { dmk_encoder(E_K1, 1); dmk_encoder(E_K2, -1); }   /* a number stops at its ends */
         if (ui.val[ui.synth][PG_FX][3][0] != 127 || ui.val[ui.synth][PG_FX][0][1] != 0) { fails++; printf("selftest: a number went round\n"); }
-        tap(B_SEL); dmk_encoder(E_PRESET, 1);
-        if (syn[ui.synth].ftype != FT_LP12) { fails++; printf("selftest: PRESET on the filter does not turn its type\n"); }
-        dmk_encoder(E_PRESET, -1);
+        tap(B_SEL); dmk_encoder(E_ALGO, 1);
+        if (syn[ui.synth].ftype != FT_LP12) { fails++; printf("selftest: ALGO on the filter does not turn its type\n"); }
+        dmk_encoder(E_ALGO, -1);
         tap(B_HOME); dmk_encoder(E_PRESET, 1);
         if (ui.val[ui.synth][PG_SOUND][0][0] == smp) { fails++; printf("selftest: PRESET on Home does not step the sound\n"); }
         dmk_encoder(E_PRESET, -1);
@@ -1361,7 +1376,7 @@ static void selftest(void)
         if (sq[1].count != n1 || seq_find(1, 7, 72) >= 0) { fails++; printf("selftest: editing the scene's own pattern changed the scene it came from\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    {   /* FX's Space, a synth's sends: its ALGO and PRESET the synth's own reverb's type, as its Reverb row's, Off first
+    {   /* FX's Space, a synth's sends: its ALGO the synth's own reverb's type, as its Reverb row's, Off first
          * (the owner found no way to set it there); its first knob the reverb's AMOUNT on both; a send at 0 says Off */
         char t[16];
         dmk_init(38); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -1371,8 +1386,8 @@ static void selftest(void)
           if (syn[s].rtype != (t0 + FX_REVERBS - 1) % FX_REVERBS || syn[o].rtype != to) { fails++; printf("selftest: Space's ALGO is not the synth's reverb\n"); }
           for (int i = 0; i < 20 && syn[s].rtype; i++) dmk_encoder(E_ALGO, -1);
           if (syn[s].rtype || row_off(PG_FX, 0) != 1) { fails++; printf("selftest: the reverb is not off from Space\n"); }
-          dmk_encoder(E_PRESET, 1);
-          if (syn[s].rtype != RV_ROOM || syn[o].rtype != to) { fails++; printf("selftest: PRESET on Space is not the synth's reverb\n"); }
+          dmk_encoder(E_ALGO, 1);
+          if (syn[s].rtype != RV_ROOM || syn[o].rtype != to) { fails++; printf("selftest: ALGO on Space from Off is not the synth's Room\n"); }
           dmk_encoder(E_K1, 5);
           if (*vp(PG_FX, 0, 0) != ui.val[s][PG_FX][3][0] || syn[s].ramt != ui.val[s][PG_FX][3][0] * 258) { fails++; printf("selftest: Space's send is not the reverb's amount\n"); } }
         ui.val[ui.synth][PG_FX][3][0] = 0; t[0] = 0; val_text(t, PG_FX, 3, 0);
