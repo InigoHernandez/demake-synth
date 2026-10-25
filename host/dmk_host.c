@@ -291,6 +291,32 @@ static void tour(const char *dir)
         ui.ren_slot = 0xFF;
     }
     tap(B_HOME);
+    {   /* every choice of every field, on its own page, audited (not kept): no name cut or shortened (the owner) */
+        uint8_t pg0 = ui.page, rw[PG_COUNT];
+        for (int p = 0; p < PG_COUNT; p++) rw[p] = ui.row[p];
+        for (unsigned c = 0; c < sizeof CHOICE / sizeof CHOICE[0]; c++) {
+            const choice_t *ch_ = &CHOICE[c];
+            uint8_t *v = vp(ch_->page, ch_->row, ch_->k), was = *v, ty = 0, *tv = 0;
+            if (ch_->page == PG_GLOBAL && ch_->row == 3 && ch_->k == 3) continue;   /* (the themes: their own screens) */
+            if (ch_->page == PG_FX && ch_->row < 3 && ch_->k != 4) { tv = vp(PG_FX, ch_->row, 4); ty = *tv; *tv = choice_val(1, choice_of(PG_FX, ch_->row, 4)->n); }
+            ui.page = ch_->page; ui.row[ch_->page] = ch_->row;
+            for (int i = 0; i < ch_->n; i++) {
+                int b0 = ta_bad;
+                *v = choice_val(i, ch_->n); sp_sync(); shot(0, "choice");
+                if (ta_bad != b0) printf("  (page %d row %d K%d: %s)\n", ch_->page, ch_->row, ch_->k + 1, ch_->name[i]);
+            }
+            *v = was; if (tv) *tv = ty; sp_sync();
+        }
+        ui.page = PG_ARR; ui.row[PG_ARR] = 0;           /* the Song page's Scene row: every progression, every sound */
+        { uint8_t was = ui.val[0][PG_CHORD][0][4];
+          for (int i = 0; i < PROG_N; i++) { ui.val[0][PG_CHORD][0][4] = choice_val(i, PROG_N); sp_sync(); shot(0, "choice"); }
+          ui.val[0][PG_CHORD][0][4] = was; }
+        for (int q = 0; q < DMK_SYNTHS; q++) { uint8_t was = ui.val[q][PG_SOUND][0][0];
+          for (int i = 0; i < DMK_SAMPLES_N; i++) { ui.val[q][PG_SOUND][0][0] = (uint8_t)i; sp_sync(); shot(0, "choice"); }
+          ui.val[q][PG_SOUND][0][0] = was; }
+        sp_sync();
+        ui.page = pg0; for (int p = 0; p < PG_COUNT; p++) ui.row[p] = rw[p];
+    }
     tap(B_GLO); tap(B_GLO); tap(B_GLO); tap(B_GLO);     /* to SETUP: its K4 the theme */
     for (int t = 1; t < DMK_THEMES; t++) {
         dmk_encoder(E_K4, 1);
@@ -518,7 +544,12 @@ static void selftest(void)
         if (ui.page != PG_DISCS || strcmp(ui.note, "PLAY again: open it")) { fails++; printf("selftest: one PLAY on Projects opens without asking\n"); }
         tap(B_PLAY);
         if (ui.page != PG_HOME || ui.val[1][PG_AMP][0][0] == 5 || sq[0].count != notes || ui.song != 0) { fails++; printf("selftest: PLAY twice on Projects does not open it\n"); }
-        tap(B_SAVE); dmk_encoder(E_K1, 1);
+        tap(B_SAVE); seq_play(1); tap(B_PLAY);         /* playing: PLAY there stops, as anywhere (the owner lost a song) */
+        if (seq_on || ui.page != PG_DISCS || sq[0].count != notes) { fails++; printf("selftest: PLAY on Projects while playing does not stop\n"); }
+        seq_add(0, 9, 1, 64, 100); dmk_encoder(E_K1, 1); tap(B_PLAY);   /* a change not saved: said first */
+        if (strcmp(ui.note, "Unsaved: PLAY again to lose it")) { fails++; printf("selftest: opening over changes not saved does not say so (%s)\n", ui.note); }
+        ui.clear_arm = 0; seq_del(0, seq_find(0, 9, 64)); dmk_encoder(E_K1, -1);
+        dmk_encoder(E_K1, 1);
         tap(B_OCTD); tap(B_OCTD);
         if (song_used(1)) { fails++; printf("selftest: OCT- twice on Projects does not delete\n"); }
         tap(B_PLAY); tap(B_PLAY);                       /* an empty slot: a new, empty project */
@@ -1177,6 +1208,22 @@ static void selftest(void)
           if (sq[1].n[0].len != 254 || ui.roll_pen[1] != 254) { fails++; printf("selftest: a held note's length is not the next one's (%d, %d)\n", sq[1].n[0].len, ui.roll_pen[1]); }
           tap(B_REC); ui.roll_cur[1] = 10; dmk_key(4, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30); tap(B_REC);
           if (sq[1].count != c0 + 1 || sq[1].n[c0].len != 254) { fails++; printf("selftest: a written note is not as long as the last one set\n"); } }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* FX's Space, a synth's sends: its ALGO and PRESET the verb all share, Off first (the owner found no way to set
+         * or stop it there); a send at 0 says Off */
+        char t[16];
+        dmk_init(38); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_FX); for (int i = 0; i < 6 && ui.row[PG_FX] != 3; i++) tap(B_FX);
+        { int t0 = choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[0][PG_GLOBAL][0][4]);
+          dmk_encoder(E_ALGO, -1);
+          if (choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[0][PG_GLOBAL][0][4]) != t0 - 1) { fails++; printf("selftest: Space's ALGO is not the shared verb\n"); }
+          for (int i = 0; i < 20 && choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[0][PG_GLOBAL][0][4]); i++) dmk_encoder(E_ALGO, -1);
+          if (gp.vtype != 0 && choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[0][PG_GLOBAL][0][4])) { fails++; printf("selftest: the verb is not off from Space\n"); }
+          dmk_encoder(E_PRESET, 1);
+          if (choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[0][PG_GLOBAL][0][4]) != 1) { fails++; printf("selftest: PRESET on Space is not the shared verb\n"); } }
+        ui.val[ui.synth][PG_FX][3][0] = 0; t[0] = 0; val_text(t, PG_FX, 3, 0);
+        if (strcmp(t, "Off")) { fails++; printf("selftest: a send at 0 reads %s\n", t); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {   /* the roll's K3, Follow (the owner): a chord written on a synth that follows the root moves with the

@@ -44,7 +44,8 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
     {"Amp", 1, {"Amp"}, {"Level"}, {{"Attack", "Decay", "Sustain", "Release"}}},
-    {"FX", 4, {"Colour", "Delay", "Motion", "Space"}, {"Effect", "Type", "Effect", ""},
+    {"FX", 4, {"Colour", "Delay", "Motion", "Space"}, {"Effect", "Type", "Effect", "Verb, all"},   /* (Space: the sends; its
+                                                           ALGO the verb they share: the owner found no way to set it) */
      {{"Amount", "Tone", "Time", "Spice"}, {"Mix", "Tone", "Time", "Regen"},   /* an effect names its own */
       {"Amount", "Tone", "Time", "Spice"}, {"Verb", "Echo", "Pan", "Width"}}},
     {"Chord", 3, {"Voice", "Key", "Keys"}, {"Prog", "Prog", "Prog"},
@@ -95,12 +96,13 @@ static const char *const INVERTS[] = {"Auto", "Root", "1st", "2nd", "3rd"};
 static const char *const KEYS[] = {"C", "C\xE2\x99\xAF", "D", "E\xE2\x99\xAD", "E", "F", "F\xE2\x99\xAF", "G", "A\xE2\x99\xAD", "A", "B\xE2\x99\xAD", "B"};
 static const char *const MODENAMES[] = {"Aeolian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Ionian"};
 static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\xC3\x97" "2"), ("\xC3\x97" "4")};
-static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Arp up", "Arp down"};
+static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Up", "Down"};   /* (the last two: arpeggios, as the
+                                                           arp's own; "Arp down" was cut) */
 static const char *const KEYMODES[] = {"Chord", "All"};
 static const char *const MIDI_INS[] = {"Synth", "Ch 1-3"};   /* MIDI in: the synth selected, or synth n on channel n */
 static const char *const MIDI_OUTS[] = {"Off", "Notes", "Clock", "All"};
 static const char *const CLOCKS[] = {"Own", "Ext"};   /* the keys play chords on CHORD, or on every page but the roll */
-static const char *const KTYPES[] = {"Sevenths", "Triads", "Ninths", "Add9", "Sus2", "Sus4", "6/9", "Power"};
+static const char *const KTYPES[] = {"7ths", "Triads", "9ths", "Add9", "Sus2", "Sus4", "6/9", "Power"};   /* (whole in a field) */
 static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords",
                                       "Harmony of 1", "Harmony of 2", "Harmony of 3"};
 static const char *const PROGS[20] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
@@ -139,7 +141,7 @@ static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, 3, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
     {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, FX_VERBS, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS},
-    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_ROLL, 1, 1, 7, RANGES}, {PG_CHORD, 0, 2, 4, SPREADS},
+    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_FX, 3, 4, FX_VERBS, VERBS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_ROLL, 1, 1, 7, RANGES}, {PG_CHORD, 0, 2, 4, SPREADS},
     {PG_ROLL, 2, 0, AR_N, ARPS}, {PG_ROLL, 2, 1, 9, ARPDIVS}, {PG_ROLL, 2, 2, 4, ARPOCTS}, {PG_ROLL, 2, 4, 2, HOLDS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
@@ -310,6 +312,7 @@ static const char *nm_word(int second, int i);
 static uint8_t song_nmv[ST_SONGS][3];
 static int song_rename(int i, const uint8_t *v);
 static void project_empty(void);
+static int song_changed(void);
 static void song_new(void);
 static const char *song_name(int i);
 static int sound_save(int s);
@@ -329,6 +332,7 @@ static uint8_t *vp(int page, int row, int k)
     if (page == PG_HOME && k == 4) return &ui.val[0][PG_HOME][0][4];   /* the tempo, on every row */
     if (page == PG_CHORD && k == 4) return &ui.val[0][PG_CHORD][0][4];  /* the progression, on both rows */
     if (page == PG_LFO && k == 4) return &ui.val[ui.synth][PG_LFO][0][4];   /* the LFO's target, on both rows */
+    if (page == PG_FX && row == 3 && k == 4) return &ui.val[0][PG_GLOBAL][0][4];   /* Space's ALGO: the verb all share */
     if (page == PG_ROLL && row == 1 && k < 4) return &ui.val[ui.synth][PG_ROLL][1][k];   /* Vary: each synth's own (it
                                                            was the first synth's whichever was picked: the owner) */
     if (page == PG_ROLL && row == 2) return &ui.val[ui.synth][PG_ROLL][2][k];   /* the Arp: each synth's, HOLD too */
@@ -602,7 +606,12 @@ static void arr_text(char *o, int row, int k)
     const sstep_t *t = ui.arr_cur < song_n ? &song[ui.arr_cur] : 0;
     if (row == 0) {
         if (k < DMK_SYNTHS) { int p = spat_next[k] < SYN_PATS ? spat_next[k] : syn_pat(k); fmt_int(o, p + 1); return; }
-        str_cat(o, PROGS[choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4])]);
+        {                                               /* its progression's number (its name in the card's title: it
+                                                           was cut here); the users' U1-U4 */
+            int pi = choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]);
+            if (pi >= 16) o = str_cat(o, "U");
+            fmt_int(o, pi >= 16 ? pi - 15 : pi + 1);
+        }
         return;
     }
     if (k == 3 || k == 4) { str_cat(o, ENDS[song_end % SE_COUNT]); return; }
@@ -631,6 +640,13 @@ static void val_text(char *o, int page, int row, int k)
     const choice_t *c = choice_of(page, row, k);
     int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 3) { str_cat(o, THEME_NAME[theme]); return; }
+    if (page == PG_FX && row == 3 && k < 2 && !v) { str_cat(o, "Off"); return; }   /* a send at 0: none */
+    if (page == PG_CHORD && row == 1 && k == 1) {       /* the mode: Phrygian, Mixolydian short in the field (cut), whole
+                                                           in the card's title */
+        static const char *const MODEFIELD[6] = {"Aeolian", "Dorian", "Phryg", "Lydian", "Mixo", "Ionian"};
+        str_cat(o, MODEFIELD[choice_index(c, v) % 6]);
+        return;
+    }
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
@@ -994,7 +1010,7 @@ static void fields_band(void)
         if (ui.page == PG_GLOBAL && r == 1 && choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4)) == 2) { static const char *const GK[4] = {"Return", "Size", "Density", "Texture"}; l = GK[k]; }
         if (ui.page == PG_GLOBAL && r == 0) {           /* the later verbs' own knobs */
             int t = choice_index(choice_of(PG_GLOBAL, 0, 4), *vp(PG_GLOBAL, 0, 4));
-            if (t == 9 && k == 3) l = "Shimmer";
+            if (t == 9 && k == 3) l = "Shine";               /* (Shimmer's: its octave up; "Shimmer" was cut) */
             if (t == 10 && k == 2) l = "Length";
             if (t == 11 && k == 2) l = "Hold";
         }
@@ -1104,7 +1120,7 @@ static void foot(void)
     }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
-        int typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 3) || ui.page == PG_FILTER, nd = rows_built(ui.page), x;
+        int typed = ui.page == PG_FX || (ui.page == PG_GLOBAL && r < 3) || ui.page == PG_FILTER, nd = rows_built(ui.page), x;
         int end = nd > 1 ? (DMK_W - dots_w(nd)) / 2 - 4 : 130;   /* where its words end: short of the dots */
         val_text(v, ui.page, r, 4);
         if (PAD + 1 + text_w(pg->algo[r], &FS) + 6 + text_w(v, &FS) <= end)   /* its name, then the value; a long value */
@@ -1961,13 +1977,10 @@ static void arr_scene(void)                             /* the scene open: each 
         int y = y0 + s * lh, p = syn_pat(s), muted = pat_mute >> s & 1u, sel = s == ui.synth, i, x0 = SX + 70, w = SW - 70 - 10;
         int steps = sq[s].steps ? sq[s].steps : 16;
         char n[2] = {(char)('1' + p), 0};
-        {                                               /* the sound's first word */
-            char w[12];
-            const char *nm = DMK_SAMPLES[VS(s, PG_SOUND, 0, 0)].name;
-            int i2;
-            for (i2 = 0; i2 < 11 && nm[i2] && nm[i2] != ' '; i2++) w[i2] = nm[i2];
-            w[i2] = 0;
-            text_fit(SX + PAD + 2, y + 4, 32, w, &FS, muted ? C_LINE : C_LABEL);
+        {                                               /* the sound's initial, as the head's (its name was cut) */
+            char ini[2] = {DMK_SAMPLES[VS(s, PG_SOUND, 0, 0)].name[0], 0};
+            if (ini[0] >= 'a' && ini[0] <= 'z') ini[0] = (char)(ini[0] - 32);
+            text(SX + PAD + 2, y + 4, ini, &FS, muted ? C_LINE : C_LABEL);
         }
         if (sel) round_fill(SX + 46, y + 1, 18, lh - 4, 6, HOLO);
         else round_line(SX + 46, y + 1, 18, lh - 4, 6, 1, C_LINE);
@@ -2887,13 +2900,15 @@ DMK_SMALL static void ui_button(int b, int down)
         notice(m);
         return;
     }
-    if (b == B_PLAY && ui.page == PG_DISCS && !ui.row[PG_DISCS]) {   /* Projects, PLAY twice: the one picked opened
-                                                           (an empty slot: a new, empty project), the work open left */
+    if (b == B_PLAY && ui.page == PG_DISCS && !ui.row[PG_DISCS] && !seq_on) {   /* Projects, stopped, PLAY twice: the
+                                                           one picked opened (an empty slot: a new, empty project), the
+                                                           work open left; said first when it has changes not saved.
+                                                           (Playing, PLAY stops, as anywhere: the owner lost a song) */
         int at = ui.song_pick, s;
         ren_flush();
         if (!(ui.clear_arm == 5 && ui.copy_to == at && ui.now - ui.clear_at < 2000u)) {
             ui.clear_arm = 5; ui.copy_to = (uint8_t)at; ui.clear_at = ui.now;
-            notice(song_used(at) ? "PLAY again: open it" : "PLAY again: new project");
+            notice(store_on() && song_changed() ? "Unsaved: PLAY again to lose it" : song_used(at) ? "PLAY again: open it" : "PLAY again: new project");
             return;
         }
         ui.clear_arm = 0;
@@ -2969,7 +2984,7 @@ DMK_SMALL static void ui_encoder(int e, int d)
         sp_sync();
         return;
     }
-    if (e == E_PRESET && ((ui.page == PG_FX && ui.row[PG_FX] < 3) || (ui.page == PG_GLOBAL && ui.row[PG_GLOBAL] < 3) || ui.page == PG_FILTER)) {
+    if (e == E_PRESET && (ui.page == PG_FX || (ui.page == PG_GLOBAL && ui.row[PG_GLOBAL] < 3) || ui.page == PG_FILTER)) {
         /* on a page of types, PRESET is the row's type: the effect, the delay, the verb, the echo, the media, the
          * filter (the owner: not the whole sound there) */
         int r0 = ui.row[ui.page], n;
@@ -3112,7 +3127,7 @@ DMK_SMALL static void ui_encoder(int e, int d)
         }
     }
     if (ui.page == PG_CHORD && k == 4) { prog_step(d); return; }   /* a progression: its own mode and voicing with it */
-    if (k == 4 && ((ui.page == PG_FX && r == 3) || (ui.page == PG_GLOBAL && r == 3))) return;   /* (a row with no type) */
+    if (k == 4 && ui.page == PG_GLOBAL && r == 3) return;   /* (a row with no type; FX's Space: the verb all share) */
     if (ui.page == PG_GLOBAL && r == 3 && k == 3) {    /* theme */
         theme = (uint8_t)wrap(theme + (d > 0 ? 1 : -1), DMK_THEMES);
         ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);   /* (its dots) */

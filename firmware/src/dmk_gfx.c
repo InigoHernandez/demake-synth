@@ -187,7 +187,7 @@ static int ta_check(void)
     for (i = 0; i < ta_n; i++) {
         if (ta[i].hidden) continue;
         if (ta[i].cut) {
-            if (n < 4) snprintf(ta_why[n], sizeof ta_why[n], "cut: \"%s\"", ta[i].s);
+            if (n < 4) snprintf(ta_why[n], sizeof ta_why[n], ta[i].cut == 2 ? "shortened: \"%s\"" : "cut: \"%s\"", ta[i].s);
             n++;
         }
         for (j = i + 1; j < ta_n; j++) {
@@ -518,6 +518,9 @@ static void text_fit(int x, int y, int w, const char *s, const dmk_font_t *f, in
         if (text_w(b, f) <= w) break;
     }
     text(x, y, b, f, fg);
+#ifdef DMK_TEXT_AUDIT
+    if (ta_n) ta[ta_n - 1].cut = 2;                     /* shortened: the audit fails it (the owner: no word cut) */
+#endif
 }
 
 /* a number as text */

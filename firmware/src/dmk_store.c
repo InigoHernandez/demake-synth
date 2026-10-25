@@ -375,6 +375,16 @@ static void songs_scan(void)                            /* which slots hold a so
     }
 }
 static int song_used(int i) { return i >= 0 && i < ST_SONGS && song_gen[i]; }
+/* the work open as last saved, opened or started: its packed bytes' check, to tell changes not saved (the owner: PLAY
+ * twice on Projects lost a song unasked) */
+static uint32_t song_kept;
+static uint32_t song_check(void)                        /* (packs into st_buf: only between store calls) */
+{
+    int n = song_pack(st_buf + ST_HDR);
+    return n < 0 ? 0 : st_crc(st_buf + ST_HDR, (uint32_t)n) ^ (uint32_t)n;
+}
+static void song_mark(void) { song_kept = song_check(); }
+static int song_changed(void) { uint32_t c = song_check(); return !c || c != song_kept; }
 static const char *song_name(int i) { return song_nm[i][0] ? song_nm[i] : PROGS[choice_index(choice_of(PG_CHORD, 0, 4), song_prog[i])]; }
 
 /* the song open into slot i: 0 saved, -1 not (no store, too long, the write failed) */
@@ -387,6 +397,7 @@ static int song_save(int i)
     if (n < 0 || st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
     st_gen = (st_gen + 1u) & 0xFFFFu;
     song_gen[i] = st_gen ? st_gen : 1;
+    song_kept = st_crc(st_buf + ST_HDR, (uint32_t)n) ^ (uint32_t)n;   /* (what was written) */
     song_prog[i] = ui.val[0][PG_CHORD][0][4];
     nm_of(song_nm[i], ui.val[0][PG_DISCS][1]);
     for (n = 0; n < 3; n++) song_nmv[i][n] = ui.val[0][PG_DISCS][1][n];
@@ -403,14 +414,19 @@ static int song_rename(int i, const uint8_t *v)
     if (st_write(slot_at(i), ST_MAGIC_SONG, n, g, st_ver)) return -1;
     song_nmv[i][0] = v[0]; song_nmv[i][1] = v[1]; song_nmv[i][2] = v[2];
     nm_of(song_nm[i], v);
-    if (i == ui.song) { ui.val[0][PG_DISCS][1][0] = v[0]; ui.val[0][PG_DISCS][1][1] = v[1]; ui.val[0][PG_DISCS][1][2] = v[2]; }
+    if (i == ui.song) {                                 /* (renamed where it is: still as saved) */
+        int changed = song_changed();
+        ui.val[0][PG_DISCS][1][0] = v[0]; ui.val[0][PG_DISCS][1][1] = v[1]; ui.val[0][PG_DISCS][1][2] = v[2];
+        if (!changed) song_mark();
+    }
     return 0;
 }
 static int song_load(int i)
 {
     uint32_t n;
-    if (i < 0 || i >= ST_SONGS || st_load(slot_at(i), ST_MAGIC_SONG, &n, 0)) return -1;
-    return song_unpack(st_buf + ST_HDR, n);
+    if (i < 0 || i >= ST_SONGS || st_load(slot_at(i), ST_MAGIC_SONG, &n, 0) || song_unpack(st_buf + ST_HDR, n)) return -1;
+    song_mark();
+    return 0;
 }
 static int song_erase(int i)                            /* an empty record: the slot reads as empty */
 {
@@ -443,6 +459,7 @@ static void project_empty(void)
     for (s = 0; s < 3; s++) ui.val[0][PG_GLOBAL][s][4] = 0;   /* (the verb, the echo, the media: Off) */
     ui.val[0][PG_DISCS][1][2] = 0;
     sp_sync();
+    song_mark();
 }
 
 static void store_boot(void)                            /* at start: the library, and the newest song */
@@ -453,4 +470,5 @@ static void store_boot(void)                            /* at start: the library
     songs_scan();
     for (i = 0; i < ST_SONGS; i++) if (song_gen[i] && (best < 0 || song_gen[i] > song_gen[best])) best = i;
     if (best >= 0 && !song_load(best)) ui.song = (uint8_t)best;
+    else song_mark();                                   /* (the first song: as it starts) */
 }
