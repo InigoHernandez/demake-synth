@@ -1006,15 +1006,16 @@ static const struct { uint8_t n, at[8]; int8_t c[8]; } SKY[DMK_SCENES] = {
     {4, {0, 40, 66, 76}, {-1, -1, C_HOLO0, C_HOLO1}},
     {5, {0, 14, 34, 54, 72}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO3}},   /* ROOM: the city's night through the window */
     {3, {0, 64, 96}, {-1, -1, C_HOLO0}},                                   /* DESK: the wall, dark, a glow low by the screen */
-    {6, {0, 16, 34, 52, 68, 84}, {-1, C_HOLO0, C_HOLO1, C_HOLO3, C_HOLO4, C_HOLO5}},   /* FOREST: the dusk behind the trees */
+    {5, {0, 22, 50, 74, 92}, {-1, -1, C_HOLO0, C_HOLO1, C_HOLO1}},       /* FOREST: after sunset, the fog's blue */
     {2, {0, 80}, {-1, -1}},                                                /* LIVING: indoors (its wall drawn) */
     {7, {0, 8, 18, 28, 38, 46, 52}, {-1, C_HOLO1, C_HOLO2, C_HOLO4, C_HOLO5, C_HOLO6, C_HOLO7}},   /* VILLA: the sun on the sea */
     {7, {0, 12, 24, 36, 46, 56, 66}, {-1, C_HOLO0, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6}},  /* CALIFORNIA */
     {5, {0, 20, 38, 54, 68}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO6}},    /* HARBOUR: blue fog, lit low by the town */
-    {4, {0, 50, 74, 80}, {-1, -1, C_HOLO0, C_HOLO1}}};                     /* LIGHTHOUSE: night, the sea's horizon light */
-static const uint8_t OUTDOOR[DMK_SCENES] = {1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1};   /* the sky spreads in full screen */
-static const uint8_t STARS[DMK_SCENES] = {14, 14, 14, 34, 14, 0, 4, 0, 0, 6, 0, 40};
-static const uint8_t CLOUDS[DMK_SCENES] = {3, 3, 3, 1, 1, 0, 0, 0, 2, 0, 0, 0};
+    {4, {0, 50, 74, 80}, {-1, -1, C_HOLO0, C_HOLO1}},                      /* LIGHTHOUSE: night, the sea's horizon light */
+    {5, {0, 34, 56, 72, 88}, {-1, -1, C_HOLO0, C_HOLO1, C_HOLO2}}};        /* CITY: night, its glow low behind the towers */
+static const uint8_t OUTDOOR[DMK_SCENES] = {1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1};   /* the sky spreads in full screen */
+static const uint8_t STARS[DMK_SCENES] = {14, 14, 14, 34, 14, 0, 0, 0, 0, 6, 0, 40, 30};
+static const uint8_t CLOUDS[DMK_SCENES] = {3, 3, 3, 1, 1, 0, 0, 0, 2, 0, 0, 0, 0};
 static void land_band(int sc, int dk, int lt);          /* (the later six: dmk_lands.c) */
 static void land_anim(int sc, uint32_t tick, int dk, int lt);
 static void land_light(int sc, int i, int on, uint32_t tick);
@@ -1270,7 +1271,7 @@ static void scene_frame(int sc, uint32_t tick)
         }
         for (i = 0; i < STARS[sc]; i++) {               /* the stars, twinkling (the night has many; the desk none) */
             uint32_t h = hsh((uint32_t)i * 7919u + (uint32_t)sc);
-            if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 || sc == 11 ? 54u : 22u)), lt);
+            if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 || sc == 11 ? 54u : sc == 12 ? 30u : 22u)), lt);
         }
         if (sc == 0) { round_fill(SX + 22, SY + 18, 12, 12, 6, lt); }   /* the moon over the peaks, early */
         if (sc == 1) round_fill(SX + 140, SY + 50, 22, 22, 11, HOLO);    /* the sun in the valley */
@@ -2162,7 +2163,8 @@ static void land_full(int sc, uint32_t t, int hold)
                 if (msk[i] == 0xFF) { b[j] = src[i]; continue; }
             }
             for (k = 0; k < 2; k++) {
-                int px = j * 2 + k, sx = clampi(px - LF_X0, 0, SC_W - 1);
+                int px = j * 2 + k, sx = px < LF_X0 ? LF_X0 - 1 - px : px - LF_X0 >= SC_W ? 2 * SC_W - 1 - (px - LF_X0) : px - LF_X0;   /* (past
+                                                           the band's sides: it mirrored, not its last pixel drawn out) */
                 int c = sx & 1 ? src[sx >> 1] & 15 : src[sx >> 1] >> 4, m = sx & 1 ? msk[sx >> 1] & 15 : msk[sx >> 1] >> 4;
                 if (out && !m && c == org[sx & 3]) c = str[px & 3];   /* plain sky (not a cloud, a star): the spread one */
                 c2[k] = c;

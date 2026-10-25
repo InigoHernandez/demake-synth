@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.8.fwsc",
-  "version": "0.4.8",
+  "file": "demake-0.4.9.fwsc",
+  "version": "0.4.9",
   "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "160a356e6bb9dff0ab4a6bc139ac2e298857f49fd2e347bc26b2ce8b2d9a0903",
-  "note": "Ready for the FM-1 Firmware Hub: one identity for every release (FM-1_969), the USB port named Demake FM-1, the version at boot. Since 0.4.7: a delay on each synth, the media over the whole mix, the roll's Vary."
+  "sha256": "d45e5230d9bb309adb6d600d2d158f8d43746ceda951491bf9bffe3da4558592",
+  "note": "The forest is spruces in a blue fog after sunset, layer on layer, over a meadow of glowing flowers. A thirteenth landscape: a city skyline at night, its towers lit, beacons blinking."
 }

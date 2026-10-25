@@ -12,7 +12,7 @@ dithered, for what is lit.
   Chrome.
 - **Read the manual:** [the manual](https://inigohernandez.github.io/demake-synth/manual.html).
 
-**Status: Demake 0.4.8** (FM-1_969), on the install page and as a [GitHub release](https://github.com/InigoHernandez/demake-synth/releases/tag/v0.4.8).
+**Status: Demake 0.4.9** (FM-1_969), on the install page.
 
 ## What it does
 
@@ -38,10 +38,10 @@ dithered, for what is lit.
 - **The rest.**
   - MIDI in and out over USB (and in on the TRS jack): notes by synth channel, the clock in or out.
   - Fourteen songs and 32 of your own sounds are saved on the FM-1.
-  - Each start shows one of twelve pixel landscapes (peaks, a lake, a coast, the night, a city from a bedroom, a 2000s
-    desk, a forest at dusk, a living room with a CRT and a VHS deck, a pool house by the sea, a street
-    of palms in California, a harbour in fog, a lighthouse on a cliff), and Home keeps one moving while you play; OCT−
-    and OCT+ held show it full screen.
+  - Each start shows one of thirteen pixel landscapes (peaks, a lake, a coast, the night, a city from a bedroom, a
+    2000s desk, spruces in a blue fog after sunset, a living room with a CRT and a VHS deck, a pool house by the sea, a
+    street of palms in California, a harbour in fog, a lighthouse on a cliff, a city skyline at night), and Home keeps
+    one moving while you play; OCT− and OCT+ held show it full screen.
   - Each sound is named after a plant, in Latin, one word.
 
 ![Demake on the FM-1: Home, synth 3's landscape](docs/hub/screen-4x.png)

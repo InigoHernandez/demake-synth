@@ -34,7 +34,7 @@ The owner's own recordings (made with their pedals), each processed by `tools/ge
 | 28 | Salicornia | pad | 60 | -1 | 8000 | 0.90 s | 0.33 s | 36.2 dB | 4112 B |
 | 29 | Fagus | pad | 60 | +12 | 8000 | 0.90 s | 0.41 s | 49.8 dB | 4112 B |
 | 30 | Eschscholzia | pluck | 60 | +1 | 8000 | 1.20 s | one-shot | 36.7 dB | 5472 B |
-| 31 | Atropa | bass | 36 | +0 | 11025 | 0.90 s | 0.42 s | 33.2 dB | 5664 B |
+| 31 | Ailanthus | bass | 36 | +0 | 11025 | 0.90 s | 0.42 s | 33.2 dB | 5664 B |
 | 32 | Chionodoxa | pad | 48 | -2 | 11025 | 0.90 s | 0.32 s | 34.4 dB | 5664 B |
 | 33 | Halimione | pad | 60 | +1 | 8000 | 0.90 s | 0.33 s | 42.4 dB | 4112 B |
 | 34 | Zostera | pad | 60 | -2 | 22050 | 0.90 s | 0.45 s | 42.6 dB | 11328 B |
@@ -42,7 +42,7 @@ The owner's own recordings (made with their pedals), each processed by `tools/ge
 | 36 | Philodendron | pad | 48 | +15 | 8000 | 0.90 s | 0.34 s | 32.4 dB | 4112 B |
 | 37 | Peperomia | pad | 48 | +9 | 8000 | 0.90 s | 0.40 s | 39.5 dB | 4112 B |
 | 38 | Matthiola | pad | 48 | -2 | 8000 | 0.90 s | 0.39 s | 49.8 dB | 4112 B |
-| 39 | Aconitum | bass | 36 | +0 | 8000 | 0.90 s | 0.41 s | 44.5 dB | 4112 B |
+| 39 | Platanus | bass | 36 | +0 | 8000 | 0.90 s | 0.41 s | 44.5 dB | 4112 B |
 | 40 | Strelitzia | key | 60 | -5 | 11025 | 0.90 s | 0.42 s | 42.2 dB | 5664 B |
 | 41 | Crassula | key | 60 | +2 | 8000 | 0.90 s | 0.31 s | 40.7 dB | 4112 B |
 | 42 | Maranta | pad | 60 | +1 | 8000 | 0.90 s | 0.33 s | 43.7 dB | 4112 B |

@@ -41,7 +41,7 @@ BANK_A = 32                                              # the FM-1's bank in th
 # alpine and snow plants for the peaks, water plants for the lake, seaside plants for the coast, night-blooming and
 # shade plants for the night, houseplants for the room, succulents for the desk; woodland plants for the forest, a
 # living room's for the living room, Mediterranean ones for the villa, Californian for the street, a harbour's marsh
-# for the harbour, cliff-top plants for the lighthouse; given in the recordings' order, a pool
+# for the harbour, cliff-top plants for the lighthouse, street trees for the city; given in the recordings' order, a pool
 # a scene and kind
 NAMES = {
     (0, "pad"): ["Soldanella", "Galanthus", "Saxifraga", "Dryas", "Gentiana", "Leontopodium", "Chionodoxa",
@@ -64,6 +64,8 @@ NAMES = {
     (10, "pad"): ["Spartina", "Phragmites", "Juncus", "Suaeda", "Halimione", "Ruppia", "Puccinellia"],
     (10, "bass"): ["Scirpus", "Carex"],
     (11, "pad"): ["Silene", "Cochlearia", "Calluna", "Ulex", "Asplenium", "Mertensia", "Armoracia"],
+    # the city at night (the owner's, 2026-10-25): the trees of its streets
+    (12, "bass"): ["Ailanthus", "Platanus"],
 }
 
 
@@ -311,7 +313,7 @@ def main():
         e["scene"] = (1, 7, 5)[i * 3 // len(keys)]
     basses = [e for e in entries if e["kind"] == "bass"]
     for i, e in enumerate(basses):
-        e["scene"] = 10 if i < len(basses) // 2 else 3
+        e["scene"] = 10 if i < len(basses) // 2 else 12   # (the night's two to the city, its thirteenth, the owner's)
     for e in entries:
         if e["kind"] == "pluck":
             e["scene"] = 9
@@ -361,7 +363,7 @@ def main():
          "    uint8_t loops;           /* 1: loops from loop0 to loop1, else one-shot */",
          "    uint8_t kind;            /* 0 pad, 1 key, 2 pluck, 3 bass */",
          "    uint8_t scene;           /* Home's landscape: 0 peaks, 1 lake, 2 coast, 3 night, 4 room, 5 desk, 6 forest,",
-         "                                7 living room, 8 villa, 9 California, 10 harbour, 11 lighthouse */",
+         "                                7 living room, 8 villa, 9 California, 10 harbour, 11 lighthouse, 12 city */",
          "    uint32_t rate_q16;       /* its rate over 44.1 kHz, Q16 */",
          "    uint16_t blocks, loop0, loop1;",
          "    int16_t ls1, ls2;        /* the decoder's state entering loop0 */",
@@ -372,7 +374,7 @@ def main():
          "#ifndef DMK_SAMPLES_N", f"#define DMK_SAMPLES_N {len(ordered)}", "#endif",
          "/* the first song's sounds: the first recording of a pad, of keys, of a pluck */",
          *[f"#define DMK_FIRST_{k.upper()} {next(i for i, e in enumerate(ordered) if e['kind'] == k)}" for k in ("pad", "key", "pluck")],
-         "#define DMK_SCENES 12", ""]
+         "#define DMK_SCENES 13", ""]
     for i, e in enumerate(ordered):
         L.append(f"#if DMK_SAMPLES_N > {i}")
         L.append(f"static const uint8_t SMP{i:02d}[{len(e['data'])}] = {{" + ",".join(map(str, e["data"])) + "};")
