@@ -524,6 +524,16 @@ static void selftest(void)
         tap(B_PLAY); tap(B_PLAY);                       /* an empty slot: a new, empty project */
         if (sq[0].count || sq[1].count || sq[2].count || ch.follow[0] != FW_FREE || ui.song != 1 || ui.val[0][PG_DISCS][1][2] == NM_MARK)
             { fails++; printf("selftest: PLAY twice on an empty slot is not an empty project\n"); }
+        {                                               /* and with no effect (the owner): none on the synths, none on the mix */
+            int fx = 0;
+            for (int q = 0; q < DMK_SYNTHS; q++) fx += ui.val[q][PG_FX][0][4] + ui.val[q][PG_FX][1][4] + ui.val[q][PG_FX][2][4] + ui.val[q][PG_FX][3][0]
+                                                     + ui.val[q][PG_FX][3][1] + ui.val[q][PG_LFO][0][1] + ui.val[q][PG_SOUND][1][0];
+            fx += ui.val[0][PG_GLOBAL][0][4] + ui.val[0][PG_GLOBAL][1][4] + ui.val[0][PG_GLOBAL][2][4];
+            if (fx) { fails++; printf("selftest: a new project has effects on\n"); }
+            ui.val[2][PG_FX][2][4] = choice_val(FO_CHORUS, FX_MOTIONS); ui.val[2][PG_FX][3][0] = 90; sp_sync();
+            sound_init(2);
+            if (ui.val[2][PG_FX][2][4] || ui.val[2][PG_FX][3][0]) { fails++; printf("selftest: INIT leaves an effect on\n"); }
+        }
         {                                               /* the list: still from 01 till the cursor passes 04, then by one */
             tap(B_SAVE); save_pick(0);
             for (int i = 0; i < 3; i++) dmk_encoder(E_K1, 1);

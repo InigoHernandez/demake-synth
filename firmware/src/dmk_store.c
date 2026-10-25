@@ -147,7 +147,8 @@ static int sound_save(int s)
 }
 static void lib_load(int s, int slot) { if (slot >= 0 && slot < ST_USER && lib[slot][0]) sound_get(s, &lib[slot][2], lib[slot][1]); }
 
-/* INIT: the synth's sound as the first song has it (its recording kept), every effect but its tape off */
+/* INIT: the synth's sound as the first song has it (its recording kept), with no effect at all (the owner): its
+ * colour, delay and motion off, nothing sent to the verb or the echo, no layer, no LFO */
 static void sound_init(int s)
 {
     uint8_t keep = ui.val[s][PG_SOUND][0][0];
@@ -155,6 +156,10 @@ static void sound_init(int s)
     for (r = 0; r < SND_ROWS_N; r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = ui_first[s][r * 5 + k];
     ui.val[s][PG_SOUND][0][0] = keep;
     ui.val[s][PG_SOUND][1][4] = keep;                   /* its layer starts as its own recording */
+    ui.val[s][PG_SOUND][1][0] = 0;                      /* (the layer off) */
+    for (r = 0; r < 3; r++) ui.val[s][PG_FX][r][4] = 0;
+    ui.val[s][PG_FX][3][0] = ui.val[s][PG_FX][3][1] = 0;   /* (its sends) */
+    ui.val[s][PG_LFO][0][1] = 0;                        /* (the LFO's depth) */
     sp_sync();
 }
 
@@ -427,13 +432,15 @@ static void song_new(void)                              /* the first song: its r
     theme = (uint8_t)th;
     sp_sync();
 }
-/* PLAY twice on an empty slot (the owner): an empty project, its sounds at INIT, nothing following the chords (so
- * PLAY is silent until something is written), no name until it is saved */
+/* PLAY twice on an empty slot (the owner): an empty project with no sequence and no effect, its sounds at INIT,
+ * nothing following the chords (so PLAY is silent until something is written), the mix's verb, echo and media off, no
+ * name until it is saved */
 static void project_empty(void)
 {
     int s;
     song_new();
     for (s = 0; s < DMK_SYNTHS; s++) { sq[s].count = 0; ch.follow[s] = FW_FREE; sound_init(s); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
+    for (s = 0; s < 3; s++) ui.val[0][PG_GLOBAL][s][4] = 0;   /* (the verb, the echo, the media: Off) */
     ui.val[0][PG_DISCS][1][2] = 0;
     sp_sync();
 }
