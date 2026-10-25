@@ -421,7 +421,7 @@ static int smp_named(const char *n)
     return 0;
 }
 
-static void ui_init(void)
+DMK_SMALL static void ui_init(void)
 {
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
      * env, level, tape, wow, verb, echo, pan] */
@@ -908,7 +908,19 @@ static const struct { uint8_t n, at[8]; int8_t c[8]; } SKY[DMK_SCENES] = {
     {7, {0, 10, 24, 38, 50, 60, 72}, {-1, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6, C_HOLO7}},
     {4, {0, 40, 66, 76}, {-1, -1, C_HOLO0, C_HOLO1}},
     {5, {0, 14, 34, 54, 72}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO3}},   /* ROOM: the city's night through the window */
-    {3, {0, 64, 96}, {-1, -1, C_HOLO0}}};                                  /* DESK: the wall, dark, a glow low by the screen */
+    {3, {0, 64, 96}, {-1, -1, C_HOLO0}},                                   /* DESK: the wall, dark, a glow low by the screen */
+    {6, {0, 16, 34, 52, 68, 84}, {-1, C_HOLO0, C_HOLO1, C_HOLO3, C_HOLO4, C_HOLO5}},   /* FOREST: the dusk behind the trees */
+    {2, {0, 80}, {-1, -1}},                                                /* LIVING: indoors (its wall drawn) */
+    {7, {0, 8, 18, 28, 38, 46, 52}, {-1, C_HOLO1, C_HOLO2, C_HOLO4, C_HOLO5, C_HOLO6, C_HOLO7}},   /* VILLA: the sun on the sea */
+    {7, {0, 12, 24, 36, 46, 56, 66}, {-1, C_HOLO0, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6}},  /* CALIFORNIA */
+    {5, {0, 20, 38, 54, 68}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO6}},    /* HARBOUR: blue fog, lit low by the town */
+    {4, {0, 50, 74, 80}, {-1, -1, C_HOLO0, C_HOLO1}}};                     /* LIGHTHOUSE: night, the sea's horizon light */
+static const uint8_t OUTDOOR[DMK_SCENES] = {1, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1};   /* the sky spreads in full screen */
+static const uint8_t STARS[DMK_SCENES] = {14, 14, 14, 34, 14, 0, 4, 0, 0, 6, 0, 40};
+static const uint8_t CLOUDS[DMK_SCENES] = {3, 3, 3, 1, 1, 0, 0, 0, 2, 0, 0, 0};
+static void land_band(int sc, int dk, int lt);          /* (the later six: dmk_lands.c) */
+static void land_anim(int sc, uint32_t tick, int dk, int lt);
+static void land_light(int sc, int i, int on, uint32_t tick);
 static int sky_at(int sc, int x, int y, int dk)
 {
     int i = 0, t, a, b, n = SKY[sc].n;
@@ -973,10 +985,11 @@ static void fg_mirror(int sc, int sea, int dk)          /* water: what is above 
     }
 }
 
-static void scene_build(int sc, int dk, int lt)
+DMK_SMALL static void scene_build(int sc, int dk, int lt)
 {
     int x, y, k;
     for (k = 0; k < SC_W * SC_H; k++) sc_fg[k] = 0xFF;
+    if (sc >= 6) { land_band(sc, dk, lt); return; }
     if (sc == 0) {                                      /* PEAKS: the mountain, its snow in the last light */
         for (x = 0; x < SC_W; x++) {
             int peak = 14 + (x < 114 ? (114 - x) * 3 / 4 : (x - 114) * 2 / 3) + tri(x, 11, 3), lo = 62 + tri(x + 9, 40, 8);
@@ -1140,7 +1153,7 @@ static int scene_of(int s) { int c = DMK_SAMPLES[VS(s, PG_SOUND, 0, 0)].scene; r
 static void scene_frame(int sc, uint32_t tick)
 {
     int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, i;
-    if (sc_key != (uint8_t)(theme * 8 + sc)) {
+    if (sc_key != (uint8_t)(theme * 16 + sc)) {
         ui_yield();
         scene_build(sc, dk, lt);
         ui_yield();
@@ -1149,7 +1162,7 @@ static void scene_frame(int sc, uint32_t tick)
             sc_fgp[i] = (uint8_t)((a != 0xFF ? a << 4 : 0) | (b != 0xFF ? b : 0));
             sc_fgm[i] = (uint8_t)((a != 0xFF ? 0xF0 : 0) | (b != 0xFF ? 0x0F : 0));
         }
-        sc_key = (uint8_t)(theme * 8 + sc); sc_tick = 0xFFFFFFFFu;
+        sc_key = (uint8_t)(theme * 16 + sc); sc_tick = 0xFFFFFFFFu;
     }
     if (tick != sc_tick) {                              /* a new frame of the scene: drawn, then held */
         sc_tick = tick;
@@ -1158,20 +1171,25 @@ static void scene_frame(int sc, uint32_t tick)
             uint8_t p0 = (uint8_t)(sky_at(sc, 0, y, dk) << 4 | sky_at(sc, 1, y, dk)), p1 = (uint8_t)(sky_at(sc, 2, y, dk) << 4 | sky_at(sc, 3, y, dk));
             for (x = 0; x < SC_W / 2; x += 2) { b[x] = p0; b[x + 1] = p1; }
         }
-        for (i = 0; i < (sc == 3 ? 34 : sc == 5 ? 0 : 14); i++) {   /* the stars, twinkling (the night has many; the desk none) */
+        for (i = 0; i < STARS[sc]; i++) {               /* the stars, twinkling (the night has many; the desk none) */
             uint32_t h = hsh((uint32_t)i * 7919u + (uint32_t)sc);
-            if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 ? 54u : 22u)), lt);
+            if (hsh(h + tick / 3u) & 3u) px_put(SX + (int)(h % (uint32_t)SC_W), SY + 3 + (int)((h >> 12) % (sc == 3 || sc == 11 ? 54u : 22u)), lt);
         }
         if (sc == 0) { round_fill(SX + 22, SY + 18, 12, 12, 6, lt); }   /* the moon over the peaks, early */
         if (sc == 1) round_fill(SX + 140, SY + 50, 22, 22, 11, HOLO);    /* the sun in the valley */
         if (sc == 2) round_fill(SX + 128, SY + 56, 30, 30, 15, HOLO);    /* the sun, low on the sea */
         if (sc == 3) { round_fill(SX + 150, SY + 14, 30, 30, 15, HOLO); round_fill(SX + 156, SY + 20, 18, 18, 9, lt); }   /* the moon, haloed */
         if (sc == 4) round_fill(SX + 158, SY + 12, 10, 10, 5, lt);   /* the moon over the city, in the window's corner */
-        for (i = 0; i < (sc == 3 || sc == 4 ? 1 : sc == 5 ? 0 : 3); i++) {   /* clouds, drifting (in the room's window one) */
+        if (sc == 8) round_fill(SX + 132, SY + 38, 26, 26, 13, HOLO);   /* the sun going into the sea */
+        if (sc == 9) round_fill(SX + 92, SY + 30, 44, 44, 22, HOLO);    /* the sun at the street's end */
+        if (sc == 10) round_fill(SX + 40, SY + 30, 18, 18, 9, C_HOLO6); /* the sun, pale in the fog */
+        if (sc == 11) { round_fill(SX + 70, SY + 18, 22, 22, 11, HOLO); round_fill(SX + 74, SY + 22, 14, 14, 7, lt); }   /* the moon */
+        for (i = 0; i < CLOUDS[sc]; i++) {              /* clouds, drifting (in the room's window one) */
             int w = i == 0 ? 36 : i == 1 ? 26 : 20, cy = i == 0 ? 46 : i == 1 ? 34 : 40;
             int cx = (int)((i == 0 ? 30u : i == 1 ? 150u : 95u) + tick / (3u + (uint32_t)i)) % (SC_W + 80) - 40;
             if (sc == 3) cy = 60;
             if (sc == 4) cy = 30;
+            if (sc == 8) cy = 30 + i * 8;               /* (under Home's name) */
             cloud(cx, cy, w, lt);
         }
         ui_yield();
@@ -1179,6 +1197,7 @@ static void scene_frame(int sc, uint32_t tick)
             uint8_t *b = &fb[((SY + y) * DMK_W + SX) >> 1];
             for (x = 0; x < SC_W / 2; x++, i++) if (sc_fgm[i]) b[x] = (uint8_t)((b[x] & ~sc_fgm[i]) | sc_fgp[i]);
         }
+        if (sc >= 6) land_anim(sc, tick, dk, lt);
         if (sc == 1 || sc == 2) {                       /* the sun on the water: glints that move */
             int sea = sc == 1 ? 84 : 74, cx = sc == 1 ? 151 : 143;
             for (y = sea; y < SC_H; y += 2) {
@@ -1250,7 +1269,8 @@ static void scene_frame(int sc, uint32_t tick)
             } else if (sc == 5) {                       /* the screen's LEDs */
                 lx = 88 + i * 5; ly = 81;
                 fill(SX + lx, SY + ly, 3, 2, on ? C_HOLO6 : C_LABEL);
-            } else if (sc == 3) {                       /* fireflies, wandering over the forest */
+            } else if (sc >= 6) land_light(sc, i, on, tick);
+            else if (sc == 3) {                         /* fireflies, wandering over the forest */
                 lx = 40 + i * 64 + tri((int)tick + i * 11, 40, 14); ly = 80 + tri((int)tick * 2 + i * 7, 26, 8);
                 if (on || (hsh(tick + (uint32_t)i) & 1u)) fill(SX + lx, SY + ly, 2, 2, on ? C_HOLO7 : C_HOLO4);
             } else {                                    /* lanterns along the shore, or the treeline */
@@ -1834,10 +1854,12 @@ static int fgp_at(int bx, int by)                       /* the scene's still par
     return bx & 1 ? v & 15 : v >> 4;
 }
 static int cat_y(int x) { return 16 + 18 * 4 * x * (DMK_W - 1 - x) / ((DMK_W - 1) * (DMK_W - 1)); }   /* the fairy lights' wire */
+#include "dmk_lands.c"
 
-static void lf_top(int sc, int dk, int lt)
+DMK_SMALL static void lf_top(int sc, int dk, int lt)
 {
     int x, y, k;
+    if (sc >= 6) { land_top(sc, dk, lt); return; }
     if (sc < 4) {
         for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) lp(x, y, sky_full(sc, x, y, dk));
         if (sc == 0) lcloud(30, 44, 30, lt);
@@ -1890,9 +1912,10 @@ static void lf_top(int sc, int dk, int lt)
     lp(212, 28, C_HOLO1); lp(218, 31, C_HOLO1);
 }
 
-static void lf_bottom(int sc, int dk, int lt)
+DMK_SMALL static void lf_bottom(int sc, int dk, int lt)
 {
     int x, y, k;
+    if (sc >= 6) { land_bottom(sc, dk, lt); return; }
     if (sc == 0) {                                      /* PEAKS: the snow from under the treeline, its drifts' blue
                                                            shade, near pines */
         for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
@@ -2005,14 +2028,14 @@ static void land_full(int sc, uint32_t t, int hold)
     int dark = THEME_DARK[theme], dk = dark ? C_PAPER : C_INK, lt = dark ? C_INK : C_PAPER, x, y, k, out;
     uint32_t tick = t / 140u;
     sc = sc < DMK_SCENES ? sc : 0;
-    out = sc < 4;
+    out = OUTDOOR[sc];
     /* held: nothing moves between the scene's frames (140 ms), so the screen is left as it is: no drawing, and nothing
      * to send (with every effect on, drawing each frame left the sound short: it clicked) */
-    if (hold && tick == lf_tick && lf_key == (uint8_t)(theme * 8 + sc)) return;
+    if (hold && tick == lf_tick && lf_key == (uint8_t)(theme * 16 + sc)) return;
     lf_tick = tick;
     t = tick * 140u;                                    /* what moves, moves on the scene's frames */
     scene_frame(sc, tick);
-    if (lf_key != (uint8_t)(theme * 8 + sc)) { lf_build(sc, dk, lt); lf_key = (uint8_t)(theme * 8 + sc); }
+    if (lf_key != (uint8_t)(theme * 16 + sc)) { lf_build(sc, dk, lt); lf_key = (uint8_t)(theme * 16 + sc); }
     for (y = 0; y < LF_H; y++)                          /* above and below: as built */
         for (x = 0; x < DMK_W / 2; x++) {
             fb[y * (DMK_W / 2) + x] = lf_ext[0][y * (DMK_W / 2) + x];
@@ -2047,8 +2070,8 @@ static void land_full(int sc, uint32_t t, int hold)
         }
     }
     ui_yield();
-    if (out)                                            /* what moves: stars twinkling where the sky above is dark */
-        for (k = 0; k < (sc == 3 ? 90 : 40); k++) {
+    if (out && sc != 6)                                 /* what moves: stars twinkling where the sky above is dark */
+        for (k = 0; k < (sc == 3 ? 90 : sc == 11 ? 70 : sc >= 8 && sc <= 10 ? 0 : 40); k++) {
             uint32_t h = hsh((uint32_t)k * 7919u + (uint32_t)sc * 31u);
             int sx = (int)(h % (uint32_t)DMK_W), sy = (int)((h >> 12) % (uint32_t)LF_H);
             if (sky_full(sc, sx, sy, dk) == dk && hsh(h + t / 420u) & 3u) px_put(sx, sy, k % 5 ? lt : C_A_LABEL);
@@ -2068,6 +2091,7 @@ static void land_full(int sc, uint32_t t, int hold)
             int fx = (int)(h % (uint32_t)DMK_W) + sinp(t * 90000u + h) * 6 / 32768, fy = LF_Y0 + SC_H + 6 + (int)((h >> 10) % 48u) + sinp(t * 61000u + (h << 3)) * 3 / 32768;
             if (hsh(h + t / 300u) % 3u) { px_put(fx, fy, C_HOLO6); px_put(fx + 1, fy, C_HOLO5); }
         }
+    if (sc >= 6) land_full_anim(sc, t, dk, lt);
     if (sc == 4)                                        /* the fairy lights, twinkling */
         for (k = 0; k < 20; k++) {
             int bx = 6 + k * 12, by = cat_y(bx) + 1, on = (int)(hsh((uint32_t)k + t / 500u) % 4u);
@@ -2346,7 +2370,7 @@ static void roll_oct(int dup)                           /* OCT- deletes the held
 }
 
 /* ---- the controls */
-static void ui_button(int b, int down)
+DMK_SMALL static void ui_button(int b, int down)
 {
     uint16_t bit = (uint16_t)(1u << b);
     if (b < 0 || b >= B_COUNT) return;
@@ -2559,7 +2583,7 @@ static void ui_button(int b, int down)
     }
 }
 
-static void ui_encoder(int e, int d)
+DMK_SMALL static void ui_encoder(int e, int d)
 {
     int r = ui.row[ui.page], k;
     uint8_t *v;
@@ -2729,7 +2753,7 @@ static void ui_encoder(int e, int d)
 
 /* a key: on the roll, stopped, it writes at the cursor (or holds the note of its pitch there); playing with REC, it
  * is recorded from its nearest step for its length; else it plays. With SNAP the roll's notes are on the scale */
-static void ui_key(int k, int down)
+DMK_SMALL static void ui_key(int k, int down)
 {
     int n, s;
     if (k < 0 || k >= DMK_KEYS) return;

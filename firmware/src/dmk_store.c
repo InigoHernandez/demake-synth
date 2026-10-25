@@ -138,7 +138,7 @@ static void sound_init(int s)
 /* ---- songs */
 static uint32_t slot_at(int i) { return ST_SONG0 + (uint32_t)i * ST_SECTOR; }
 
-static int song_pack(uint8_t *o)                        /* the song open into o: its length, or -1 too long */
+DMK_SMALL static int song_pack(uint8_t *o)                        /* the song open into o: its length, or -1 too long */
 {
     uint8_t *p = o;
     int s, i, k, r, g;
@@ -189,7 +189,7 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
     return 0;
 }
 
-static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is the one in p */
+DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song open is the one in p */
 {
     const uint8_t *e = p + n;
     int s, i, k, r, g;

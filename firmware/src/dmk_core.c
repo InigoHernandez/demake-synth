@@ -12,6 +12,15 @@ int (*dmk_store_read)(uint32_t at, void *p, uint32_t n);
 int (*dmk_store_write)(uint32_t at, const void *p, uint32_t n);
 static void ui_yield(void) { if (dmk_yield) dmk_yield(); }
 
+/* code that runs seldom (a landscape built as the scene changes, a button, a knob, a song loaded): compiled for size,
+ * not speed, so the flash holds more of it; the sound and each frame's drawing stay fast */
+#if defined(__clang__)
+#define DMK_SMALL __attribute__((minsize, noinline))   /* (inlined, it would be its caller's: fast) */
+#elif defined(__GNUC__)
+#define DMK_SMALL __attribute__((optimize("Os"), noinline))
+#else
+#define DMK_SMALL
+#endif
 #include "dmk_gfx.c"
 #include "dmk_dsp.c"
 #include "dmk_seq.c"

@@ -282,17 +282,32 @@ def main():
     # the night (the darkest), the room, the coast and the peaks (the brightest); the keys by brightness too, the
     # darker by the lake, the brighter on the desk with the plucks; the basses at night
     pads = sorted((e for e in entries if e["kind"] == "pad"), key=lambda e: e["cen"])
-    for i, e in enumerate(pads):
-        e["scene"] = (3, 4, 2, 0)[i * 4 // len(pads)]
     keys = sorted((e for e in entries if e["kind"] == "key"), key=lambda e: e["cen"])
+    for i, e in enumerate(pads):
+        e["named"] = (3, 4, 2, 0)[i * 4 // len(pads)]
     for i, e in enumerate(keys):
-        e["scene"] = 1 if i < len(keys) // 2 else 5
+        e["named"] = 1 if i < len(keys) // 2 else 5
     for e in entries:
         if e["kind"] in ("pluck", "bass"):
-            e["scene"] = {"pluck": 5, "bass": 3}[e["kind"]]
-    used = {}                                           # the names, by scene and kind, in the recordings' order
+            e["named"] = {"pluck": 5, "bass": 3}[e["kind"]]
+    # since 0.5, twelve landscapes (the owner's six more: 6 forest, 7 living room, 8 villa, 9 California, 10 harbour,
+    # 11 lighthouse): the pads by brightness, an eighth each, from the night (the darkest) through the forest, the
+    # harbour in fog, the room, the lighthouse, the coast and the villa to the peaks (the brightest); the keys by
+    # brightness, a third each, to the lake, the living room, the desk; the plucks to California; the basses half to
+    # the harbour, half to the night. A name stays the one its first landscape gave it (`named`): no sound renamed
+    for i, e in enumerate(pads):
+        e["scene"] = (3, 6, 10, 4, 11, 2, 8, 0)[i * 8 // len(pads)]
+    for i, e in enumerate(keys):
+        e["scene"] = (1, 7, 5)[i * 3 // len(keys)]
+    basses = [e for e in entries if e["kind"] == "bass"]
+    for i, e in enumerate(basses):
+        e["scene"] = 10 if i < len(basses) // 2 else 3
     for e in entries:
-        k = (e["scene"], e["kind"])
+        if e["kind"] == "pluck":
+            e["scene"] = 9
+    used = {}                                           # the names, by the first landscape and kind, in the recordings' order
+    for e in entries:
+        k = (e["named"], e["kind"])
         pool = NAMES[k]
         e["name"] = pool[used.get(k, 0) % len(pool)]
         used[k] = used.get(k, 0) + 1
@@ -328,8 +343,8 @@ def main():
          "    int8_t cents;            /* how far off it, -50..50 */",
          "    uint8_t loops;           /* 1: loops from loop0 to loop1, else one-shot */",
          "    uint8_t kind;            /* 0 pad, 1 key, 2 pluck, 3 bass */",
-         "    uint8_t scene;           /* Home's landscape: 0 peaks (bright pads), 1 lake (dark keys), 2 coast (warm pads),",
-         "                                3 night (dark pads, basses), 4 room (mellow pads), 5 desk (bright keys, plucks) */",
+         "    uint8_t scene;           /* Home's landscape: 0 peaks, 1 lake, 2 coast, 3 night, 4 room, 5 desk, 6 forest,",
+         "                                7 living room, 8 villa, 9 California, 10 harbour, 11 lighthouse */",
          "    uint32_t rate_q16;       /* its rate over 44.1 kHz, Q16 */",
          "    uint16_t blocks, loop0, loop1;",
          "    int16_t ls1, ls2;        /* the decoder's state entering loop0 */",
@@ -340,7 +355,7 @@ def main():
          "#ifndef DMK_SAMPLES_N", f"#define DMK_SAMPLES_N {len(ordered)}", "#endif",
          "/* the first song's sounds: the first recording of a pad, of keys, of a pluck */",
          *[f"#define DMK_FIRST_{k.upper()} {next(i for i, e in enumerate(ordered) if e['kind'] == k)}" for k in ("pad", "key", "pluck")],
-         "#define DMK_SCENES 6", ""]
+         "#define DMK_SCENES 12", ""]
     for i, e in enumerate(ordered):
         L.append(f"#if DMK_SAMPLES_N > {i}")
         L.append(f"static const uint8_t SMP{i:02d}[{len(e['data'])}] = {{" + ",".join(map(str, e["data"])) + "};")
