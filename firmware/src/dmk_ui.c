@@ -3263,8 +3263,14 @@ DMK_SMALL static void ui_key(int k, int down)
             ui.key_sy[k] = (uint8_t)s;
             ui.key_slot[k] = 0;
             if (!seq_on && seq_rec && ui.page != PG_ROLL) {   /* stopped, REC armed: the chord into the slot at the cursor */
+                int was = ch.prog;
                 ui.key_slot[k] = (uint8_t)(slot_write(n) + 1);
                 if (!ui.key_slot[k]) notice(ch.prog < 16 ? "User 1-4 are full" : "Eight chords at most");
+                else if (was < 16 && ch.prog >= 16) {   /* a preset written to: its copy, said (it was silent) */
+                    char t[32];
+                    fmt_int(str_cat(str_cat(t, PROGS[was]), " \xE2\x86\x92 User "), ch.prog - 15);
+                    notice(t);
+                }
                 ui.val[0][PG_CHORD][0][4] = choice_val(ch.prog, PROG_N);
             }
             ui.key_nch[k] = (uint8_t)chord_key(n, ui.octave, ui.key_ch[k]);

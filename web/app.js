@@ -125,14 +125,14 @@
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=28")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=29")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       // from a key to its sound: the browser's output and the worklet's quantum, so a take lands where it was heard
       node.port.postMessage({ t: "lat", n: Math.round(((ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 44100) + 128 });
       power.textContent = "On";
       midiOn();
-    } catch (e) { power.textContent = "No sound: " + e.message; }
+    } catch (e) { power.textContent = "No sound: " + e.message; ctx = null; node = null; }   // (a press again tries again)
   });
 
   // the volume: the screen's meter, ticks ink up to the value, its own tick tall and lit
