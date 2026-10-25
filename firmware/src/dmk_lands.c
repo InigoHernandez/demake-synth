@@ -153,36 +153,38 @@ DMK_SMALL static void cv_fern(int fx, int fy, int n, int dk, int tip)   /* a fer
         cv_put(tx, ty, tip);
     }
 }
-/* a spruce (the FOREST's, after the owner's pictures): a thin spire, then tiers of boughs close together, each one
- * sagging to its tip with its needles hanging under it, longer down the tree, some shorter, a few missing; a bough's
- * upper edge in lit (the fog's light; -1: none), more toward its tip, its tip lighter still (tip): each bough its own */
-DMK_SMALL static void cv_spruce(int x, int base, int h, int w, int c, int lit, int tip, uint32_t seed)
+/* a spruce (the FOREST's, after the owner's pictures; "more clear shape on the pines"): a thin spire, then tiers
+ * stacked down the trunk, each a clean cone wider at its foot than the one above, its tips hanging a pixel lower, the
+ * next one starting inside it so the edge steps as a saw; on the side the light comes from (side: 1 right, -1 left, 0
+ * none) each tier's slope in lit, a clean line. Its trunk shows under the lowest */
+DMK_SMALL static void cv_spruce(int x, int base, int h, int w, int c, int lit, int side, uint32_t seed)
 {
-    int y, k, sd, j, top = base - h, gap = 2 + h / 70;
-    cv_rect(x, top - 4, 1, h + 4, c);                   /* the trunk, its spire */
-    if (h > 60) cv_rect(x + 1, top + h / 3, 1, h - h / 3, c);
-    for (y = top + 2; y < base - h / 10; y += gap + (int)(hsh(seed + (uint32_t)y) % 2u)) {
-        int t = y - top, L0 = 1 + t * w / h;
-        for (k = -1; k <= 1; k += 2) {
-            uint32_t q = hsh(seed + (uint32_t)(y * 7 + k + 9));
-            int L = L0 * (10 + (int)(q % 9u)) / 16, droop = 1 + L * (2 + (int)((q >> 4) % 3u)) / 6;
-            if (t > 12 && q % 13u == 0) continue;       /* a bough missing */
-            for (sd = 0; sd <= L; sd++) {
-                int px = x + k * sd, py = y + droop * sd * sd / (L * L + 1), fr = (sd < L * 2 / 3 ? 2 : 1) + (int)((q >> (sd % 24)) & 1u) - (sd == L);
-                for (j = (sd & 1) && sd > 1 ? -1 : 0; j <= fr; j++) cv_put(px, py + j, c);
-                if (lit >= 0 && sd > L / 4 && bay(px, py) < 4 + sd * 10 / (L + 1)) cv_put(px, py + ((sd & 1) && sd > 1 ? -1 : 0), sd >= L - 1 ? tip : lit);
+    int y = base - h, foot = base - h / 12, r, k;
+    cv_rect(x, y - 4, 1, 6, c);                         /* the spire */
+    while (y < foot) {
+        int t = y - (base - h), th = 3 + t * 9 / h, wb = 1 + (t + th) * w / h + (int)(hsh(seed + (uint32_t)y) % 2u);
+        if (y + th > foot) th = foot - y;
+        for (r = 0; r <= th; r++) {                     /* the tier: from a third of its width to all of it */
+            int hw = wb / 4 + (wb - wb / 4) * r * r / (th > 0 ? th * th : 1);   /* (its slope curving out: a bough) */
+            cv_rect(x - hw, y + r, hw * 2 + 1, 1, c);
+            if (side && lit >= 0 && r < th) {            /* its slope on the light's side, lit */
+                cv_put(x + side * hw, y + r, lit);
+                if (r > th / 2) cv_put(x + side * (hw - 1), y + r, lit);
             }
-            cv_put(x + k * L, y + droop + 2, c);
         }
+        for (k = wb * 2 / 3; k <= wb; k++) { cv_put(x - k, y + th + 1, c); cv_put(x + k, y + th + 1, c); }   /* its tips hanging */
+        if (side && lit >= 0) cv_put(x + side * wb, y + th + 1, lit);
+        y += th / 2 + 1;
     }
+    cv_rect(x - (w > 14), foot, 1 + (w > 14) * 2, base - foot, c);   /* the trunk */
 }
 /* the FOREST's near spruces, whole on the band, standing apart (the owner's picture), the tallest's spire near its top;
  * drawn above it too, in each one's place, so a spire that reaches past it meets */
 static void fo_near(int dk, int above)
 {
-    static const int16_t NP[4][4] = {{30, 116, 108, 27}, {160, 114, 98, 24}, {208, 117, 112, 29}, {86, 110, 68, 17}};   /* (wide: the owner) */
+    static const int16_t NP[4][5] = {{30, 116, 108, 25, 1}, {158, 114, 98, 20, -1}, {210, 117, 112, 24, -1}, {84, 110, 66, 15, 1}};   /* (wide: the owner) */
     int ox = above ? LF_X0 : 0, oy = above ? LF_H : 0, k;
-    for (k = 0; k < 4; k++) cv_spruce(NP[k][0] + ox, NP[k][1] + oy, NP[k][2], NP[k][3], dk, C_HOLO0, C_HOLO1, 900u + (uint32_t)k * 77u);
+    for (k = 0; k < 4; k++) cv_spruce(NP[k][0] + ox, NP[k][1] + oy, NP[k][2], NP[k][3], dk, C_HOLO1, NP[k][4], 900u + (uint32_t)k * 77u);
 }
 
 /* the CITY's towers, left to right: where each stands, how high, how wide (the anim finds their beacons here) */
@@ -242,27 +244,20 @@ DMK_SMALL static void land_band(int sc, int dk, int lt)
     if (sc == 6) {                                      /* FOREST: spruces after sunset, in a blue fog (the owner's) */
         for (y = 30; y < 100; y++) for (x = 0; x < SC_W; x++) {   /* the fog's glow, low in the middle, over the sky */
             int dx = (x - 118) / 2, dy = y - 78, d = dx * dx + dy * dy;
-            if (d < 900 && bay(x, y) * 60 < 900 - d) cv_put(x, y, d < 260 ? C_HOLO2 : C_HOLO1);
+            if (d < 900 && bay(x, y) * 60 < 900 - d) cv_put(x, y, d < 260 ? C_HOLO3 : C_HOLO2);
         }
-        for (k = 0; k < 40; k++) {                      /* the farthest: pale spruces deep in the fog, many */
+        for (k = 0; k < 30; k++) {                      /* the farthest: pale spruces deep in the fog, many */
             uint32_t q = hsh((uint32_t)k * 40503u + 7u);
-            int px = (int)(q % (uint32_t)SC_W), ph = 22 + (int)((q >> 8) % 30u);
-            cv_spruce(px, 94 + (int)((q >> 16) % 4u), ph, 4 + ph / 3, C_HOLO1, -1, 0, (uint32_t)k + 300u);
+            int px = 3 + k * 8 + (int)(q % 5u), ph = 22 + (int)((q >> 8) % 26u);
+            cv_spruce(px, 96 + (int)((q >> 16) % 3u), ph, 4 + ph / 4, C_HOLO1, -1, 0, (uint32_t)k + 300u);
         }
-        cv_veil(48, 98, 2, 8, C_HOLO2);                 /* the fog over them */
-        for (k = 0; k < 14; k++) {                      /* nearer: deep blue, the fog's light on their boughs */
-            uint32_t q = hsh((uint32_t)k * 2654435761u + 41u);
-            int px = 4 + k * 16 + (int)(q % 9u), ph = 38 + (int)((q >> 8) % 30u);
-            if (px > 96 && px < 140) ph = ph * 2 / 3;   /* (the clearing kept low: the glow through it) */
-            cv_spruce(px, 99 + (int)((q >> 16) % 3u), ph, 6 + ph / 4, C_HOLO0, C_HOLO1, C_HOLO2, (uint32_t)k + 500u);
+        for (k = 0; k < 10; k++) {                      /* nearer: deep blue, their slopes lit toward the clearing */
+            static const int16_t BP[10][3] = {{8, 58, 12}, {52, 48, 11}, {66, 64, 13}, {108, 34, 8}, {126, 40, 9}, {142, 30, 7},
+                                              {176, 52, 12}, {120, 26, 6}, {232, 60, 12}, {98, 44, 10}};
+            int px = BP[k][0];
+            cv_spruce(px, 100, BP[k][1], BP[k][2], C_HOLO0, C_HOLO2, px < 118 ? 1 : -1, (uint32_t)k + 500u);
         }
-        for (y = 20; y < 102; y++) for (x = 0; x < SC_W; x++)   /* their bodies a step darker than the fog: a depth between */
-            if (cv_get(x, y) == C_HOLO0 && bay(x, y) < 7) cv_put(x, y, dk);
-        cv_veil(62, 102, 1, 6, C_HOLO1);                /* the fog thick on the floor */
-        for (k = 0; k < 5; k++) {                       /* nearer still: dark, apart, the clearing between */
-            static const int16_t MP[5][3] = {{58, 64, 16}, {6, 78, 19}, {128, 52, 13}, {182, 72, 18}, {230, 86, 20}};
-            cv_spruce(MP[k][0], 104 + (k & 1), MP[k][1], MP[k][2], dk, C_HOLO0, C_HOLO1, (uint32_t)k + 700u);
-        }
+        cv_veil(84, 102, 0, 5, C_HOLO1);                /* the fog low on the floor */
         for (y = 98; y < SC_H; y++) for (x = 0; x < SC_W; x++)   /* the meadow, dark under its flowers */
             cv_put(x, y, y < 100 && bay(x, y) < 6 ? C_HOLO1 : dk);
         for (k = 0; k < 640; k++) {                     /* the flowers: glowing blue, bigger and brighter nearer */
