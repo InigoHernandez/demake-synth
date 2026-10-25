@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 10u  /* 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
+#define ST_VER 11u  /* 11: patterns to 256 steps, a note 5 bytes; 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
                        a row down; 6: more effects in each FX
                        row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
@@ -179,12 +179,11 @@ DMK_SMALL static int song_pack(uint8_t *o)                        /* the song op
             const pseq_t *q = &spat[s][g];
             *p++ = q->used;
             if (!q->used) continue;
-            *p++ = q->steps; *p++ = q->count;
-            if (p - o + q->count * 4 > (int)(ST_SECTOR - ST_HDR)) return -1;
-            for (i = 0; i < q->count; i++) {            /* a note's 32nds after its step in the bytes' spare bits */
+            *p++ = (uint8_t)(q->steps - 1); *p++ = q->count;   /* (1-256) */
+            if (p - o + q->count * 5 > (int)(ST_SECTOR - ST_HDR)) return -1;
+            for (i = 0; i < q->count; i++) {
                 const snote_t *m = &q->n[i];
-                *p++ = (uint8_t)(m->step | (m->off & 3u) << 6); *p++ = (uint8_t)(m->len | (m->off >> 4 & 1u) << 7);
-                *p++ = (uint8_t)(m->note | (m->off >> 2 & 1u) << 7); *p++ = (uint8_t)(m->vel | (m->off >> 3 & 1u) << 7);
+                *p++ = m->step; *p++ = m->len; *p++ = m->note; *p++ = m->vel; *p++ = m->off;
             }
         }
     if (p - o + SCENES * 6 + 3 + song_n * 2 > (int)(ST_SECTOR - ST_HDR)) return -1;
@@ -206,7 +205,18 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
     int st, c, i;
     if (e - p < 2) return -1;
     st = *p++; c = *p++;
-    q->steps = (uint8_t)(st < 1 ? 1 : st > SEQ_STEPS ? SEQ_STEPS : st);
+    if (st_ver >= 11u) {                                /* 11: up to 256 steps, a note 5 bytes, its 32nds its own */
+        q->steps = (uint16_t)(st + 1);
+        q->count = 0;
+        q->used = 1;
+        for (i = 0; i < c && e - p >= 5; i++, p += 5) {
+            snote_t m = {p[0], p[1], p[2], p[3], (uint8_t)(p[4] & 31u)};
+            if (q->count < SEQ_NOTES && m.step < q->steps && m.len) q->n[q->count++] = m;
+        }
+        *pp = p;
+        return 0;
+    }
+    q->steps = (uint16_t)(st < 1 ? 1 : st > 64 ? 64 : st);
     q->count = 0;
     q->used = 1;
     for (i = 0; i < c && e - p >= 4; i++, p += 4) {     /* (before 10 the spare bits were 0: on its step) */

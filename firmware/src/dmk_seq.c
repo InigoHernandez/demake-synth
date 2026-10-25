@@ -5,8 +5,9 @@
  * own; a note sounds from its step for its length, cut at its pattern's end. With SNAP (the default) a note is on the
  * key's scale, A minor until the chord machine sets the key (phase 2). Integer only */
 
-#define SEQ_NOTES 64                                    /* notes a synth */
-#define SEQ_STEPS 64                                    /* the longest pattern */
+#define SEQ_NOTES 96                                    /* notes a pattern (128 would not fit the pool) */
+#define SEQ_STEPS 256                                   /* the longest pattern: 16 bars (the owner) */
+#define SEQ_LEN 255                                     /* the longest note */
 #define SEQ_LIVE 8                                      /* notes a synth sounds from its pattern at once */
 
 /* off: how late in its step it starts (and ends), in 32nds of a step: the micro timing a note was played with, a
@@ -14,7 +15,8 @@
 typedef struct { uint8_t step, len, note, vel, off; } snote_t;
 typedef struct {
     snote_t n[SEQ_NOTES];
-    uint8_t count, steps, pos;                          /* notes, length in steps, the step that sounds next */
+    uint8_t count, pos;                                 /* notes, the step that sounds next */
+    uint16_t steps;                                     /* its length in steps */
     uint8_t live[SEQ_LIVE], left[SEQ_LIVE];             /* the notes it sounds and the steps each has left */
     uint8_t from[SEQ_LIVE];                             /* a harmony's: its lead + 1 (0: the roll's own) */
     uint8_t lvel[SEQ_LIVE], loff[SEQ_LIVE];             /* its velocity, its 32nds late */
@@ -67,7 +69,7 @@ static void chord_rest(void);
  * wait in spat[]. A synth muted plays nothing of its roll or of the chords (the keys still sound) */
 #define SYN_PATS 8                                      /* patterns a synth */
 #define SCENES 16
-typedef struct { snote_t n[SEQ_NOTES]; uint8_t count, steps, used; } pseq_t;
+typedef struct { snote_t n[SEQ_NOTES]; uint8_t count, used; uint16_t steps; } pseq_t;
 static pseq_t spat[DMK_SYNTHS][SYN_PATS] POOL;
 typedef struct { uint8_t pat[DMK_SYNTHS], prog, mute, used; } scene_t;
 static scene_t scn[SCENES];
@@ -135,7 +137,7 @@ static int spat_dup(int s)                              /* synth s's pattern cop
     scn[scn_cur].pat[s] = (uint8_t)q;
     return q;
 }
-static int scn_bars(int c)                              /* a scene's length: its longest pattern, in bars (1-8) */
+static int scn_bars(int c)                              /* a scene's length: its longest pattern, in bars (1-16) */
 {
     int s, b = 1;
     for (s = 0; s < DMK_SYNTHS; s++) {
@@ -143,7 +145,7 @@ static int scn_bars(int c)                              /* a scene's length: its
         int st = c == scn_cur ? sq[s].steps : q->used ? q->steps : 16, n = (st + 15) / 16;
         if (n > b) b = n;
     }
-    return b > 8 ? 8 : b;
+    return b > SEQ_STEPS / 16 ? SEQ_STEPS / 16 : b;
 }
 static void pat_init(void)                              /* the first song: scene 1, each synth its pattern 1 */
 {
@@ -249,6 +251,7 @@ static int seq_add(int s, int step, int len, int note, int vel)
 {
     seq_t *q = &sq[s];
     int i = seq_find(s, step, note);
+    len = len < 1 ? 1 : len > SEQ_LEN ? SEQ_LEN : len;
     if (i >= 0) { q->n[i].len = (uint8_t)len; return i; }
     if (q->count >= SEQ_NOTES) return -1;
     i = q->count++;
@@ -315,6 +318,22 @@ static void roll_on(int s, int note, int len, int vel, int from, int off)
     if (wait <= 0) { roll_flush(s, note); note_on_vel(s, note, SRC_ROLL, vel); }
 }
 
+/* Vary, each synth's (the owner's): this time the note rests; it moves to another of the scale, Range steps up or
+ * down. On what the synth plays last: its roll's notes, the chords it plays, or its arp's, when the arp is on (what
+ * reaches the arp then goes in as written: not varied twice) */
+static int arp_on(int s);
+static int vary_rests(int s) { seq_t *q = &sq[s]; return q->chance < 32768u && (xs32(&q->rng) >> 17) >= q->chance; }
+static int vary_move(int s, int note)
+{
+    seq_t *q = &sq[s];
+    if (q->mut && (xs32(&q->rng) >> 17) < q->mut) {
+        uint32_t r = xs32(&q->rng);
+        int m = note_of(degree_of(note) + (int)(1u + r % q->mrange) * (r >> 31 ? -1 : 1));
+        if (m >= 24 && m <= 108) return m;
+    }
+    return note;
+}
+
 static void seq_step(void)                              /* every synth one step on */
 {
     int s, i, k;
@@ -341,11 +360,11 @@ static void seq_step(void)                              /* every synth one step 
             int len = n->len, note = n->note;
             if (n->step != q->pos || plays_chords(s) || harm_of(s) >= 0 || pat_mute >> s & 1u) continue;   /* a follower leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
-            if (q->chance < 32768u && (xs32(&q->rng) >> 17) >= q->chance) continue;   /* Vary: this time it rests */
-            if (q->mut && (xs32(&q->rng) >> 17) < q->mut) {   /* Vary: another note of the scale, up or down */
-                uint32_t r = xs32(&q->rng);
-                int d = degree_of(note) + (int)(1u + r % q->mrange) * (r >> 31 ? -1 : 1), m = note_of(d);
-                if (m >= 24 && m <= 108) {
+            if (!arp_on(s)) {                           /* Vary (its arp's notes instead, when on) */
+                int m;
+                if (vary_rests(s)) continue;
+                m = vary_move(s, note);
+                if (m != note) {
                     note = m;
                     if (q->keep && seq_find(s, n->step, m) < 0) n->note = (uint8_t)m;   /* kept: the roll evolves */
                 }
@@ -446,6 +465,7 @@ static struct {
     int32_t k, idx;                                     /* the steps played, the place (Walk) */
     uint32_t ph, rng;                                   /* samples into the step */
 } arp[DMK_SYNTHS];
+static int arp_on(int s) { return arp[s].mode != AR_OFF; }
 static const uint8_t ARP24[9] = {3, 4, 6, 8, 9, 12, 16, 18, 24};   /* RATE in 24ths of a beat (the screen's ARPDIVS) */
 static uint32_t arp_len(int s) { return 110250u * ARP24[arp[s].div < 9 ? arp[s].div : 2] / (uint32_t)(seq_bpm > 0 ? seq_bpm : 120); }
 static void arp_release(int s)                          /* what it sounds, let go */
@@ -532,7 +552,11 @@ static void arp_tick(int frames)                        /* each synth's, on the 
             arp_release(s);
             if (!arp[s].n) continue;
             c = arp_pick(s, nt, nv);
-            for (i = 0; i < c; i++) { note_on_vel(s, nt[i], SRC_ARP, nv[i]); arp[s].on[i] = nt[i]; }
+            if (seq_on && vary_rests(s)) c = 0;         /* Vary, playing: this time it rests, or its notes move */
+            for (i = 0; i < c; i++) {
+                if (seq_on) nt[i] = (uint8_t)vary_move(s, nt[i]);
+                note_on_vel(s, nt[i], SRC_ARP, nv[i]); arp[s].on[i] = nt[i];
+            }
             arp[s].non = (uint8_t)c; arp[s].gated = 0;
             arp[s].k++;
         }

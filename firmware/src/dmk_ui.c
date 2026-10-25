@@ -565,7 +565,7 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* each roll on its own pattern: its notes in view */
         ui.roll_cur[s] = 0;
-        ui.roll_pen[s] = 2;
+        ui.roll_pen[s] = 1;
         ui.roll_zoom[s] = (uint8_t)(sq[s].steps > 16);
     }
     ui.roll_view[0] = (uint8_t)degree_of(53); ui.roll_view[1] = (uint8_t)degree_of(64); ui.roll_view[2] = (uint8_t)degree_of(69);
@@ -886,10 +886,14 @@ static void roll_fields(void)                           /* the cursor's, or a he
     v[0] = 0;
     note_name(v, note_of(ui.roll_view[ui.synth]));
     field_show(1, "View", v, (ui.roll_view[ui.synth] - 14) * 127 / 29);
-    fmt_int(v, ui.roll_pen[ui.synth]);
-    field_show(2, "Length", v, ui.roll_pen[ui.synth] * 8);
+    {                                                   /* K3: none (the owner: the pen's length confused; a note
+                                                           written takes the last length a held note was given) */
+        int x = 2 * COL + PAD;
+        text(x, Y_FIELDS + 16, "\xE2\x80\x94", &FM, C_LINE);
+        meter(x, Y_FIELDS + 44, COL - 2 * PAD, 0, 0, 0, 1);
+    }
     fmt_int(v, q->steps);
-    field_show(3, "Steps", v, q->steps * 2);
+    field_show(3, "Steps", v, q->steps * 127 / SEQ_STEPS);
 }
 
 static void fields_band(void)
@@ -2525,7 +2529,11 @@ static void roll_turn(int k, int d)
             n->note = (uint8_t)p; ui.key_note[h] = (uint8_t)p;
             note_on_s(s, p);
         }
-        if (k == 2) { int l = n->len + dir; n->len = (uint8_t)(l < 1 ? 1 : l > SEQ_STEPS ? SEQ_STEPS : l); }
+        if (k == 2) {                                   /* its length, and the next written: as long (the pen) */
+            int l = n->len + dir;
+            n->len = (uint8_t)(l < 1 ? 1 : l > SEQ_LEN ? SEQ_LEN : l);
+            ui.roll_pen[s] = n->len;
+        }
         if (k == 3) {                                   /* NUDGE: a 32nd of a step later or earlier, on into the next */
             int t = (n->step * 32 + n->off + dir + st * 32) % (st * 32), ns = t / 32;
             if (ns != n->step && seq_find(s, ns, n->note) >= 0) return;
@@ -2536,11 +2544,12 @@ static void roll_turn(int k, int d)
     }
     if (k == 0) ui.roll_cur[s] = (uint8_t)((ui.roll_cur[s] + dir + st) % st);
     if (k == 1) { int v = ui.roll_view[s] + dir; ui.roll_view[s] = (uint8_t)(v < 14 ? 14 : v > 43 ? 43 : v); }
-    if (k == 2) { int p = ui.roll_pen[s] + dir; ui.roll_pen[s] = (uint8_t)(p < 1 ? 1 : p > 16 ? 16 : p); }
-    if (k == 3) {                                       /* this synth's length: the three loop against each other */
-        int t = st + dir;
+    if (k == 3) {                                       /* this synth's length: the three loop against each other; a
+                                                           click a step to 16, a beat to 64, then a bar to 256 */
+        int g = dir > 0 ? (st < 16 ? 1 : st < 64 ? 4 : 16) : (st <= 16 ? 1 : st <= 64 ? 4 : 16);
+        int t = dir > 0 ? (st / g + 1) * g : (st - 1) / g * g;
         t = t < 1 ? 1 : t > SEQ_STEPS ? SEQ_STEPS : t;
-        sq[s].steps = (uint8_t)t;
+        sq[s].steps = (uint16_t)t;
         if (ui.roll_cur[s] >= t) ui.roll_cur[s] = (uint8_t)(t - 1);
         if (sq[s].pos >= t) sq[s].pos = 0;
     }

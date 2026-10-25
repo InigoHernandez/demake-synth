@@ -27,8 +27,9 @@ dithered, for what is lit.
   - Shared: eleven reverbs (room, hall, space, haze, bloom, lofi, plate, spring, shimmer, reverse, freeze), a tape
     echo or grains, and Media over the whole mix (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
 - **The music.**
-  - Three synths, each with a piano roll of up to 64 steps and eight patterns of its own, notes that can move in
-    the scale and play by chance (Vary), and an arpeggiator with Hold and thirteen ways to play.
+  - Three synths, each with a piano roll of up to 256 steps and eight patterns of its own, recorded as played
+    (micro timing, a strum's spacing), notes that can move in the scale and play by chance (Vary, on the roll, the
+    chords or the arp), and an arpeggiator with Hold and thirteen ways to play.
   - Sixteen scenes say which pattern each synth plays, and switch on the bar with HOME held and a white key.
   - A song arranges the scenes, up to 128 steps of 1 to 8 bars, typed in or recorded live.
 - **The harmony.**

@@ -843,14 +843,14 @@ static void fx_enter(int sy, int row, int t)
 static const uint16_t CB_LEN[4] = {557, 593, 641, 677};   /* ROOM: four combs, four all-passes (MONO2K's lengths) */
 static const uint16_t AP_LEN[4] = {225, 341, 248, 367};
 static int16_t cb_buf[557 + 593 + 641 + 677] POOL;
-static int16_t ap_buf[225 + 341 + 248 + 367] POOL;
+static int16_t ap_buf[225 + 341 + 248 + 367];          /* (in RAM, with df_buf: the pool's room for the patterns' notes) */
 /* HALL, HAZE, BLOOM, LOFI: eight lines of 52..112 ms at 22.05 kHz, mixed by a Hadamard matrix (adds only), damped,
  * the first ones swept slowly so the tail shimmers rather than rings; four all-passes diffuse the input first */
 #define FD_N 8
 static const uint16_t FD_LEN[FD_N] = {1153, 1327, 1559, 1699, 1877, 2069, 2297, 2477};
 static const uint16_t DF_LEN[4] = {142, 107, 379, 277};
 static int16_t fd_buf[1153 + 1327 + 1559 + 1699 + 1877 + 2069 + 2297 + 2477] POOL;
-static int16_t df_buf[142 + 107 + 379 + 277] POOL;
+static int16_t df_buf[142 + 107 + 379 + 277];
 static struct { uint16_t pos[FD_N], dpos[4]; int32_t lp[FD_N], m[FD_N], fast, slow, hold, acc, ol, orr, dci, dcl, dcr, sx[8], sy[8], sfb, shp, shf, rvw, rva, hpo; uint32_t lfo[2]; uint8_t half, step, vhalf; } fd;
 /* (sx, sy: SPRING's all-passes; sfb: the network's last output, for SHIMMER; shp: its shifter's phase; rvw, rva:
  * REVERSE's write place and its heads' age; hpo: SPRING's thinning) */

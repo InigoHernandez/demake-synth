@@ -68,6 +68,7 @@ enum { KT_SEVENTH, KT_TRIAD, KT_NINTH, KT_ADD9, KT_SUS2, KT_SUS4, KT_69, KT_POWE
 /* what sounds: the slot, its notes as voiced (the last ones too, for AUTO), its tones as a mask */
 static uint8_t ch_slot, ch_notes[7], ch_n, ch_prev[7], ch_pn, ch_arp, ch_play[7], ch_np;
 static uint8_t ch_cur, ch_len = 2;                     /* writing: the slot cursor, the last length (half-bars) */
+static uint8_t ch_sp[DMK_SYNTHS][7], ch_sn[DMK_SYNTHS]; /* what each synth plays of it, its Vary on it */
 static uint16_t ch_left, ch_cmask = 0, ch_root;
 static uint8_t ch_q;                                    /* the sounding chord's quality */
 static int ch_shown = -1;                               /* the chord on the page: a slot, or -2 a key's */
@@ -373,32 +374,47 @@ static int roll_strum(int s, uint32_t a, uint32_t e, int note, int vel, int k, i
 {
     uint32_t p = a + strum_q8(k, n);
     int st = (int)(p >> 8), len = e > p ? (int)((e - p + 128u) >> 8) : 1, i;
-    len = len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len;
+    len = len < 1 ? 1 : len > SEQ_LEN ? SEQ_LEN : len;
     st %= sq[s].steps;
     if (keep && (i = seq_find(s, st, note)) >= 0) return i;
     i = seq_add(s, st, len, note, vel);
     if (i >= 0) sq[s].n[i].off = (uint8_t)((p & 255u) >> 3);
     return i;
 }
+/* the chord machine's notes on synth s, through its Vary (the owner): this time the chord rests, or its notes move in
+ * the scale (one that would double another stays); its arp on, as written (the arp's notes vary) */
+static void chord_strike(int s, const uint8_t *notes, int n, int most_ms)
+{
+    int i, j, k = 0;
+    if (!arp_on(s) && vary_rests(s)) n = 0;
+    for (i = 0; i < n && k < 7; i++) {
+        int m = arp_on(s) ? notes[i] : vary_move(s, notes[i]);
+        for (j = 0; j < k && ch_sp[s][j] != m; j++) {}
+        ch_sp[s][k] = (uint8_t)(j < k ? notes[i] : m);
+        k++;
+    }
+    ch_sn[s] = (uint8_t)k;
+    strike_src(s, ch_sp[s], k, SRC_CHORD, most_ms, 0);
+}
 /* a synth that comes to play the chords while they hold (set to Plays chords, unmuted): the chord sounding now, not
  * silence until the next */
 static void chord_join(int s)
 {
     if (seq_on && ch.rhythm == RH_HOLD && ch_np && ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u))
-        strike_src(s, ch_play, ch_np, SRC_CHORD, 0, 0);
+        chord_strike(s, ch_play, ch_np, 0);
 }
 
-/* the sounding chord off on the synths that play chords */
-static void chord_quiet(void)
-{
-    int s, i;
-    for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS) for (i = 0; i < ch_np; i++) later_off(s, ch_play[i], SRC_CHORD, 0);
-    ch_np = 0;
-}
-static void chord_off(int s)                            /* the sounding chord off on synth s (its FOLLOW changing) */
+static void chord_off(int s)                            /* what synth s plays of the chord, off (its FOLLOW changing) */
 {
     int i;
-    for (i = 0; i < ch_np; i++) later_off(s, ch_play[i], SRC_CHORD, 0);
+    for (i = 0; i < ch_sn[s]; i++) later_off(s, ch_sp[s][i], SRC_CHORD, 0);
+    ch_sn[s] = 0;
+}
+static void chord_quiet(void)                           /* the sounding chord off, on every synth playing it */
+{
+    int s;
+    for (s = 0; s < DMK_SYNTHS; s++) chord_off(s);
+    ch_np = 0;
 }
 static void chord_rest(void)                            /* stopped, or a new progression: nothing shown as sounding */
 {
@@ -412,6 +428,7 @@ static void chord_init(void)                            /* the first song's: the
     ch.follow[0] = FW_PLAYS; ch.follow[1] = FW_KEY; ch.follow[2] = FW_ROOT;
     ch.hint[0] = ch.hint[1] = ch.hint[2] = 2;           /* a harmony: a third above */
     ch_np = 0; ch_cmask = 0; ch_shown = -1; ch_name[0] = 0;
+    for (i = 0; i < DMK_SYNTHS; i++) ch_sn[i] = 0;
     for (i = 0; i < LATER_N; i++) later[i].used = 0;
     chord_start();
 }
@@ -444,7 +461,7 @@ static void chord_step(void)
         if (newslot) {
             for (i = 0; i < ch_n; i++) ch_play[i] = ch_notes[i];
             ch_np = ch_n;
-            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike_src(s, ch_notes, ch_n, SRC_CHORD, 0, 0);
+            for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) chord_strike(s, ch_notes, ch_n, 0);
         }
     } else if (ch.rhythm == RH_PULSE4 || ch.rhythm == RH_PULSE8) {
         int every = ch.rhythm == RH_PULSE4 ? 4 : 2;
@@ -453,14 +470,14 @@ static void chord_step(void)
             for (i = 0; i < ch_n; i++) ch_play[i] = ch_notes[i];
             ch_np = ch_n;
             for (s = 0; s < DMK_SYNTHS; s++)
-                if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) strike_src(s, ch_notes, ch_n, SRC_CHORD, every * 15000 / seq_bpm / 2, 0);
+                if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) chord_strike(s, ch_notes, ch_n, every * 15000 / seq_bpm / 2);
         }
     } else {                                            /* the arpeggio: a note a step */
         int k = ch_arp % ch_n, note = ch.rhythm == RH_ARPUP ? ch_notes[k] : ch_notes[ch_n - 1 - k];
         chord_quiet();
         ch_play[0] = (uint8_t)note;
         ch_np = 1;
-        for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) note_on_src(s, note, SRC_CHORD);
+        for (s = 0; s < DMK_SYNTHS; s++) if (ch.follow[s] == FW_PLAYS && !(pat_mute >> s & 1u)) { uint8_t one = (uint8_t)note; chord_strike(s, &one, 1, 0); }
         ch_arp++;
     }
     ch_left--;
@@ -582,7 +599,7 @@ static void print_to_roll(int s)
     if (!pr->n) return;
     if (ch.follow[s] == FW_PLAYS) chord_off(s);
     sq[s].count = 0;
-    sq[s].steps = (uint8_t)(total > SEQ_STEPS ? SEQ_STEPS : total);
+    sq[s].steps = (uint16_t)(total > SEQ_STEPS ? SEQ_STEPS : total);
     ch_pn = 0;
     for (i = 0; i < pr->n && at < SEQ_STEPS; i++) {
         int c = voice(48 + (seq_key + pr->s[i].root) % 12, QI[pr->s[i].q < Q_COUNT ? pr->s[i].q : 0], pr->s[i].pedal, notes), len = CHG_LEN(pr->s[i].half);

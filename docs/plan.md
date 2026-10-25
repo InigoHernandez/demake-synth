@@ -433,14 +433,14 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 
 | State | Control | Action |
 | --- | --- | --- |
-| stopped | a key | writes a note at the cursor (the pen's length and velocity) and holds it, sounding; if that pitch already starts at the cursor, holds that note instead |
+| stopped | a key | writes a note at the cursor (the pen's length, the last a held note was given with K3, and velocity) and holds it, sounding; if that pitch already starts at the cursor, holds that note instead |
 | stopped | keys together (or added while one is held) | a chord at the cursor |
 | stopped | key released | the cursor moves to the note's end, ready for the next one (step entry); after a delete it stays |
-| a key held | K1 / K2 / K3 / K4 | MOVE (steps) / PITCH (scale steps; semitones with SNAP off) / LENGTH (steps) / NUDGE (±1/8 step, up to ±1/2) |
+| a key held | K1 / K2 / K3 / K4 | MOVE (steps) / PITCH (scale steps; semitones with SNAP off) / LENGTH (steps; the pen's too) / NUDGE (a 32nd of a step, on into the next; shown in ms) |
 | a key held | ALGORITHM | VELOCITY |
 | a key held | OCT− | **deletes** the note (or every held note) |
 | a key held | OCT+ | **duplicates** it right after itself; the copy is now held, so OCT+ again makes a run |
-| nothing held | K1 / K2 / K3 / K4 | CURSOR / VIEW (scroll pitch) / LENGTH (the pen's) / FINE (the cursor ±1/8 step) |
+| nothing held | K1 / K2 / K3 / K4 | CURSOR / VIEW (scroll pitch) / — (the pen's LENGTH removed, 0.4.14: the owner found it confusing) / STEPS, 1-256 (a click a step to 16, a beat to 64, then a bar) |
 | nothing held | ALGORITHM | ZOOM: 16, 32 or 64 steps across |
 | cursor on notes | — | the notes starting at the cursor are outlined, **and their keys' LEDs blink**: hold the blinking key to edit, delete or duplicate it |
 | playing | a key | plays (not written); the view follows the playhead |

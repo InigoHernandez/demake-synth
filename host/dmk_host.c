@@ -306,6 +306,10 @@ static void tour(const char *dir)
         roll_show(1, 67); roll_show(1, 57); wait_ms(60); shot(dir, "roll_strum");
         ui.octave = 0; dmk_key(64 - 53, 1); wait_ms(60); if (roll_held() < 0) { fails++; printf("tour: no note held for NUDGE\n"); } shot(dir, "roll_nudge"); dmk_key(64 - 53, 0); wait_ms(30);
         tap(B_REC); tap(B_PLAY); wait_ms(60); shot(dir, "roll_ready"); tap(B_REC);
+        sq[1].steps = 256; ui.roll_zoom[1] = 2; ui.roll_cur[1] = 200;   /* sixteen bars, the fourth page of 64 */
+        for (int i = 0; i < 6; i++) seq_add(1, 194 + i * 8, 6, CH[i % 4] + (i / 4) * 12, 100);
+        wait_ms(60); shot(dir, "roll_256");
+        sq[1].steps = 16; ui.roll_zoom[1] = 0; ui.roll_cur[1] = 0;
     }
     ta_reset(); boot(1650); shot_fr(dir, "boot_arrive", fb);
     ta_reset(); boot(2200); shot_fr(dir, "boot_heat", fb);
@@ -693,6 +697,7 @@ static void selftest(void)
         host_store_on(1, 1);
         dmk_init(28); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         ui.val[0][PG_GLOBAL][2][0] = ui.val[0][PG_GLOBAL][2][1] = ui.val[0][PG_GLOBAL][2][2] = 64;   /* (its row then) */
+        for (int q = 0; q < DMK_SYNTHS; q++) sq[q].count = 0;   /* (no notes: a note's bytes are 11's) */
         tap(B_SAVE); tap(B_SAVE);
         for (int k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 6;
         dmk_init(29); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -909,6 +914,7 @@ static void selftest(void)
         /* the store: a song keeps the new controls; one of before 0.4 (version 4) loads with them off */
         host_store_on(1, 1);
         ui.val[0][PG_LFO][0][1] = 64; ui.val[0][PG_SOUND][1][0] = 50; ui.val[0][PG_SOUND][2][0] = 33; ui.val[0][PG_FILTER][0][3] = 20;
+        for (k = 0; k < DMK_SYNTHS; k++) sq[k].count = 0;   /* (no notes: a note's bytes are 11's) */
         tap(B_SAVE); tap(B_SAVE); dmk_init(22); now_ms = 0; wait_ms(60);
         if (ui.val[0][PG_LFO][0][1] != 64 || ui.val[0][PG_SOUND][1][0] != 50 || ui.val[0][PG_SOUND][2][0] != 33 || ui.val[0][PG_FILTER][0][3] != 20)
             { fails++; printf("selftest: a song does not keep the layer, the voice, the drive or the LFO\n"); }
@@ -922,6 +928,7 @@ static void selftest(void)
         /* a song and a sound of before 0.5 (fewer types a row: 5, 4, 4) keep their effects; one of now keeps the later */
         ui.val[0][PG_FX][0][4] = choice_val(FC_LOSSY, 5); ui.val[0][PG_FX][1][4] = choice_val(FM_VHS, 4);
         ui.val[0][PG_FX][2][4] = choice_val(FO_CHORUS, 4); ui.val[1][PG_FX][1][4] = 0;
+        for (k = 0; k < DMK_SYNTHS; k++) sq[k].count = 0;   /* (no notes: a note's bytes are 11's) */
         tap(B_SAVE); tap(B_SAVE);
         for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 5;   /* as 0.4 wrote it */
         dmk_init(24); now_ms = 0; wait_ms(60);
@@ -949,6 +956,7 @@ static void selftest(void)
         ui.val[0][PG_GLOBAL][2][0] = choice_val(1, 2); ui.val[0][PG_GLOBAL][2][1] = choice_val(2, 4); ui.val[0][PG_GLOBAL][2][2] = choice_val(0, 2);
         ui.val[0][PG_FX][1][4] = 0; ui.val[1][PG_FX][1][4] = choice_val(FM_VHS, FX_MEDIAS); ui.val[1][PG_FX][1][0] = 99;
         ui.val[2][PG_FX][1][4] = choice_val(FM_TAPE, FX_MEDIAS);
+        for (k = 0; k < DMK_SYNTHS; k++) sq[k].count = 0;   /* (no notes: a note's bytes are 11's) */
         tap(B_SAVE); tap(B_SAVE);
         for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 6;
         dmk_init(27); now_ms = 0; wait_ms(60);
@@ -1054,6 +1062,87 @@ static void selftest(void)
             if (strcmp(was, song_name(3))) { fails++; printf("selftest: a song saved again was renamed\n"); }
         }
         host_store_on(0, 0);
+    }
+    {   /* a synth's length to 256 steps (the owner): K4 a step a click to 16, a beat to 64, then a bar; a note far
+         * in plays; the song keeps the length and a long note; K3 is no longer the pen, a written note as long as the
+         * last a held note was given */
+        static uint8_t pk[4096];
+        static const int16_t T[][3] = {{14, 1, 15}, {15, 1, 16}, {16, 1, 20}, {17, 1, 20}, {60, 1, 64}, {63, 1, 64}, {64, 1, 80},
+                                       {240, 1, 256}, {256, 1, 256}, {256, -1, 240}, {80, -1, 64}, {65, -1, 64}, {64, -1, 60},
+                                       {20, -1, 16}, {17, -1, 16}, {16, -1, 15}, {1, -1, 1}};
+        int k, v, i, heard = 0;
+        dmk_init(35); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        tap(B_SEQ); ui.synth = 1; ui.row[PG_ROLL] = 0;  /* (the roll's own row) */
+        for (k = 0; k < (int)(sizeof T / sizeof T[0]); k++) {
+            sq[1].steps = (uint16_t)T[k][0]; dmk_encoder(E_K4, T[k][1]);
+            if (sq[1].steps != T[k][2]) { fails++; printf("selftest: Steps %d turned %+d reads %d, not %d\n", T[k][0], T[k][1], sq[1].steps, T[k][2]); break; }
+        }
+        for (i = 0; i < DMK_SYNTHS; i++) sq[i].count = 0;
+        sq[1].steps = 256; ui.roll_cur[1] = 0;
+        i = seq_add(1, 200, 255, 72, 100); sq[1].n[i].off = 7;
+        seq_play(1);
+        while (seq_ticks < 202) { dmk_render(b, 128); for (v = 0; v < DMK_VOICES; v++) heard |= vc[v].on && vc[v].sy == 1 && vc[v].note == 72 && seq_ticks == 201; }
+        seq_play(0);
+        if (!heard) { fails++; printf("selftest: a note on step 201 of 256 does not play\n"); }
+        st_ver = ST_VER;
+        if (song_unpack(pk, (uint32_t)song_pack(pk)) || sq[1].steps != 256 || sq[1].count != 1 || sq[1].n[0].step != 200 || sq[1].n[0].len != 255 || sq[1].n[0].off != 7)
+            { fails++; printf("selftest: a 256-step pattern comes back as %d steps, %d notes\n", sq[1].steps, sq[1].count); }
+        ui.synth = 1; ui.row[PG_ROLL] = 0; seq_play(0);
+        { int c0 = sq[1].count, pen = ui.roll_pen[1];
+          dmk_encoder(E_K3, 1);
+          if (ui.roll_pen[1] != pen) { fails++; printf("selftest: K3 still sets the pen\n"); }
+          ui.roll_cur[1] = 200; ui.octave = 0; dmk_key(72 - 53, 1); wait_ms(30);   /* the note held: K3 its length */
+          dmk_encoder(E_K3, -1); dmk_key(72 - 53, 0); wait_ms(30);
+          if (sq[1].n[0].len != 254 || ui.roll_pen[1] != 254) { fails++; printf("selftest: a held note's length is not the next one's (%d, %d)\n", sq[1].n[0].len, ui.roll_pen[1]); }
+          tap(B_REC); ui.roll_cur[1] = 10; dmk_key(4, 1); wait_ms(30); dmk_key(4, 0); wait_ms(30); tap(B_REC);
+          if (sq[1].count != c0 + 1 || sq[1].n[c0].len != 254) { fails++; printf("selftest: a written note is not as long as the last one set\n"); } }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* Vary on what a synth plays last (the owner): the chords it plays rest at no chance and move in the scale at
+         * full mutation, none doubled; its arp on, the arp's notes vary and the roll feeding it stays as written */
+        int k, v, on = 0, moved = 0, out = 0, dup = 0, arp_on_n = 0, arp_moved = 0;
+        uint8_t was[SEQ_NOTES];
+        dmk_init(34); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_ROLL][1][2] = 0; sp_sync();        /* the pad, playing the chords: no chance */
+        tap(B_PLAY);
+        for (k = 0; k < 120; k++) { dmk_render(b, 256); for (v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 0 && vc[v].src == SRC_CHORD; }
+        tap(B_PLAY);
+        if (on) { fails++; printf("selftest: the chords a synth plays at no chance still sound\n"); }
+        ui.val[0][PG_ROLL][1][2] = 127; ui.val[0][PG_ROLL][1][0] = 127; sp_sync();
+        tap(B_PLAY);
+        for (k = 0; k < 600; k++) {                     /* ~3.5 s: a few chords */
+            dmk_render(b, 256);
+            for (int i = 0; i < ch_sn[0]; i++) {
+                int in = 0;
+                for (int j = 0; j < ch_np; j++) in |= ch_play[j] == ch_sp[0][i];
+                for (int j = 0; j < i; j++) dup += ch_sp[0][j] == ch_sp[0][i];
+                moved += !in; out += snap(ch_sp[0][i]) != ch_sp[0][i];
+            }
+        }
+        tap(B_PLAY);
+        if (!moved || out || dup) { fails++; printf("selftest: the chords' Vary: %d moved, %d out of the scale, %d doubled\n", moved, out, dup); }
+        ui.val[0][PG_ROLL][1][0] = 0; sp_sync();
+        for (k = 0; k < sq[1].count; k++) was[k] = sq[1].n[k].note;
+        ui.val[1][PG_ROLL][2][0] = choice_val(AR_UP, AR_N);   /* the piano's arp on, Vary at no chance */
+        ui.val[1][PG_ROLL][1][2] = 0; ui.val[1][PG_ROLL][1][0] = 127; ui.val[1][PG_ROLL][1][3] = choice_val(1, 2); sp_sync();
+        tap(B_PLAY);
+        for (k = 0; k < 200; k++) { dmk_render(b, 256); for (v = 0; v < DMK_VOICES; v++) arp_on_n += vc[v].on && vc[v].sy == 1 && vc[v].src == SRC_ARP; }
+        tap(B_PLAY);
+        if (arp_on_n) { fails++; printf("selftest: an arp at no chance still plays\n"); }
+        ui.val[1][PG_ROLL][1][2] = 127; sp_sync();
+        tap(B_PLAY);
+        for (k = 0; k < 400; k++) {
+            dmk_render(b, 256);
+            for (v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == 1 && vc[v].src == SRC_ARP) {
+                int in = 0;
+                for (int j = 0; j < arp[1].n; j++) in |= arp[1].note[j] == vc[v].note || arp[1].note[j] + 12 == vc[v].note;
+                arp_on_n++; arp_moved += !in && arp[1].n;
+            }
+        }
+        tap(B_PLAY);
+        for (k = 0, on = 0; k < sq[1].count; k++) on += sq[1].n[k].note != was[k];
+        if (!arp_on_n || !arp_moved || on) { fails++; printf("selftest: an arp's Vary: %d notes, %d moved, the roll fed changed %d\n", arp_on_n, arp_moved, on); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {   /* the roll's Vary: no chance, no notes; mutation kept, the notes moved and still in the scale; the delay in time */
         int s, k, on, moved = 0, out = 0;
