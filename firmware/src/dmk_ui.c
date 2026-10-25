@@ -367,7 +367,8 @@ static void sp_sync(void)
         sq[s].keep = (uint8_t)(VS(s, PG_ROLL, 1, 3) >= 64);
         {                                               /* the ARP: off, its notes let go; HOLD off, the held ones too */
             int am = choice_index(choice_of(PG_ROLL, 2, 0), VS(s, PG_ROLL, 2, 0)), ah = VS(s, PG_ROLL, 2, 4) >= 64;
-            if ((!am && arp[s].mode) || (arp[s].hold && !ah && !arp[s].held)) arp_clear(s);
+            if (!am && arp[s].mode) arp_clear(s);
+            else if (arp[s].hold && !ah) arp_unheld(s);  /* (only those let go: the held ones play on) */
             arp[s].mode = (uint8_t)am; arp[s].hold = (uint8_t)ah;
             arp[s].div = (uint8_t)choice_index(choice_of(PG_ROLL, 2, 1), VS(s, PG_ROLL, 2, 1));
             arp[s].oct = (uint8_t)choice_index(choice_of(PG_ROLL, 2, 2), VS(s, PG_ROLL, 2, 2));
@@ -1590,7 +1591,7 @@ static void stage_roll(void)
     }
     for (i = 0; i < q->count; i++) {                    /* the notes; those at the cursor lit */
         const snote_t *n = &q->n[i];
-        int row = 6 - (degree_of(n->note) - view), s0 = n->step - x0, len = n->len, w, lx;
+        int row = 6 - (degree_of(n->note) - view), s0 = n->step - x0, len = n->len, w, lx, up = snap(n->note) != n->note ? rh / 2 : 0;
         if (s0 < 0 || s0 >= end) continue;
         if (s0 + len > end) len = end - s0;
         lx = n->off * cw / 32;                          /* late in its step (a strum recorded): drawn late */
@@ -1599,7 +1600,8 @@ static void stage_roll(void)
             round_fill(gx + s0 * cw + 1 + lx, row < 0 ? gy - 5 : gy + rh * 7 + 2, w, 2, 1, C_LABEL);
             continue;
         }
-        round_fill(gx + s0 * cw + 1 + lx, gy + row * rh + 3, w, rh - 6, (rh - 6) / 2, !seq_on && n->step == at ? HOLO : C_INK);
+        round_fill(gx + s0 * cw + 1 + lx, gy + row * rh + 3 - up, w, rh - 6, (rh - 6) / 2, !seq_on && n->step == at ? HOLO : C_INK);   /* (off the
+                                                           scale: between its neighbours) */
     }
     round_fill(gx + (at - x0) * cw - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);   /* the cursor, or the playhead */
 }
@@ -2611,7 +2613,8 @@ static void roll_turn(int k, int d)
             n->step = (uint8_t)t; ui.key_step[h] = (uint8_t)t; ui.roll_cur[s] = (uint8_t)t;
         }
         if (k == 1) {
-            int p = note_of(degree_of(n->note) + dir);
+            int p = dir < 0 && snap(n->note) != n->note ? snap(n->note) : note_of(degree_of(n->note) + dir);   /* (off the
+                                                           scale: to its neighbours on it) */
             if (p < 24 || p > 108 || seq_find(s, n->step, p) >= 0) return;
             note_off_s(s, n->note);
             n->note = (uint8_t)p; ui.key_note[h] = (uint8_t)p;
@@ -3125,7 +3128,7 @@ DMK_SMALL static void ui_encoder(int e, int d)
 }
 
 /* a key: on the roll, stopped, it writes at the cursor (or holds the note of its pitch there); playing with REC, it
- * is recorded from its nearest step for its length; else it plays. With SNAP the roll's notes are on the scale */
+ * is recorded as played; else it plays. Its note as it is, on the scale or off it */
 DMK_SMALL static void ui_key(int k, int down)
 {
     int n, s;
@@ -3238,14 +3241,13 @@ DMK_SMALL static void ui_key(int k, int down)
         if (ui.page == PG_ROLL && !seq_on) {            /* the roll, stopped: a note there held, to edit or delete; a new
                                                            one written only while REC is lit (the owner: else it records
                                                            without REC), else it only plays */
-            int c = ui.roll_cur[s];
-            n = snap(n);
+            int c = ui.roll_cur[s];                     /* (the key as it is, on every page: the owner heard the roll
+                                                           move a black key onto the scale) */
             if (seq_find(s, c, n) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }
             else if (!seq_rec) roll_unarmed();
             else if (seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); roll_show(s, n); }
             else roll_full();
         } else if (seq_on && seq_rec && !song_rec) {   /* a song's take records the switches, not the keys */
-            n = snap(n);
             ui.key_roll[k] = 2;
             ui.key_t0[k] = seq_now();
             ui.key_q8[k] = seq_rec_q8(s);               /* where on its own roll, as played (a switched pattern starts

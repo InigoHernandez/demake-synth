@@ -326,6 +326,9 @@ static void tour(const char *dir)
         roll_show(1, 67); roll_show(1, 57); wait_ms(60); shot(dir, "roll_strum");
         ui.octave = 0; dmk_key(64 - 53, 1); wait_ms(60); if (roll_held() < 0) { fails++; printf("tour: no note held for NUDGE\n"); } shot(dir, "roll_nudge"); dmk_key(64 - 53, 0); wait_ms(30);
         tap(B_REC); tap(B_PLAY); wait_ms(60); shot(dir, "roll_ready"); tap(B_REC);
+        sq[1].count = 0; ui.roll_cur[1] = 0;            /* a chromatic run: the notes off the scale between its rows */
+        for (int i = 0; i < 9; i++) seq_add(1, i * 2, 2, 57 + i, 100);
+        ui.roll_view[1] = (uint8_t)degree_of(57); wait_ms(60); shot(dir, "roll_chromatic");
         sq[1].steps = 256; ui.roll_zoom[1] = 2; ui.roll_cur[1] = 200;   /* sixteen bars, the fourth page of 64 */
         for (int i = 0; i < 6; i++) seq_add(1, 194 + i * 8, 6, CH[i % 4] + (i / 4) * 12, 100);
         wait_ms(60); shot(dir, "roll_256");
@@ -1098,6 +1101,22 @@ static void selftest(void)
         note_off_s(2, 66); wait_ms(20);
         for (on = 0, v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2 && vc[v].note == 66;
         if (on) { fails++; printf("selftest: a note from before the arp sticks\n"); }
+        /* a pitch held twice (a key and the roll), let go twice: nothing left held (the owner: it left a count up, and
+         * HOLD then never let go); HOLD off lets go only what is no longer held */
+        ui.val[2][PG_ROLL][2][4] = 0; sp_sync(); ARP_RUN(100);
+        note_on_s(2, 60); note_on_vel(2, 60, SRC_ROLL, 100); ARP_RUN(200);
+        note_off_s(2, 60); note_off_src(2, 60, SRC_ROLL); ARP_RUN(200);
+        if (arp[2].held || arp[2].n) { fails++; printf("selftest: a pitch held twice and let go leaves the arp holding (%d held, %d notes)\n", arp[2].held, arp[2].n); }
+        ui.val[2][PG_ROLL][2][4] = choice_val(1, 2); sp_sync();   /* HOLD: a chord kept, then a new one replaces it */
+        note_on_s(2, 62); note_on_s(2, 65); note_off_s(2, 62); note_off_s(2, 65);
+        note_on_s(2, 69); note_off_s(2, 69);
+        if (arp[2].n != 1 || arp[2].note[0] != 69) { fails++; printf("selftest: HOLD's new chord does not replace the last (%d notes)\n", arp[2].n); }
+        note_on_s(2, 72);                                /* one held as HOLD goes off: it alone plays on */
+        ui.val[2][PG_ROLL][2][4] = 0; sp_sync();
+        if (arp[2].n != 1 || arp[2].note[0] != 72) { fails++; printf("selftest: HOLD off keeps what was let go (%d notes)\n", arp[2].n); }
+        note_off_s(2, 72); got = 0; ARP_RUN(500);
+        for (on = 0, v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2 && vc[v].src == SRC_ARP;
+        if (got || on || arp[2].n) { fails++; printf("selftest: the arp plays on after HOLD off and the keys let go (%d, %d on)\n", got, on); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         #undef ARP_RUN
     }

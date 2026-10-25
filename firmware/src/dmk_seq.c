@@ -460,8 +460,11 @@ enum { AR_OFF, AR_UP, AR_DOWN, AR_UPDOWN, AR_DOWNUP, AR_BOUNCE, AR_CONV, AR_DIV,
 #define ARP_POOL 16
 static struct {
     uint8_t mode, div, oct, gate, hold;                 /* (sp_sync: the row's values) */
-    uint8_t n, held, non, gated;                        /* notes in the pool, keys holding them, notes sounding, released */
+    uint8_t n, held, non, gated;                        /* notes in the pool, holds on them, notes sounding, released */
     uint8_t note[ARP_POOL], vel[ARP_POOL], on[ARP_POOL];
+    uint8_t hc[ARP_POOL];                               /* what holds each: a key, the roll, a chord, MIDI (the owner: a
+                                                           pitch held twice, let go twice, left one count up: HOLD
+                                                           never let go, and the pool grew) */
     int32_t k, idx;                                     /* the steps played, the place (Walk) */
     uint32_t ph, rng;                                   /* samples into the step */
 } arp[DMK_SYNTHS];
@@ -475,6 +478,13 @@ static void arp_release(int s)                          /* what it sounds, let g
     arp[s].non = 0; arp[s].gated = 1;
 }
 static void arp_clear(int s) { arp_release(s); arp[s].n = 0; arp[s].held = 0; arp[s].k = 0; arp[s].idx = 0; }
+static void arp_unheld(int s)                           /* HOLD off: the notes no longer held leave; none, it stops */
+{
+    int i, j = 0;
+    for (i = 0; i < arp[s].n; i++) if (arp[s].hc[i]) { arp[s].note[j] = arp[s].note[i]; arp[s].vel[j] = arp[s].vel[i]; arp[s].hc[j] = arp[s].hc[i]; j++; }
+    arp[s].n = (uint8_t)j;
+    if (!j) arp_clear(s);
+}
 static int arp_take(int s, int n, int vel)
 {
     int i;
@@ -484,9 +494,9 @@ static int arp_take(int s, int n, int vel)
     if (i == arp[s].n) {
         if (arp[s].n >= ARP_POOL) return 1;
         if (!arp[s].n) { arp[s].k = 0; arp[s].idx = 0; arp[s].ph = arp_len(s); }   /* the first: at once */
-        arp[s].note[arp[s].n] = (uint8_t)n; arp[s].vel[arp[s].n] = (uint8_t)vel; arp[s].n++;
+        arp[s].note[arp[s].n] = (uint8_t)n; arp[s].vel[arp[s].n] = (uint8_t)vel; arp[s].hc[arp[s].n] = 0; arp[s].n++;
     }
-    arp[s].held++;
+    if (arp[s].hc[i] < 255) { arp[s].hc[i]++; arp[s].held++; }
     return 1;
 }
 static int arp_drop(int s, int n)
@@ -494,10 +504,10 @@ static int arp_drop(int s, int n)
     int i;
     if (!arp[s].mode) return 0;
     for (i = 0; i < arp[s].n && arp[s].note[i] != n; i++) {}
-    if (i == arp[s].n) return 0;                        /* not the arp's: a note of before, let go as it was */
-    if (arp[s].held) arp[s].held--;
-    if (!arp[s].hold) {
-        for (; i + 1 < arp[s].n; i++) { arp[s].note[i] = arp[s].note[i + 1]; arp[s].vel[i] = arp[s].vel[i + 1]; }
+    if (i == arp[s].n || !arp[s].hc[i]) return 0;        /* not the arp's: a note of before, let go as it was */
+    arp[s].hc[i]--; arp[s].held--;
+    if (!arp[s].hold && !arp[s].hc[i]) {                /* (held still by another: it stays) */
+        for (; i + 1 < arp[s].n; i++) { arp[s].note[i] = arp[s].note[i + 1]; arp[s].vel[i] = arp[s].vel[i + 1]; arp[s].hc[i] = arp[s].hc[i + 1]; }
         arp[s].n--;
         if (!arp[s].n) arp_release(s);
     }

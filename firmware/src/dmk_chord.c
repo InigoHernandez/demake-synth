@@ -146,7 +146,7 @@ static const prog_t *cur_prog(void) { return ch.prog < 16 ? &PROG[ch.prog] : &up
 static int follow_note(int s, int n)
 {
     switch (ch.follow[s]) {
-    case FW_KEY: return snap_set(n, pc_bent(), ch_cmask);
+    case FW_KEY: return snap(n) != n ? n : snap_set(n, pc_bent(), ch_cmask);   /* (one played off the scale: as played) */
     case FW_CHORD: return snap_set(n, ch_cmask ? ch_cmask : pc_scale(), ch_cmask);
     case FW_ROOT: {                                     /* the roll moved by the root's steps from the first chord's,
                                                            * counted from the key's tonic, the shortest way */

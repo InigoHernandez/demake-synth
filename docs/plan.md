@@ -444,7 +444,7 @@ the only verbs are OCT− and OCT+. Undo keeps MONO2K's GLO + OCT− because it 
 | nothing held | ALGORITHM | ZOOM: 16, 32 or 64 steps across |
 | cursor on notes | — | the notes starting at the cursor are outlined, **and their keys' LEDs blink**: hold the blinking key to edit, delete or duplicate it |
 | playing | a key | plays (not written); the view follows the playhead |
-| playing + REC | a key | recorded as played: its step and its 32nds of a step after it (micro timing; a strummed chord keeps its spacing), length rounded to steps (at least 1), pitch snapped; overdub. Stopped, REC lit, PLAY: ready, the first key starts it (0.4.13, the owner). One REC pass is one undo step |
+| playing + REC | a key | recorded as played: its step and its 32nds of a step after it (micro timing; a strummed chord keeps its spacing), length rounded to steps (at least 1), the pitch as played (0.4.16: not snapped to the scale; a note off it drawn between its rows, Follows the key leaves it); overdub. Stopped, REC lit, PLAY: ready, the first key starts it (0.4.13, the owner). One REC pass is one undo step |
 | SEQ held | K1 / K2 / K3 / K4 | SHIFT (rotate the pattern) / TRANSPOSE (all notes, scale steps) / STEPS (1–64) / SPEED (1/16, 1/8, 1/4, 1/2 per step) |
 | SEQ held | ALGORITHM | FOLLOW: FREE · KEY · CHORD · ROOT · PLAYS CHORDS (4.6) |
 | SEQ held | OCT− / OCT+ | clear this synth's sequence / double it (length × 2, the notes copied) |
