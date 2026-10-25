@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.14.fwsc",
-  "version": "0.4.14",
+  "file": "demake-0.4.15.fwsc",
+  "version": "0.4.15",
   "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "c5b2fd0093be38f18762b130bbac10ea4a06b0e4eedc5b0237d3b21e3be4b52a",
-  "note": "Patterns up to 256 steps (16 bars), 96 notes each; Vary on the chords a synth plays and on its arp; recorded as played, NUDGE, REC and PLAY ready for the first key."
+  "sha256": "1882d379c58c50a9b48271b440c7f722a31bd9749531992cd38502f956587259",
+  "note": "SAVE as two pages: Projects (save into an empty slot or over the one open, open, a new empty project, rename, delete) and Sounds (a recording or a kept sound for each track, keep it, init)."
 }
