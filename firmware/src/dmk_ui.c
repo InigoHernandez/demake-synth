@@ -1006,7 +1006,7 @@ static const struct { uint8_t n, at[8]; int8_t c[8]; } SKY[DMK_SCENES] = {
     {4, {0, 40, 66, 76}, {-1, -1, C_HOLO0, C_HOLO1}},
     {5, {0, 14, 34, 54, 72}, {-1, C_HOLO0, C_HOLO1, C_HOLO2, C_HOLO3}},   /* ROOM: the city's night through the window */
     {3, {0, 64, 96}, {-1, -1, C_HOLO0}},                                   /* DESK: the wall, dark, a glow low by the screen */
-    {5, {0, 14, 34, 58, 84}, {-1, -1, C_HOLO0, C_HOLO1, C_HOLO2}},       /* FOREST: after sunset, the fog's blue, lighter low */
+    {5, {0, 22, 50, 74, 92}, {-1, -1, C_HOLO0, C_HOLO1, C_HOLO1}},       /* FOREST: after sunset, the fog's blue */
     {2, {0, 80}, {-1, -1}},                                                /* LIVING: indoors (its wall drawn) */
     {7, {0, 8, 18, 28, 38, 46, 52}, {-1, C_HOLO1, C_HOLO2, C_HOLO4, C_HOLO5, C_HOLO6, C_HOLO7}},   /* VILLA: the sun on the sea */
     {7, {0, 12, 24, 36, 46, 56, 66}, {-1, C_HOLO0, C_HOLO2, C_HOLO3, C_HOLO4, C_HOLO5, C_HOLO6}},  /* CALIFORNIA */
