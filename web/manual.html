@@ -153,6 +153,7 @@
           <p><b>Held + ALGO</b><span>Its velocity</span></p>
           <p><b>Held + OCT&minus;</b><span>Deletes it; OCT+ copies it after itself</span></p>
           <p><b>K1 K2</b><span>The cursor, the view</span></p>
+          <p><b>K3, Follow</b><span>How it follows the chords; Free: as written</span></p>
           <p><b>K4</b><span>This synth's length, 1 to 256 steps</span></p>
           <p><b>A click</b><span>A step to 16, a beat to 64, then a bar</span></p>
           <p><b>PLAY</b><span>Plays all three; the keys play along</span></p>
@@ -183,7 +184,7 @@
           <p><b>ALGORITHM, Hold</b><span>On: the notes stay when let go, till a new chord</span></p>
         </div>
         <p class="note">A note above or below the seven rows in view leaves a mark at the roll's edge; one you write, the view goes to.</p>
-        <p class="note">A roll written to is heard: a synth that played the chords plays its roll from then (SEQ + ALGORITHM puts it back). A roll cleared is silent, the chords it played too.</p>
+        <p class="note">A roll written to is heard: a synth that played the chords plays its roll from then (the roll's K3, Follow, or SEQ + ALGORITHM puts it back). A roll cleared is silent, the chords it played too.</p>
       </article>
       <article id="chords" data-group="Playing">
         <h1>Chords</h1>
@@ -195,7 +196,7 @@
           <p><b>Voice row</b><span>Voicing, inversion (Auto moves least), spread, strum</span></p>
           <p><b>Key row</b><span>Key, mode, chord length, rhythm</span></p>
           <p><b>Keys row</b><span>Chord or All; the type: sevenths, triads, ninths, add9, sus2, sus4, 6/9, power</span></p>
-          <p><b>SEQ + ALGO</b><span>How this synth follows: chords, key, chord, root, free, or another synth's harmony</span></p>
+          <p><b>SEQ + ALGO</b><span>How this synth follows (the roll's K3 too): chords, key, chord, root, free, or another synth's harmony</span></p>
           <p><b>SEQ + K2</b><span>The harmony's interval: an octave below to an octave above</span></p>
         </div>
         <p class="note">The first song: the pad plays the chords, the piano follows the key, the third synth the root. The card's grey line names the synth that plays them. In harmony with another synth, a synth leaves its roll and plays each note the other plays, moved on the scale; keys played on the lead are harmonized too.</p>
@@ -371,7 +372,7 @@
     <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=29"></script>
+<script src="app.js?v=30"></script>
 <script src="manual.js?v=9"></script>
 </body>
 </html>

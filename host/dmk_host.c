@@ -1179,6 +1179,25 @@ static void selftest(void)
           if (sq[1].count != c0 + 1 || sq[1].n[c0].len != 254) { fails++; printf("selftest: a written note is not as long as the last one set\n"); } }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
+    {   /* the roll's K3, Follow (the owner): a chord written on a synth that follows the root moves with the
+         * progression; turned to Free, it plays as written */
+        int k, v, moved[2] = {0, 0};
+        for (int f = 0; f < 2; f++) {
+            dmk_init(37); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+            tap(B_SEQ); ui.synth = 2; ui.row[PG_ROLL] = 0;
+            sq[2].count = 0; sq[2].steps = 16;
+            seq_add(2, 0, 16, 57, 100); seq_add(2, 0, 16, 60, 100); seq_add(2, 0, 16, 64, 100);
+            if (f) { while (ch.follow[2] != FW_FREE) dmk_encoder(E_K3, -1); }
+            seq_play(1);
+            for (k = 0; k < 1200; k++) {                /* ~7 s: the progression's next chords */
+                dmk_render(b, 256);
+                for (v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == 2 && vc[v].src == SRC_ROLL && vc[v].note != 57 && vc[v].note != 60 && vc[v].note != 64) moved[f]++;
+            }
+            seq_play(0);
+        }
+        if (!moved[0] || moved[1]) { fails++; printf("selftest: Follow on K3: following the root moved %d, Free moved %d\n", moved[0], moved[1]); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* Vary on what a synth plays last (the owner): the chords it plays rest at no chance and move in the scale at
          * full mutation, none doubled; its arp on, the arp's notes vary and the roll feeding it stays as written */
         int k, v, on = 0, moved = 0, out = 0, dup = 0, arp_on_n = 0, arp_moved = 0;

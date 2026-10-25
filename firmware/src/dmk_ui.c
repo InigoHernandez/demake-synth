@@ -39,7 +39,7 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Level 1", "Level 2", "Level 3", "Verb"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
     {"Roll", 3, {"Roll", "Vary", "Arp"}, {"Zoom", "Zoom", "Hold"},
-     {{"Cursor", "View", "Length", "Steps"}, {"Mutate", "Range", "Chance", "Keep"}, {"Mode", "Rate", "Octave", "Gate"}}},
+     {{"Cursor", "View", "Follow", "Steps"}, {"Mutate", "Range", "Chance", "Keep"}, {"Mode", "Rate", "Octave", "Gate"}}},
     {"Sound", 3, {"Main", "Layer", "Voice"}, {"Fine", "Sound", ""},
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
@@ -904,11 +904,10 @@ static void roll_fields(void)                           /* the cursor's, or a he
     v[0] = 0;
     note_name(v, note_of(ui.roll_view[ui.synth]));
     field_show(1, "View", v, (ui.roll_view[ui.synth] - 14) * 127 / 29);
-    {                                                   /* K3: none (the owner: the pen's length confused; a note
-                                                           written takes the last length a held note was given) */
-        int x = 2 * COL + PAD;
-        text(x, Y_FIELDS + 16, "\xE2\x80\x94", &FM, C_LINE);
-        meter(x, Y_FIELDS + 44, COL - 2 * PAD, 0, 0, 0, 1);
+    {                                                   /* K3 (where the pen's length was): how it follows the chords */
+        static const char *const FW_SHORT[FW_COUNT] = {"Free", "Key", "Chord", "Root", "Plays", "With 1", "With 2", "With 3"};
+        int f = ch.follow[ui.synth];
+        field_show(2, "Follow", FW_SHORT[f], f * 127 / (FW_COUNT - 1));
     }
     fmt_int(v, q->steps);
     field_show(3, "Steps", v, q->steps * 127 / SEQ_STEPS);
@@ -2599,6 +2598,20 @@ static const uint8_t *ui_update(uint32_t step, int32_t code)
 
 /* the roll's knobs (docs/plan.md, 3.5): a held note's MOVE, PITCH, LENGTH, VELOCITY; else CURSOR, VIEW, the pen's
  * LENGTH, the synth's STEPS, ZOOM */
+/* how the synth picked follows the chords, a step: round; not in harmony with itself, nor with a synth that follows
+ * another or plays the chords: it has no notes of its own to move (a chain was silent). Free: its roll as written
+ * (the owner: a chord recorded kept, the progression not moving it) */
+static void follow_turn(int dir)
+{
+    int f = ch.follow[ui.synth], i;
+    for (i = 0; i < FW_COUNT; i++) {
+        f = wrap(f + dir, FW_COUNT);
+        if (!(f >= FW_HARM1 && f <= FW_HARM3 && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS))) break;
+    }
+    if (ch.follow[ui.synth] == FW_PLAYS) chord_off(ui.synth);
+    ch.follow[ui.synth] = (uint8_t)f;
+    chord_join(ui.synth);                               /* set to play them: the chord sounding now */
+}
 static void roll_turn(int k, int d)
 {
     int s = ui.synth, h = roll_held(), st = sq[s].steps, dir = d > 0 ? 1 : -1;
@@ -2635,6 +2648,7 @@ static void roll_turn(int k, int d)
     }
     if (k == 0) ui.roll_cur[s] = (uint8_t)((ui.roll_cur[s] + dir + st) % st);
     if (k == 1) { int v = ui.roll_view[s] + dir; ui.roll_view[s] = (uint8_t)(v < 14 ? 14 : v > 43 ? 43 : v); }
+    if (k == 2) follow_turn(dir);                       /* how it follows the chords: Free, its roll as written */
     if (k == 3) {                                       /* this synth's length: the three loop against each other; a
                                                            click a step to 16, a beat to 64, then a bar to 256 */
         int g = dir > 0 ? (st < 16 ? 1 : st < 64 ? 4 : 16) : (st <= 16 ? 1 : st <= 64 ? 4 : 16);
@@ -3001,18 +3015,10 @@ DMK_SMALL static void ui_encoder(int e, int d)
         notice(t);
         return;
     }
-    if (k == 4 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, ALGORITHM: how this synth follows the chords */
+    if (k == 4 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, ALGORITHM: how this synth follows the chords (the
+                                                           roll's K3 too) */
         char t[32];
-        int dir = d > 0 ? 1 : -1, f = ch.follow[ui.synth], i;
-        /* round; not in harmony with itself, nor with a synth that follows another or plays the chords: it has no
-         * notes of its own to move (a chain was silent) */
-        for (i = 0; i < FW_COUNT; i++) {
-            f = wrap(f + dir, FW_COUNT);
-            if (!(f >= FW_HARM1 && f <= FW_HARM3 && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS))) break;
-        }
-        if (ch.follow[ui.synth] == FW_PLAYS) chord_off(ui.synth);
-        ch.follow[ui.synth] = (uint8_t)f;
-        chord_join(ui.synth);                           /* set to play them: the chord sounding now */
+        follow_turn(d > 0 ? 1 : -1);
         str_cat(t, FOLLOWS[ch.follow[ui.synth]]);
         notice(t);
         return;
