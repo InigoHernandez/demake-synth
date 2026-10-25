@@ -36,8 +36,9 @@ static const char *const NM_A[24] = {"Quiet", "Late", "Slow", "Pale", "Low", "So
 static const char *const NM_B[24] = {"harbour", "radio", "window", "tape", "motel", "garden", "station", "lantern", "signal",
     "orchard", "tide", "hallway", "rooftop", "meadow", "comet", "ferry", "arcade", "forest", "pool", "street", "screen",
     "cassette", "palms", "lights"};
-#define NM_MARK 0xA5u
 static char song_nm[ST_SONGS][20];                      /* each slot's name, if it has one ("" : its progression's) */
+static uint8_t song_nmv[ST_SONGS][3];                   /* and its words' places and mark, to change it (Save's K2, K3) */
+static const char *nm_word(int second, int i) { return (second ? NM_B : NM_A)[i % 24]; }
 static void nm_of(char *o, const uint8_t *v) { o[0] = 0; if (v[2] == NM_MARK && v[0] < 24u && v[1] < 24u) str_cat(str_cat(str_cat(o, NM_A[v[0]]), " "), NM_B[v[1]]); }
 static void nm_roll(uint8_t *v, uint32_t salt)          /* a name made up: two words, never the same twice running */
 {
@@ -81,16 +82,17 @@ static int st_load(uint32_t at, uint32_t magic, uint32_t *len, uint32_t *gen)
     if (gen) *gen = st_get32(st_buf + 12) >> 16;
     return 0;
 }
-/* st_buf's record of n bytes to at; 0: written */
-static int st_save(uint32_t at, uint32_t magic, uint32_t n, uint32_t gen)
+/* st_buf's record of n bytes to at, of version ver (a rename keeps the one it was written in); 0: written */
+static int st_write(uint32_t at, uint32_t magic, uint32_t n, uint32_t gen, uint32_t ver)
 {
     if (!store_on() || n > ST_SECTOR - ST_HDR) return -1;
     st_put32(st_buf, magic);
     st_put32(st_buf + 4, n);
     st_put32(st_buf + 8, st_crc(st_buf + ST_HDR, n));
-    st_put32(st_buf + 12, gen << 16 | ST_VER);
+    st_put32(st_buf + 12, gen << 16 | ver);
     return dmk_store_write(at, st_buf, ST_HDR + n);
 }
+static int st_save(uint32_t at, uint32_t magic, uint32_t n, uint32_t gen) { return st_write(at, magic, n, gen, ST_VER); }
 
 /* ---- the library: USER sounds */
 static int lib_count(void) { int i, n = 0; for (i = 0; i < ST_USER; i++) n += lib[i][0]; return n; }
@@ -354,12 +356,16 @@ static void songs_scan(void)                            /* which slots hold a so
     uint32_t n, g;
     st_gen = 0;
     for (i = 0; i < ST_SONGS; i++) {
-        song_gen[i] = 0; song_nm[i][0] = 0;
+        song_gen[i] = 0; song_nm[i][0] = 0; song_nmv[i][2] = 0;
         if (st_load(slot_at(i), ST_MAGIC_SONG, &n, &g)) continue;
         song_gen[i] = g ? g : 1;
         /* the progression's place, for the slot's name: the CHORD page's value, packed after the counts */
         song_prog[i] = st_buf[ST_HDR + 1 + PG_CHORD * 20 + 4];
-        nm_of(song_nm[i], &st_buf[ST_HDR + 1 + PG_DISCS * 20 + 5]);   /* (synth 0's Songs page, its row 1) */
+        {                                               /* (synth 0's Save page, its row 1) */
+            const uint8_t *v = &st_buf[ST_HDR + 1 + PG_DISCS * 20 + 5];
+            nm_of(song_nm[i], v);
+            song_nmv[i][0] = v[0]; song_nmv[i][1] = v[1]; song_nmv[i][2] = song_nm[i][0] ? NM_MARK : 0;
+        }
         if (g > st_gen) st_gen = g;
     }
 }
@@ -378,6 +384,21 @@ static int song_save(int i)
     song_gen[i] = st_gen ? st_gen : 1;
     song_prog[i] = ui.val[0][PG_CHORD][0][4];
     nm_of(song_nm[i], ui.val[0][PG_DISCS][1]);
+    for (n = 0; n < 3; n++) song_nmv[i][n] = ui.val[0][PG_DISCS][1][n];
+    return 0;
+}
+/* slot i renamed where it is: its record as it was (its version, how new it is), only its name's three bytes; the
+ * song open, if it is that one, takes the name too: 0, or -1 */
+static int song_rename(int i, const uint8_t *v)
+{
+    uint32_t n, g;
+    uint8_t *nm = st_buf + ST_HDR + 1 + PG_DISCS * 20 + 5;
+    if (!song_used(i) || st_load(slot_at(i), ST_MAGIC_SONG, &n, &g) || st_buf[ST_HDR] != PG_SAVED) return -1;
+    nm[0] = v[0]; nm[1] = v[1]; nm[2] = v[2];
+    if (st_write(slot_at(i), ST_MAGIC_SONG, n, g, st_ver)) return -1;
+    song_nmv[i][0] = v[0]; song_nmv[i][1] = v[1]; song_nmv[i][2] = v[2];
+    nm_of(song_nm[i], v);
+    if (i == ui.song) { ui.val[0][PG_DISCS][1][0] = v[0]; ui.val[0][PG_DISCS][1][1] = v[1]; ui.val[0][PG_DISCS][1][2] = v[2]; }
     return 0;
 }
 static int song_load(int i)
@@ -391,7 +412,7 @@ static int song_erase(int i)                            /* an empty record: the 
     if (!store_on()) return -1;
     st_put32(st_buf, 0); st_put32(st_buf + 4, 0); st_put32(st_buf + 8, 0); st_put32(st_buf + 12, 0);
     if (dmk_store_write(slot_at(i), st_buf, ST_HDR)) return -1;
-    song_nm[i][0] = 0;
+    song_nm[i][0] = 0; song_nmv[i][2] = 0;
     song_gen[i] = 0;
     return 0;
 }
@@ -404,6 +425,16 @@ static void song_new(void)                              /* the first song: its r
     chord_init();
     ui_init();
     theme = (uint8_t)th;
+    sp_sync();
+}
+/* PLAY twice on an empty slot (the owner): an empty project, its sounds at INIT, nothing following the chords (so
+ * PLAY is silent until something is written), no name until it is saved */
+static void project_empty(void)
+{
+    int s;
+    song_new();
+    for (s = 0; s < DMK_SYNTHS; s++) { sq[s].count = 0; ch.follow[s] = FW_FREE; sound_init(s); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
+    ui.val[0][PG_DISCS][1][2] = 0;
     sp_sync();
 }
 

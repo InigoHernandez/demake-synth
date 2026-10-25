@@ -525,9 +525,9 @@ seamless while playing.
 | which synth the chords play | 2 | SEQ held, ALGORITHM (PLAYS CHORDS) |
 | save the song | 1 | SAVE |
 | save a sound | 2 | EDIT held, SAVE |
-| ⚑ save into another slot | 4 | SAVE held 1 s, K1, SAVE, YES if it holds a song |
-| ⚑ load a song | 3–4 | SAVE held 1 s, K1, PLAY, YES if the open song has unsaved edits |
-| ⚑ new song | 3 | SAVE held 1 s, K1 to an empty slot, PLAY |
+| ⚑ save into another slot | 3 | SAVE (Projects), K1 to an empty slot, SAVE (a new name made up); never over another project (0.4.15, the owner) |
+| ⚑ load a song | 3 | SAVE, K1, PLAY twice |
+| ⚑ new song | 3 | SAVE, K1 to an empty slot, PLAY twice: an empty project, its sounds at init; rename: K2/K3, a word each; delete: OCT− twice; Sounds (ALGO): K2 a recording, K3 a kept sound, SAVE keeps, OCT− twice init |
 
 The flagged ones are either set once a song or a sound (key, mode, swing, a layer), protected on purpose (saving
 over and loading from flash), a chain (one press a pattern), or a deeper FX row; for that last one the held FX layer

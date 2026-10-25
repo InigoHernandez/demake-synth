@@ -268,9 +268,29 @@ static void tour(const char *dir)
     dmk_button(B_HOME, 1); wait_ms(500); dmk_key(4, 1); dmk_key(4, 0); dmk_key(3, 1); dmk_key(3, 0); wait_ms(60); shot(dir, "home_held");
     dmk_key(0, 1); dmk_key(0, 0); dmk_key(3, 1); dmk_key(3, 0); dmk_button(B_HOME, 0); wait_ms(60);   /* pattern 3 made, synth 2 muted and back */
     tap(B_OCTU); wait_ms(300); shot(dir, "notice");
-    tap(B_SAVE); wait_ms(100); shot(dir, "save");        /* SAVE: the save screen, the slot, the name */
-    tap(B_SAVE); wait_ms(100); shot(dir, "saved"); wait_ms(1500);   /* again: saved, back where it was */
-    dmk_button(B_SAVE, 1); wait_ms(1200); dmk_button(B_SAVE, 0); wait_ms(60); dmk_encoder(E_K1, 1); wait_ms(60); shot(dir, "discs");
+    tap(B_SAVE); wait_ms(100); shot(dir, "save");        /* SAVE: Projects, the cursor on the one open (not saved yet) */
+    tap(B_SAVE); wait_ms(100); shot(dir, "saved"); wait_ms(1500);   /* again: saved there, a name made up */
+    dmk_encoder(E_K3, 1); wait_ms(60); shot(dir, "save_name"); wait_ms(1600);   /* its name's second word turned */
+    shot(dir, "save_projects");                          /* (the manual's: saved, at rest) */
+    for (int i = 0; i < 6; i++) dmk_encoder(E_K1, 1);
+    wait_ms(60); shot(dir, "save_list");                 /* the cursor past the rows in view: the list moved */
+    dmk_encoder(E_ALGO, 1); wait_ms(60); shot(dir, "save_sounds");   /* Sounds: the three tracks */
+    {   /* every recording's name beside a kept sound's number, audited (not kept) */
+        uint8_t r0 = ui.val[0][PG_SOUND][0][0], p0 = ui.preset[0], l0 = lib[0][0];
+        lib[0][0] = 1;
+        for (int r = 0; r < DMK_SAMPLES_N; r++) { ui.val[0][PG_SOUND][0][0] = (uint8_t)r; ui.preset[0] = DMK_SAMPLES_N; shot(0, "snd"); }
+        lib[0][0] = l0; ui.val[0][PG_SOUND][0][0] = r0; ui.preset[0] = p0; sp_sync();
+    }
+    dmk_encoder(E_ALGO, 1);
+    {   /* every name a project can have, on its row and across the fields, audited (not kept) */
+        save_pick(0);
+        for (int a = 0; a < 24; a++) for (int b2 = 0; b2 < 24; b2++) {
+            ui.ren_slot = 0; ui.ren_v[0] = (uint8_t)a; ui.ren_v[1] = (uint8_t)b2; ui.ren_v[2] = NM_MARK; ui.ren_at = now_ms;
+            shot(0, "name");
+        }
+        ui.ren_slot = 0xFF;
+    }
+    tap(B_HOME);
     tap(B_GLO); tap(B_GLO); tap(B_GLO); tap(B_GLO);     /* to SETUP: its K4 the theme */
     for (int t = 1; t < DMK_THEMES; t++) {
         dmk_encoder(E_K4, 1);
@@ -467,8 +487,10 @@ static void selftest(void)
         if (ui.page == PG_HOME) { fails++; printf("selftest: a used HOME opened Home on release\n"); }
         seq_init();
     }
-    /* the store: SAVE keeps the song; a start loads the newest; SONGS loads, saves over (twice), empties; EDIT + SAVE
-     * puts the sound in the library, PRESETS reaches it, EDIT + OCT- is INIT */
+    /* the store, SAVE's pages (the owner): SAVE opens Projects on the project open; SAVE there saves into an empty slot
+     * (a name made up) or over the open one, not over another; a start opens the newest; PLAY twice opens one, on an
+     * empty slot a new empty project; OCT- twice deletes; the list moves only past the rows in view; Sounds: SAVE
+     * keeps the track's sound, OCT- twice is INIT, K3 brings the kept one back; EDIT + SAVE, PRESETS as before */
     {
         int notes, cut;
         host_store_on(1, 1);
@@ -476,30 +498,65 @@ static void selftest(void)
         seq_add(0, 5, 3, 62, 90); notes = sq[0].count;
         ui.val[0][PG_FILTER][0][0] = 33; cut = 33; sp_sync();
         tap(B_SAVE);
-        if (ui.page != PG_DISCS || !ui.save_mode || song_used(0)) { fails++; printf("selftest: SAVE does not open the save screen\n"); }
+        if (ui.page != PG_DISCS || ui.row[PG_DISCS] || ui.song_pick != ui.song || song_used(0)) { fails++; printf("selftest: SAVE does not open Projects on the project open\n"); }
         tap(B_SAVE);
-        if (strncmp(ui.note, "Saved: ", 7) || !song_used(0) || ui.page != PG_HOME) { fails++; printf("selftest: SAVE twice does not save and go back (%s)\n", ui.note); }   /* (a new song: its name) */
-        seq_play(1); tap(B_SAVE); tap(B_SAVE); seq_play(0);
+        if (strncmp(ui.note, "Saved: ", 7) || !song_used(0) || !strchr(song_name(0), ' ') || ui.page != PG_DISCS) { fails++; printf("selftest: SAVE there does not save it, named (%s)\n", ui.note); }
+        seq_play(1); tap(B_SAVE); seq_play(0);
         if (strcmp(ui.note, "Stop to save")) { fails++; printf("selftest: SAVE while playing is not refused\n"); }
         dmk_init(10); now_ms = 0; wait_ms(60);
-        if (sq[0].count != notes || ui.val[0][PG_FILTER][0][0] != cut || seq_find(0, 5, 62) < 0) { fails++; printf("selftest: a start does not load the saved song\n"); }
+        if (sq[0].count != notes || ui.val[0][PG_FILTER][0][0] != cut || seq_find(0, 5, 62) < 0) { fails++; printf("selftest: a start does not open the saved project\n"); }
         ui.boot_done = 1;
-        ui.val[1][PG_AMP][0][0] = 5; sq[2].count = 0;   /* a second song, in slot 2 */
-        dmk_button(B_SAVE, 1); wait_ms(1100); dmk_button(B_SAVE, 0); wait_ms(30);
-        if (ui.page != PG_DISCS) { fails++; printf("selftest: SAVE held does not open SONGS\n"); }
-        dmk_encoder(E_K1, 1); tap(B_SAVE);
-        if (!song_used(1) || ui.song != 1) { fails++; printf("selftest: SAVE on SONGS does not save into the slot picked\n"); }
-        dmk_encoder(E_K1, -1); tap(B_PLAY);             /* slot 1: the first song back, PLAY twice (once asks) */
-        if (ui.page != PG_DISCS || strcmp(ui.note, "PLAY again: open it")) { fails++; printf("selftest: one PLAY on SONGS opens the song without asking\n"); }
+        ui.val[1][PG_AMP][0][0] = 5; sq[2].count = 0;   /* changed: a second project, in slot 2 */
+        tap(B_SAVE); dmk_encoder(E_K1, 1); tap(B_SAVE);
+        if (!song_used(1) || ui.song != 1 || !strcmp(song_name(0), song_name(1))) { fails++; printf("selftest: SAVE into an empty slot does not make a new project\n"); }
+        dmk_encoder(E_K1, -1); tap(B_SAVE);
+        if (strcmp(ui.note, "Pick an empty slot")) { fails++; printf("selftest: SAVE over another project is not refused (%s)\n", ui.note); }
         tap(B_PLAY);
-        if (ui.page != PG_HOME || ui.val[1][PG_AMP][0][0] == 5 || sq[0].count != notes) { fails++; printf("selftest: PLAY on SONGS does not load\n"); }
-        dmk_button(B_SAVE, 1); wait_ms(1100); dmk_button(B_SAVE, 0); wait_ms(30); dmk_encoder(E_K1, 1);
-        tap(B_SAVE);                                    /* over song 2, once: asks */
-        if (strcmp(ui.note, "SAVE again: over it")) { fails++; printf("selftest: saving over another song does not ask\n"); }
+        if (ui.page != PG_DISCS || strcmp(ui.note, "PLAY again: open it")) { fails++; printf("selftest: one PLAY on Projects opens without asking\n"); }
+        tap(B_PLAY);
+        if (ui.page != PG_HOME || ui.val[1][PG_AMP][0][0] == 5 || sq[0].count != notes || ui.song != 0) { fails++; printf("selftest: PLAY twice on Projects does not open it\n"); }
+        tap(B_SAVE); dmk_encoder(E_K1, 1);
         tap(B_OCTD); tap(B_OCTD);
-        if (song_used(1)) { fails++; printf("selftest: OCT- twice on SONGS does not empty the slot\n"); }
-        dmk_encoder(E_K1, 1); tap(B_PLAY); tap(B_PLAY); /* an empty slot: a new song */
-        if (sq[0].count == notes && seq_find(0, 5, 62) >= 0) { fails++; printf("selftest: an empty slot does not start a new song\n"); }
+        if (song_used(1)) { fails++; printf("selftest: OCT- twice on Projects does not delete\n"); }
+        tap(B_PLAY); tap(B_PLAY);                       /* an empty slot: a new, empty project */
+        if (sq[0].count || sq[1].count || sq[2].count || ch.follow[0] != FW_FREE || ui.song != 1 || ui.val[0][PG_DISCS][1][2] == NM_MARK)
+            { fails++; printf("selftest: PLAY twice on an empty slot is not an empty project\n"); }
+        {                                               /* the list: still from 01 till the cursor passes 04, then by one */
+            tap(B_SAVE); save_pick(0);
+            for (int i = 0; i < 3; i++) dmk_encoder(E_K1, 1);
+            if (ui.list_top != 0) { fails++; printf("selftest: the list moved before the cursor passed its rows\n"); }
+            dmk_encoder(E_K1, 1);
+            if (ui.list_top != 1 || ui.song_pick != 4) { fails++; printf("selftest: the list does not follow the cursor past its rows\n"); }
+            for (int i = 0; i < 20; i++) dmk_encoder(E_K1, 1);
+            if (ui.song_pick != ST_SONGS - 1 || ui.list_top != ST_SONGS - SAVE_ROWS) { fails++; printf("selftest: the list's end\n"); }
+            for (int i = 0; i < 3; i++) dmk_encoder(E_K1, -1);
+            if (ui.list_top != ST_SONGS - SAVE_ROWS) { fails++; printf("selftest: the list moved back before the cursor passed its rows\n"); }
+        }
+        {                                               /* a project's name changed: written once the knob rests */
+            char was[24];
+            save_pick(0); strcpy(was, song_name(0));
+            dmk_encoder(E_K2, 1); dmk_encoder(E_K3, 1);
+            if (strcmp(was, song_name(0))) { fails++; printf("selftest: a name is written while it is turned\n"); }
+            wait_ms(1200);
+            if (!strcmp(was, song_name(0))) { fails++; printf("selftest: a turned name is not written\n"); }
+            strcpy(was, song_name(0)); songs_scan();
+            if (strcmp(was, song_name(0)) || song_load(0)) { fails++; printf("selftest: a renamed project does not come back as it was\n"); }
+            ui.song = 1;
+        }
+        dmk_encoder(E_ALGO, 1);                         /* Sounds */
+        if (ui.row[PG_DISCS] != 1) { fails++; printf("selftest: ALGO does not turn Save to Sounds\n"); }
+        ui.synth = 0; dmk_encoder(E_K1, 1);
+        ui.val[1][PG_FILTER][0][1] = 77; sp_sync();
+        tap(B_SAVE);
+        if (ui.synth != 1 || lib_count() != 1 || strncmp(ui.note, "Kept as User", 12)) { fails++; printf("selftest: SAVE on Sounds does not keep the track's sound (%s)\n", ui.note); }
+        tap(B_OCTD); tap(B_OCTD);
+        if (ui.val[1][PG_FILTER][0][1] == 77) { fails++; printf("selftest: OCT- twice on Sounds is not INIT\n"); }
+        dmk_encoder(E_K3, 1);
+        if (ui.val[1][PG_FILTER][0][1] != 77) { fails++; printf("selftest: K3 on Sounds does not bring the kept sound back\n"); }
+        { int r0 = ui.val[1][PG_SOUND][0][0]; dmk_encoder(E_K2, 1);
+          if (ui.val[1][PG_SOUND][0][0] != (r0 + 1) % DMK_SAMPLES_N) { fails++; printf("selftest: K2 on Sounds is not the next recording\n"); } }
+        tap(B_HOME);
+        while (lib_count()) { lib[lib_nth(0)][0] = 0; }   /* (the library as it was for what follows) */
         ui.synth = 1; ui.val[1][PG_FILTER][0][1] = 99; sp_sync();
         dmk_button(B_EDIT, 1); wait_ms(30); dmk_button(B_SAVE, 1); dmk_button(B_SAVE, 0); dmk_button(B_EDIT, 0); wait_ms(30);
         if (lib_count() != 1) { fails++; printf("selftest: EDIT + SAVE does not save the sound (%s)\n", ui.note); }
@@ -970,25 +1027,20 @@ static void selftest(void)
         #undef QUIET
         #undef PEAK
     }
-    {   /* the save screen: an empty slot proposes a new name, K2 another, K3 twice INIT the synth; a used slot its own */
-        char a1[24], a2[24];
+    {   /* Save's Projects: the cursor over empty slots makes no names (the owner: names appeared as it passed); a project
+         * gets one as it is first saved, kept when saved over; Save stays open after a save */
+        char a1[24];
         host_store_on(1, 1);
         dmk_init(34); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         tap(B_SEQ); tap(B_SAVE);
-        nm_of(a1, ui.nm_prop);
-        dmk_encoder(E_K2, 1); wait_ms(30);
-        nm_of(a2, ui.nm_prop);
-        if (ui.page != PG_DISCS || !strchr(a1, ' ') || !strcmp(a1, a2)) { fails++; printf("selftest: the save screen's name (%s, then %s)\n", a1, a2); }
-        ui.synth = 2; ui.val[2][PG_FILTER][0][1] = 99; sp_sync();
-        dmk_encoder(E_K3, 1); wait_ms(300);
-        if (ui.val[2][PG_FILTER][0][1] != 99) { fails++; printf("selftest: one turn of Init resets the synth\n"); }
-        dmk_encoder(E_K3, 1); wait_ms(30);
-        if (ui.val[2][PG_FILTER][0][1] == 99) { fails++; printf("selftest: Init turned twice does not reset the synth (%s)\n", ui.note); }
+        for (int i = 0; i < 5; i++) dmk_encoder(E_K1, 1);
+        for (int i = 0; i < 5; i++) dmk_encoder(E_K1, -1);
+        if (ui.page != PG_DISCS || ui.val[0][PG_DISCS][1][2] == NM_MARK || song_used(ui.song_pick)) { fails++; printf("selftest: passing empty slots made a name\n"); }
         tap(B_SAVE);
-        if (!song_used(0) || strcmp(song_name(0), a2) || ui.page != PG_ROLL) { fails++; printf("selftest: the save screen saves another name or stays (%s)\n", song_used(0) ? song_name(0) : "-"); }
-        tap(B_SAVE);
-        nm_of(a1, ui.nm_prop);
-        if (strcmp(a1, a2)) { fails++; printf("selftest: the song's own slot proposes another name (%s)\n", a1); }
+        strcpy(a1, song_used(0) ? song_name(0) : "");
+        if (!strchr(a1, ' ') || ui.page != PG_DISCS) { fails++; printf("selftest: a first save has no name, or Save closed (%s)\n", a1); }
+        dmk_encoder(E_K1, 2); dmk_encoder(E_K1, -2); tap(B_SAVE);
+        if (strcmp(a1, song_name(0))) { fails++; printf("selftest: saved over, it was renamed (%s)\n", song_name(0)); }
         tap(B_HOME);
         host_store_on(0, 0);
     }

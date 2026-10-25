@@ -98,7 +98,7 @@
           <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
-          <p><b>SAVE</b><span>The save screen: a slot, its name; again, saved</span></p>
+          <p><b>SAVE</b><span>Projects and sounds; again, saved</span></p>
           <p><b>PLAY, REC</b><span>Play the rolls and chords; record the keys as played</span></p>
           <p><b>OCT&minus; OCT+</b><span>The octave as you let go; with a note held, delete or copy</span></p>
         </div>
@@ -242,22 +242,30 @@
       </article>
       <article id="saving" data-group="Playing">
         <h1>Saving</h1>
-        <p class="msub">Fourteen songs and thirty-two sounds, kept in the machine. The newest song opens at start.</p>
-        <figure class="mfig"><img src="img/screens/25_save.png" alt="Save" width="240" height="240"><figcaption>Save: a slot, empty or not; a new one's name.</figcaption></figure>
+        <p class="msub">Fourteen projects and thirty-two sounds, kept in the machine. The newest project opens at start.</p>
+        <figure class="mfig"><img src="img/screens/30_save_projects.png" alt="Save, Projects" width="240" height="240"><figcaption>Projects: the one open, saved and named.</figcaption></figure>
         <div class="mt">
-          <p><b>SAVE</b><span>The save screen, on the song's own slot</span></p>
-          <p><b>K1 or SELECT</b><span>A slot, empty or not; an empty one shows the name a save there takes</span></p>
-          <p><b>K2, Name</b><span>Another name, made up: two words</span></p>
-          <p><b>K3, Init</b><span>Twice: the synth selected back to its first sound</span></p>
-          <p><b>SAVE again</b><span>Saved there, while stopped; then back to the page you were on</span></p>
-          <p><b>SAVE held</b><span>Songs, to open one</span></p>
-          <p><b>On Songs, PLAY twice</b><span>Opens it (the song open is left, unsaved changes too); an empty slot starts a new song</span></p>
-          <p><b>On Songs, SAVE</b><span>Saves there; twice over another song</span></p>
-          <p><b>On Songs, OCT&minus;</b><span>Twice: empties the slot</span></p>
-          <p><b>EDIT + SAVE</b><span>This synth's sound into your library, User 01 on</span></p>
-          <p><b>EDIT + OCT&minus;</b><span>Init: the first song's sound, the recording kept</span></p>
+          <p><b>SAVE</b><span>Projects, the cursor on the one open</span></p>
+          <p><b>ALGORITHM</b><span>Projects or Sounds</span></p>
+          <p><b>K1 or SELECT</b><span>A project; the list moves past its ends</span></p>
+          <p><b>SAVE again</b><span>Into an empty slot, or over the one open</span></p>
+          <p><b>A new name</b><span>Made up as it is first saved: two words</span></p>
+          <p><b>K2, K3</b><span>Its name, a word each; kept as they rest</span></p>
+          <p><b>PLAY twice</b><span>Opens it; on an empty slot, a new project</span></p>
+          <p><b>A new project</b><span>Empty rolls, the sounds at init</span></p>
+          <p><b>OCT&minus; twice</b><span>Deletes it</span></p>
         </div>
-        <p class="note">A song is everything that plays: the sounds, the effects, the key and chords, the tempo and the rolls. In the emulator, saves stay in this browser.</p>
+        <figure class="mfig"><img src="img/screens/32_save_sounds.png" alt="Save, Sounds" width="240" height="240"><figcaption>Sounds: the three tracks.</figcaption></figure>
+        <div class="mt">
+          <p><b>K1 or SELECT</b><span>A track</span></p>
+          <p><b>K2, Sound</b><span>A recording for it</span></p>
+          <p><b>K3, User</b><span>A sound you kept, whole</span></p>
+          <p><b>SAVE</b><span>Keeps its sound in your library</span></p>
+          <p><b>OCT&minus; twice</b><span>Its sound back to init</span></p>
+          <p><b>EDIT + SAVE</b><span>The same, from any page</span></p>
+          <p><b>EDIT + OCT&minus;</b><span>Init, from any page</span></p>
+        </div>
+        <p class="note">A project is everything that plays: the sounds, the effects, the key and chords, the tempo and the rolls. Save while stopped. In the emulator, saves stay in this browser.</p>
       </article>
       <article id="sounds" data-group="Sound">
         <h1>The sounds</h1>
@@ -363,7 +371,7 @@
     <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 <script src="manual.js?v=9"></script>
 </body>
 </html>
