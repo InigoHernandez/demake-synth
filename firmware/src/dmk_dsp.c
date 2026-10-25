@@ -1069,7 +1069,7 @@ static uint32_t exp2n(uint32_t x)
     return v >> i;
 }
 /* the decay gains for type t at SIZE sz: each line's own, so all lose 60 dB in the same time */
-static void rv_gains(rvs_t *r, int t, int sz)
+DMK_SMALL static void rv_gains(rvs_t *r, int t, int sz)
 {
     static const uint16_t PLH = 112 + 742 + 300 + 620;  /* (PLATE: a half's length, round which the decay is taken) */
     uint32_t q = exp2n((uint32_t)sz * RV_SPAN[t] / 127u), g;
@@ -1179,7 +1179,7 @@ static void rv_spring(rvs_t *r, int16_t *m, const synth_t *p, const int32_t *x, 
 #undef RVM
 
 /* a synth's reverb silent: its lines and its state (its type, its share and its way in kept) */
-static void rv_clear(int s)
+DMK_SMALL static void rv_clear(int s)
 {
     rvs_t *r = &rvs[s];
     uint8_t cur = r->cur, *z = (uint8_t *)r;

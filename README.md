@@ -18,14 +18,14 @@ dithered, for what is lit.
 
 - **The sound.**
   - The 64 recordings are built in, like a rompler, with nothing to load.
-  - A filter with eight shapes and a drive, an envelope, and an LFO on the pitch, cutoff, level, pan or start, free
+  - A filter with seven shapes (and off) and a drive, an envelope, and an LFO on the pitch, cutoff, level, pan or start, free
     or on the tempo.
   - A layer: a second recording under a sound. Glide, velocity, the cutoff following the key, and grit (the voice at
     22 or 11 kHz).
-  - Per synth: Colour (saturate, crush, codec, noise, warm, distort), a Delay in time (delay or ping-pong) and
-    Motion (chorus, vibrato, drift, ensemble, phaser, flanger, tremolo).
-  - Shared: eleven reverbs (room, hall, space, haze, bloom, lofi, plate, spring, shimmer, reverse, freeze), a tape
-    echo or grains, and Media over the whole mix (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
+  - Per synth: a Reverb of its own (room, plate, spring, hall), a Delay in time (delay or ping-pong) and Motion
+    (chorus, vibrato, drift, ensemble, phaser, flanger, tremolo).
+  - Shared: a tape echo or grains, and over the whole mix a Colour (saturate, crush, lossy, noise, warm, distort) and
+    a Media (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
 - **The music.**
   - Three synths, each with a piano roll of up to 256 steps and eight patterns of its own, recorded as played
     (micro timing, a strum's spacing), notes that can move in the scale and play by chance (Vary, on the roll, the
