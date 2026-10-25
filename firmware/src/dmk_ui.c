@@ -799,6 +799,22 @@ static void fields_band(void)
     }
 }
 
+/* the page's rows, as a pagination under its card (the owner: subtle, dots at the bottom): the row open a short pill
+ * in ink, the others dots, between the card and the foot's words (rows 222-224: air above and below) */
+static void page_dots(void)
+{
+    int p = ui.page, n = rows_built(p), i, w, x;
+    if (n < 2) return;
+    w = n * 3 + (n - 1) * 3 + 5;                        /* (the open one 5 px longer) */
+    x = (DMK_W - w) / 2;
+    for (i = 0; i < PAGE[p].rows; i++) {
+        int open = i == ui.row[p];
+        if (row_soon(p, i)) continue;
+        round_fill(x, Y_FOOT - 2, open ? 8 : 3, 3, 1, open ? C_INK : C_LABEL);
+        x += (open ? 8 : 3) + 3;
+    }
+}
+
 static void foot(void)
 {
     const page_t *pg = &PAGE[ui.page];
@@ -2273,6 +2289,7 @@ static const uint8_t *ui_frame(uint32_t ms)
     }
     ui_yield();
     foot();
+    if (!(ui.btn_held >> B_HOME & 1u && ui.now - ui.btn_down_at[B_HOME] > 350u)) page_dots();   /* (not over the scenes) */
     overlays();
     if (!ui.boot_done) boot_leave(ms);
     return fb;
