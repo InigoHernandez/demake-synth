@@ -799,18 +799,32 @@ static void fields_band(void)
     }
 }
 
-/* the page's rows, as a pagination under its card (the owner: subtle, dots at the bottom): the row open a short pill
- * in ink, the others dots, between the card and the foot's words (rows 222-224: air above and below) */
+/* the page's rows, as a pagination on the foot's line (the owner: subtle dots, centred in it): the row open a short
+ * pill in ink, the others dots; in the middle, or where the foot's words leave room nearest it (4 px of air each
+ * side); none where they leave none */
+static int dots_w(int n) { return n < 2 ? 0 : n * 3 + (n - 1) * 3 + 5; }   /* (the open one 5 px longer) */
+static int dots_at = -1;                                /* where they were drawn (the host's checks) */
 static void page_dots(void)
 {
-    int p = ui.page, n = rows_built(p), i, w, x;
+    int p = ui.page, n = rows_built(p), w = dots_w(n), i, x, y, x0, best = -1, bd = DMK_W;
+    uint8_t used[DMK_W];
     if (n < 2) return;
-    w = n * 3 + (n - 1) * 3 + 5;                        /* (the open one 5 px longer) */
-    x = (DMK_W - w) / 2;
-    for (i = 0; i < PAGE[p].rows; i++) {
+    for (x = 0; x < DMK_W; x++) {
+        used[x] = 0;
+        for (y = Y_FOOT + 3; y < Y_FOOT + 12 && !used[x]; y++) used[x] = (uint8_t)(px_get(x, y) != C_PAPER);
+    }
+    for (x0 = PAD; x0 + w <= DMK_W - PAD; x0++) {
+        int ok = 1, d = x0 + w / 2 - DMK_W / 2;
+        for (x = x0 - 4; x < x0 + w + 4 && ok; x++) if (x >= 0 && x < DMK_W && used[x]) ok = 0;
+        if (d < 0) d = -d;
+        if (ok && d < bd) { bd = d; best = x0; }
+    }
+    dots_at = best;
+    if (best < 0) return;
+    for (i = 0, x = best; i < PAGE[p].rows; i++) {
         int open = i == ui.row[p];
         if (row_soon(p, i)) continue;
-        round_fill(x, Y_FOOT - 2, open ? 8 : 3, 3, 1, open ? C_INK : C_LABEL);
+        round_fill(x, Y_FOOT + 6, open ? 8 : 3, 3, 1, open ? C_INK : C_LABEL);   /* (the capitals' middle) */
         x += (open ? 8 : 3) + 3;
     }
 }
@@ -874,11 +888,16 @@ static void foot(void)
     }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
-        int x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL), typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2) || ui.page == PG_FILTER;
+        int typed = (ui.page == PG_FX && r < 3) || (ui.page == PG_GLOBAL && r < 2) || ui.page == PG_FILTER, nd = rows_built(ui.page), x;
+        int end = nd > 1 ? (DMK_W - dots_w(nd)) / 2 - 4 : 130;   /* where its words end: short of the dots */
         val_text(v, ui.page, r, 4);
-        text_fit(x + 6, Y_FOOT + 2, 124 - x, v, &FS, lit(4) ? HOLO : C_INK);
-        if (typed) text_r(DMK_W - PAD - 1, Y_FOOT + 2, sel_scrolls(ui.page) ? "SELECT: the rows" : "PRESET too", &FS, C_LABEL);
-        if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, !seq_on && seq_rec ? "Keys write chords" : "REC: write", &FS, C_LABEL);
+        if (PAD + 1 + text_w(pg->algo[r], &FS) + 6 + text_w(v, &FS) <= end)   /* its name, then the value; a long value */
+            x = text(PAD + 1, Y_FOOT + 2, pg->algo[r], &FS, C_LABEL) + 6;   /* alone (the page above names it): never cut */
+        else x = PAD + 1;
+        text_fit(x, Y_FOOT + 2, end - x, v, &FS, lit(4) ? HOLO : C_INK);
+        if (typed && !sel_scrolls(ui.page)) text_r(DMK_W - PAD - 1, Y_FOOT + 2, "PRESET too", &FS, C_LABEL);   /* (where SELECT
+                                                           scrolls the rows, the dots say so: page_dots) */
+        if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, !seq_on && seq_rec ? "Keys write" : "REC: write", &FS, C_LABEL);
 
         if (ui.page == PG_HOME) {                       /* where the music is: the pattern, or the song */
             char t[20], *o = t;
