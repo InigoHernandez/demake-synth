@@ -239,17 +239,19 @@ def marks():
     sprite(lit_frames(glyph_mask("demake", 92, 384, 96, span=True)), IMG / "wordmark.png")
     stack()
     stack(("ambi", "ent"), "plate_stack.png", plate=True)
+    stack(("ambi", "ent", "lofi", "mach", "ine"), "band_stack.png", lit=(3, 8, 15))   # the band for a phone (the owner:
+                                                                                  # as big as the word), its letters lit
     sprite(lit_frames(glyph_mask("d", 44, 48, 48, fit=True)), IMG / "iso.png")
     Image.fromarray(lit_frames(glyph_mask("d", 58, 64, 64, fit=True))[0], "RGBA").save(IMG / "icon.png", optimize=True)
     print("web/img/wordmark.png, iso.png (six frames each), icon.png")
     return True
 
 
-def stack(words=("dem", "ake"), path="wordmark_stack.png", plate=False):
+def stack(words=("dem", "ake"), path="wordmark_stack.png", plate=False, lit=None):
     """a word for a phone, after Kiloy's specimen (WORD over TYPE): its rows 168 cells wide (7 modules at 2 px a
     cell), the letters as big as the width allows with Kiloy's tight gaps, every row one height, the narrower
     justified to the edges; whole modules tall. Lit as the screen lights a shape, or (plate) in line and in light
-    by turns, as the plate"""
+    by turns, as the plate, or (lit: the letters' places) in ink with those lit, as the band"""
     W, gap, lead = 168, 5, 6
     f4 = ImageFont.truetype(str(KILOY), 800)
     rows = []
@@ -281,7 +283,15 @@ def stack(words=("dem", "ake"), path="wordmark_stack.png", plate=False):
             if i < g:
                 x += c.width + free // g + (1 if i < free % g else 0)
         y += rh + lead
-    if not plate:
+    if lit is not None:
+        frames = []
+        for fk in range(6):
+            out = np.zeros((H, W, 4), np.uint8)
+            for i, m in enumerate(masks):
+                out[m, :3] = lit_rgb(m, fk)[m] if i in lit else INK
+                out[m, 3] = 255
+            frames.append(out)
+    elif not plate:
         frames = lit_frames(np.any(masks, axis=0))
     else:
         frames = []

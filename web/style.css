@@ -95,6 +95,8 @@ kbd {
 .nav span { color: var(--label); }
 .n1 { grid-column: 3 / span 2; } .n2 { grid-column: 6 / span 2; } .n3 { grid-column: 9 / span 2; } .n4 { grid-column: 12 / span 2; }
 .kofi { grid-column: 21 / span 4; grid-row: 2; }
+.head .mi, .head .mm { display: none; }          /* (a phone's: the index's two as buttons, under Play it) */
+.pill[aria-current] { box-shadow: inset 0 0 0 1px var(--ink); }   /* the page you are on: its line doubled */
 .cta { grid-column: 21 / span 4; grid-row: 1; }
 .pill, .lit {
   width: calc(100% + 1px); height: calc(var(--m) + 1px); display: flex; align-items: center; justify-content: center;
@@ -245,9 +247,8 @@ kbd {
 .band { grid-column: 1 / -1; grid-row: 2 / span 12; width: 100%; aspect-ratio: 2 / 1; }
 .foot { box-shadow: inset 0 1px 0 var(--ink); }
 .foot > * { padding-top: 12px; font-weight: 500; }
-.links { grid-template-rows: repeat(4, var(--m)); }
-.links > * { grid-column: span 8; grid-row: span 2; padding-top: 24px; font-size: var(--l); line-height: 48px; letter-spacing: -0.025em; }
-                                                     /* (the owner: as big as the hero's line; two rows, its glyphs whole) */
+.links { grid-template-rows: var(--m); }
+.links > * { grid-column: span 4; }
 .fin { grid-template-rows: repeat(3, var(--m)); }
 .fin > * { grid-row: 1; grid-column: span 4; }
 .fin .w2 { grid-column: span 8; }
@@ -379,7 +380,7 @@ code { font: inherit; color: var(--ink); }
   .index { grid-column: 1 / -1; grid-row: 13 / span 4; grid-template-columns: repeat(4, calc(4 * var(--m))); }
   .bandrow { grid-template-rows: repeat(10, var(--m)); }
   .band { grid-row: 2 / span 8; }
-  .links { grid-template-rows: repeat(6, var(--m)); }
+  .links { grid-template-rows: repeat(2, var(--m)); }
   .fin { grid-template-rows: repeat(4, var(--m)); }
   .fin > :nth-child(1) { grid-column: 1 / span 4; grid-row: 1; }
   .fin > :nth-child(2) { grid-column: 5 / span 8; grid-row: 1; }
@@ -413,12 +414,13 @@ code { font: inherit; color: var(--ink); }
 /* ---- 7 modules (a phone) */
 @media (max-width: 799px) {
   :root { --cols: 7; --ph: 192px; --l: 32px; --xl: 96px; }
-  .head { grid-template-rows: repeat(4, var(--m)); }   /* Play it, Ko-fi, the index (the owner: the installer missing), air */
-  .nav { grid-row: 3; }
-  .nav span, .n1 { display: none; }
-  .n2 { grid-column: 1 / span 2; } .n3 { grid-column: 3 / span 2; } .n4 { grid-column: 5 / span 3; display: flex; }
+  .nav { display: none; }
+  .head { grid-template-rows: repeat(5, var(--m)); }   /* Play it, Install, Manual, Ko-fi, then air (the owner: the
+                                                           installer and the manual in reach, as buttons) */
   .cta { grid-column: -5 / -1; }
-  .kofi { grid-column: -5 / -1; grid-row: 2; }
+  .head .mi { display: flex; grid-column: -5 / -1; grid-row: 2; }
+  .head .mm { display: flex; grid-column: -5 / -1; grid-row: 3; }
+  .kofi { grid-column: -5 / -1; grid-row: 4; }
   /* the wordmark stacked, after Kiloy's specimen: "dem" over "ake", edge to edge */
   .mark { grid-column: 1 / -1; grid-row: 1 / span 5; aspect-ratio: 7 / 5; background-image: url("img/wordmark_stack.png"); }
   .hero { grid-template-rows: repeat(11, var(--m)); }
@@ -464,10 +466,11 @@ code { font: inherit; color: var(--ink); }
   .legend { grid-column: 1 / -1; grid-row: 10 / span 10; }
   .legend li { grid-auto-rows: auto; }
   .index { grid-column: 1 / -1; grid-row: 10 / span 13; grid-template-columns: 1fr; }
-  .bandrow { grid-template-rows: repeat(6, var(--m)); }
-  .band { grid-row: 2 / span 4; align-self: start; }   /* 3.5 rows tall: its corner on the lines */
+  .bandrow { grid-template-rows: repeat(11, var(--m)); }
+  .band { grid-row: 2 / span 9; aspect-ratio: 168 / 216; background-image: url("img/band_stack.png"); }   /* stacked, a word
+                                                           in two or one, as big as the width (the owner: like the hero's) */
   .links { grid-template-rows: repeat(6, var(--m)); }
-  .links > * { grid-column: 1 / -1; grid-row: span 1; padding-top: 0; }   /* (at 32 px a row holds it) */
+  .links > * { grid-column: 1 / -1; }
   .fin { grid-template-rows: repeat(7, var(--m)); }
   .fin > :nth-child(n) { grid-column: 1 / -1; grid-row: auto; text-align: left; }
   .fin .legal { grid-row: span 3; }
