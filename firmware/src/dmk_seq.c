@@ -50,6 +50,7 @@ static int plays_chords(int s);
 static int harm_of(int s);
 static int harm_note(int f, int n);
 static void later_tick(int frames);
+static void arp_restart(void);                          /* (the arps, on PLAY: in time) */
 static void chord_rest(void);
 
 /* patterns and scenes, after the way a pocket studio arranges (docs/sound-design.md, 3): each synth has eight
@@ -338,6 +339,7 @@ static void seq_play(int on)
     for (s = 0; s < DMK_SYNTHS; s++) { seq_quiet(s); sq[s].pos = 0; }
     chord_quiet();
     chord_start();
+    arp_restart();
     if (!on) chord_rest();                              /* stopped: no chord shown as sounding */
     seq_acc = 0;
     seq_ticks = 0;
@@ -391,12 +393,123 @@ static void lfo_sync(void)
     }
 }
 
+/* ---- the ARP, a synth's (the owner's: the roll's third row, SEQ again): what reaches the synth (its keys, its roll,
+ * the chords it plays, MIDI) goes into its pool, and it plays them one by one on the tempo: Up, Down, Hill (up and
+ * down, its ends once), Valley (down and up), Bounce (its ends twice), Fold (the outside in), Unfold (the middle out),
+ * Dice (at random), Walk (a step up or down at random), Played (as they came), Chord (all at once), Thumb (the lowest
+ * between each), Pinky (the highest between each); over OCTAVE, at RATE, each held GATE of the step. HOLD keeps the
+ * notes let go, till a new chord replaces them */
+enum { AR_OFF, AR_UP, AR_DOWN, AR_UPDOWN, AR_DOWNUP, AR_BOUNCE, AR_CONV, AR_DIV, AR_RAND, AR_WALK, AR_PLAYED, AR_CHORD, AR_THUMB,
+       AR_PINKY, AR_N };
+#define ARP_POOL 16
+static struct {
+    uint8_t mode, div, oct, gate, hold;                 /* (sp_sync: the row's values) */
+    uint8_t n, held, non, gated;                        /* notes in the pool, keys holding them, notes sounding, released */
+    uint8_t note[ARP_POOL], vel[ARP_POOL], on[ARP_POOL];
+    int32_t k, idx;                                     /* the steps played, the place (Walk) */
+    uint32_t ph, rng;                                   /* samples into the step */
+} arp[DMK_SYNTHS];
+static const uint8_t ARP24[9] = {3, 4, 6, 8, 9, 12, 16, 18, 24};   /* RATE in 24ths of a beat (the screen's ARPDIVS) */
+static uint32_t arp_len(int s) { return 110250u * ARP24[arp[s].div < 9 ? arp[s].div : 2] / (uint32_t)(seq_bpm > 0 ? seq_bpm : 120); }
+static void arp_release(int s)                          /* what it sounds, let go */
+{
+    int i;
+    for (i = 0; i < arp[s].non; i++) note_off_src(s, arp[s].on[i], SRC_ARP);
+    arp[s].non = 0; arp[s].gated = 1;
+}
+static void arp_clear(int s) { arp_release(s); arp[s].n = 0; arp[s].held = 0; arp[s].k = 0; arp[s].idx = 0; }
+static int arp_take(int s, int n, int vel)
+{
+    int i;
+    if (!arp[s].mode) return 0;
+    if (arp[s].hold && !arp[s].held) arp[s].n = 0;      /* HOLD: a new chord after all were let go replaces it */
+    for (i = 0; i < arp[s].n && arp[s].note[i] != n; i++) {}
+    if (i == arp[s].n) {
+        if (arp[s].n >= ARP_POOL) return 1;
+        if (!arp[s].n) { arp[s].k = 0; arp[s].idx = 0; arp[s].ph = arp_len(s); }   /* the first: at once */
+        arp[s].note[arp[s].n] = (uint8_t)n; arp[s].vel[arp[s].n] = (uint8_t)vel; arp[s].n++;
+    }
+    arp[s].held++;
+    return 1;
+}
+static int arp_drop(int s, int n)
+{
+    int i;
+    if (!arp[s].mode) return 0;
+    for (i = 0; i < arp[s].n && arp[s].note[i] != n; i++) {}
+    if (i == arp[s].n) return 0;                        /* not the arp's: a note of before, let go as it was */
+    if (arp[s].held) arp[s].held--;
+    if (!arp[s].hold) {
+        for (; i + 1 < arp[s].n; i++) { arp[s].note[i] = arp[s].note[i + 1]; arp[s].vel[i] = arp[s].vel[i + 1]; }
+        arp[s].n--;
+        if (!arp[s].n) arp_release(s);
+    }
+    return 1;
+}
+/* the step's notes: from the pool, sorted (or as played), over its octaves; i the place in that line of m */
+static int arp_pick(int s, uint8_t *out, uint8_t *ov)
+{
+    uint8_t srt[ARP_POOL], sv[ARP_POOL];
+    int n = arp[s].n, m, oc = arp[s].oct + 1, i, j, k = arp[s].k, at = 0;
+    for (i = 0; i < n; i++) { srt[i] = arp[s].note[i]; sv[i] = arp[s].vel[i]; }
+    if (arp[s].mode != AR_PLAYED)
+        for (i = 1; i < n; i++) for (j = i; j > 0 && srt[j - 1] > srt[j]; j--) { uint8_t t = srt[j]; srt[j] = srt[j - 1]; srt[j - 1] = t; t = sv[j]; sv[j] = sv[j - 1]; sv[j - 1] = t; }
+    if (arp[s].mode == AR_CHORD) {                      /* all of it, an octave higher each step over OCTAVES */
+        for (i = 0; i < n; i++) { out[i] = (uint8_t)clampi(srt[i] + 12 * (k % oc), 0, 127); ov[i] = sv[i]; }
+        return n;
+    }
+    m = n * oc;
+    switch (arp[s].mode) {
+    case AR_UP: case AR_PLAYED: at = k % m; break;
+    case AR_DOWN: at = m - 1 - k % m; break;
+    case AR_UPDOWN: if (m < 2) at = 0; else { int p = k % (2 * m - 2); at = p < m ? p : 2 * m - 2 - p; } break;
+    case AR_DOWNUP: if (m < 2) at = 0; else { int p = k % (2 * m - 2); at = p < m ? m - 1 - p : p - m + 1; } break;
+    case AR_BOUNCE: { int p = k % (2 * m); at = p < m ? p : 2 * m - 1 - p; } break;
+    case AR_CONV: { int p = k % m; at = p & 1 ? m - 1 - p / 2 : p / 2; } break;
+    case AR_DIV: { int p = k % m, mid = (m - 1) / 2; at = p & 1 ? mid + (p + 1) / 2 : mid - p / 2; at = clampi(at, 0, m - 1); } break;
+    case AR_RAND: at = (int)(xs32(&arp[s].rng) % (uint32_t)m); if (m > 1 && at == arp[s].idx) at = (at + 1) % m; break;
+    case AR_WALK: at = clampi(arp[s].idx + (xs32(&arp[s].rng) & 1u ? 1 : -1), 0, m - 1); if (m > 1 && at == arp[s].idx) at = arp[s].idx ? arp[s].idx - 1 : 1; break;
+    case AR_THUMB: if (m < 2) at = 0; else { int p = k % (2 * (m - 1)); at = p & 1 ? p / 2 + 1 : 0; } break;
+    case AR_PINKY: if (m < 2) at = 0; else { int p = k % (2 * (m - 1)); at = p & 1 ? m - 1 : p / 2; } break;
+    default: at = 0;
+    }
+    arp[s].idx = at;
+    out[0] = (uint8_t)clampi(srt[at % n] + 12 * (at / n), 0, 127);
+    ov[0] = sv[at % n];
+    return 1;
+}
+static void arp_tick(int frames)                        /* each synth's, on the tempo, playing or not */
+{
+    int s, i;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        uint32_t len, gl;
+        if (!arp[s].mode || (!arp[s].n && !arp[s].non)) continue;
+        len = arp_len(s);
+        gl = arp[s].gate >= 127 ? len : len * (8u + arp[s].gate) / 136u;   /* 6 % .. all of it */
+        arp[s].ph += (uint32_t)frames;
+        if (!arp[s].gated && arp[s].ph >= gl && gl < len) arp_release(s);
+        if (arp[s].ph >= len) {
+            uint8_t nt[ARP_POOL], nv[ARP_POOL];
+            int c;
+            arp[s].ph = arp[s].ph - len < len ? arp[s].ph - len : 0;
+            arp_release(s);
+            if (!arp[s].n) continue;
+            c = arp_pick(s, nt, nv);
+            for (i = 0; i < c; i++) { note_on_vel(s, nt[i], SRC_ARP, nv[i]); arp[s].on[i] = nt[i]; }
+            arp[s].non = (uint8_t)c; arp[s].gated = 0;
+            arp[s].k++;
+        }
+    }
+}
+static void arp_restart(void) { int s; for (s = 0; s < DMK_SYNTHS; s++) { arp[s].ph = arp_len(s); arp[s].k = 0; } }   /* PLAY: in time */
+
 static void seq_render(int frames)
 {
     uint32_t per;
     lfo_sync();
     seq_frames += (uint32_t)frames;
     later_tick(frames);                                 /* the strum's notes, playing or not */
+    arp_tick(frames);                                   /* the arps, playing or not */
     if (!seq_on || ext_running()) return;               /* an outside clock running steps it instead (dmk_midi) */
     per = seq_per();
     if (midi_out & 2u)                                  /* MIDI out: the clock, 24 a beat, 6 a step */
@@ -424,6 +537,7 @@ static void seq_init(void)
     static const uint8_t PLUCK[][3] = {{0, 1, 76}, {3, 1, 69}, {6, 1, 72}, {9, 1, 74}};
     ext_seen = 0;                                       /* no outside clock heard yet */
     unsigned i;
+    for (i = 0; i < DMK_SYNTHS; i++) { arp[i].n = arp[i].held = arp[i].non = 0; arp[i].gated = 1; arp[i].rng = 0x9E3779B9u * (i + 7u); }
     for (i = 0; i < DMK_SYNTHS; i++) { sq[i].count = 0; sq[i].pos = 0; sq[i].rng = 0x2545F491u * (i + 1u); }   /* (Vary's dice) */
     sq[0].steps = 32; sq[1].steps = 16; sq[2].steps = 12;
     for (i = 0; i < sizeof PAD / sizeof PAD[0]; i++) seq_add(0, PAD[i][0], PAD[i][1], PAD[i][2], 100);

@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 8u   /* 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
+#define ST_VER 9u   /* 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
                        a row down; 6: more effects in each FX
                        row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
@@ -232,6 +232,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 6 / 128 + 1, 7);
         ui.val[0][PG_GLOBAL][1][4] = choice_val(ui.val[0][PG_GLOBAL][1][4] * 2 / 128 + 1, 3);
     }
+    if (st_ver < 9u) for (s = 0; s < DMK_SYNTHS; s++) arp_defaults(s);   /* before 0.4.12: no Arp row, its 64s: off */
     if (st_ver < 8u)                                    /* before 0.4.11: the verb's type of seven at its place of twelve */
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 7 / 128, FX_VERBS);
     if (st_ver < 7u) {                                  /* before 0.5: the rolls' Vary off; the MIDI row a row down; the

@@ -120,7 +120,9 @@ static voice_t vc[DMK_VOICES];
 static uint32_t vc_clock;
 /* who started a voice: the keys, a roll, the chord machine; a note off ends only its own source's (the progression's
  * chord change never cuts a note the hands hold, nor the reverse) */
-enum { SRC_KEY, SRC_ROLL, SRC_CHORD };
+enum { SRC_KEY, SRC_ROLL, SRC_CHORD, SRC_ARP };
+static int arp_take(int sy, int n, int vel);            /* (dmk_seq.c: a synth's arp takes its notes, plays them its way) */
+static int arp_drop(int sy, int n);
 static int32_t vc_tail[DMK_SYNTHS];                     /* a stolen voice's last level, fading out (~1.5 ms) */
 /* MIDI out (dmk_midi_take; GLO's MIDI row): the notes each synth starts and ends on its channel (1-3), and the clock
  * while playing, queued for the platform to send from its loop */
@@ -228,6 +230,7 @@ static void note_on_vel(int sy, int n, int src, int vel)
     voice_t *o;
     if (n < 0 || n > 127 || sy < 0 || sy >= DMK_SYNTHS) return;
     vel = clampi(vel, 1, 127);
+    if (src != SRC_ARP && arp_take(sy, n, vel)) return;   /* the ARP's: the note into its pool, it plays them */
     for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == sy) first = 0;
     if (first) {                                        /* a phrase begins (from silence): the LFO's fade from nothing,
                                                            its phase too (synced: from here, lfo_sync) */
@@ -276,6 +279,7 @@ static void note_off_src(int sy, int n, int src)
 {
     int i, best = -1;
     uint32_t oldest = 0xFFFFFFFFu;
+    if (src != SRC_ARP && sy >= 0 && sy < DMK_SYNTHS && arp_drop(sy, n)) return;   /* (one the arp took) */
     if (midi_out & 1u && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     for (i = 0; i < DMK_VOICES; i++)
         if (vc[i].on && vc[i].note == n && vc[i].sy == sy && vc[i].src == src && vc[i].age < oldest) { oldest = vc[i].age; best = i; }
@@ -1322,7 +1326,7 @@ static void dsp_reset(void)
     for (i = 0; i < RV_LEN; i++) rv_buf[i] = 0xFF;
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) dl_clear((int)i);
-    gm_cur = 0; gm_g = 0; gm_pend = 0;
+    gm_cur = 0; gm_g = 0; gm_pend = 0; gm_seed = 0x6C8E9CF5u;   /* (the same dice every start: renders repeat) */
     for (i = 0; i < DMK_SYNTHS * CH_LEN; i++) ch_buf[i / CH_LEN][i % CH_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) {
         uint8_t *z = (uint8_t *)&fx[i];

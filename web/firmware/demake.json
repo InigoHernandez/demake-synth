@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.11.fwsc",
-  "version": "0.4.11",
+  "file": "demake-0.4.12.fwsc",
+  "version": "0.4.12",
   "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "04dfc485e161c41d442f707bccd53a35cf212974a9d37c2be8ae58fc70e1c794",
-  "note": "A save screen: pick a slot, a new name made up, a synth back to INIT. Vary is each track's own. Five more reverbs: plate, spring, shimmer, reverse, freeze; the effects' levels evened. The knobs no longer jump. A beach at sunset."
+  "sha256": "41279e42e681c65f9bad7ed2f932ae9f03d182e7e75151084260f1cbc2dee27e",
+  "note": "An arpeggiator on each synth (SEQ, its third row): thirteen ways, rate, octave, gate and Hold; it plays the keys, the roll, the chords and MIDI. A list's meter a tick a choice, so a click is a tick."
 }

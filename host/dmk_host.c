@@ -193,6 +193,14 @@ static void tour(const char *dir)
         {B_ENV, "amp"}, {B_FX, "fx"}, {B_ARP, "chord"}, {B_GLO, "global"}, {B_LFO, "lfo"}};
     for (unsigned i = 0; i < sizeof P / sizeof P[0]; i++) { tap(P[i].b); shot(dir, P[i].n); }
     tap(B_FX); tap(B_FX); shot(dir, "fx_space");         /* FX again: the next row built */
+    tap(B_SEQ); tap(B_SEQ); tap(B_SEQ);                 /* the roll's Arp row, Converge on */
+    ui.val[ui.synth][PG_ROLL][2][0] = choice_val(AR_CONV, AR_N); sp_sync(); shot(dir, "roll_arp");
+    for (int m = 0; m < AR_N; m++) for (int g = 0; g < 2; g++) {   /* every way, every rate's end, audited (not kept) */
+        ui.val[ui.synth][PG_ROLL][2][0] = choice_val(m, AR_N); ui.val[ui.synth][PG_ROLL][2][1] = g ? 127 : 0;
+        ui.val[ui.synth][PG_ROLL][2][3] = g ? 127 : 0; ui.val[ui.synth][PG_ROLL][2][4] = g ? 127 : 0; sp_sync(); shot(0, "arp");
+    }
+    arp_defaults(ui.synth); sp_sync(); tap(B_SEQ);
+    tap(B_ARP); tap(B_ARP); shot(dir, "chord_key"); tap(B_ARP); tap(B_ARP);   /* the Key row: Mode's ticks, a click each */
     {                                                   /* every effect's knobs and values, at both ends, audited (not
                                                            kept as pictures): the labels change with the type */
         static const int NT[3] = {FX_COLOURS, 3, FX_MOTIONS};   /* (the delay's: off, delay, ping-pong) */
@@ -976,6 +984,53 @@ static void selftest(void)
             { fails++; printf("selftest: Vary's knobs are not the synth's own (synth %d, mut %u %u %u)\n", ui.synth, sq[0].mut, sq[1].mut, sq[2].mut); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
+    {   /* the ARP: Up plays the held notes in order on the tempo; let go, it stops; HOLD keeps them, a new chord replaces
+         * them; Chord strikes them together; off, nothing left sounding; a note from before it was on lets go as ever */
+        static int16_t ab[256 * 2];
+        uint8_t seq_[64];
+        int got, i, v, on;
+        uint32_t seen;
+        #define ARP_RUN(ms) do { uint32_t end_ = now_ms + (ms); while (now_ms < end_) { dmk_render(ab, 128); now_ms += 3; \
+            for (v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == 2 && vc[v].src == SRC_ARP && vc[v].age >= seen) { \
+                if (got < 64) seq_[got++] = vc[v].note; seen = vc[v].age + 1; } } } while (0)
+        dmk_init(36); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_HOME][0][4] = 120;
+        ui.val[2][PG_ROLL][2][0] = choice_val(AR_UP, AR_N); ui.val[2][PG_ROLL][2][1] = choice_val(2, 9); sp_sync();   /* Up, sixteenths */
+        got = 0; seen = vc_clock;
+        note_on_s(2, 64); note_on_s(2, 57); note_on_s(2, 60);
+        ARP_RUN(900);
+        if (got < 6 || seq_[0] != 57 || seq_[1] != 60 || seq_[2] != 64 || seq_[3] != 57) { fails++; printf("selftest: the arp's Up is not 57 60 64 57 (%d notes: %d %d %d %d)\n", got, seq_[0], seq_[1], seq_[2], seq_[3]); }
+        if (got > 9) { fails++; printf("selftest: the arp plays %d sixteenths in 0.9 s at 120\n", got); }
+        note_off_s(2, 64); note_off_s(2, 57); note_off_s(2, 60);
+        got = 0; ARP_RUN(400);
+        for (on = 0, v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2;
+        if (got || on) { fails++; printf("selftest: the arp plays on after the keys are let go (%d, %d on)\n", got, on); }
+        ui.val[2][PG_ROLL][2][4] = choice_val(1, 2); sp_sync();   /* HOLD */
+        note_on_s(2, 62); note_on_s(2, 69); note_off_s(2, 62); note_off_s(2, 69);
+        got = 0; ARP_RUN(600);
+        if (got < 3) { fails++; printf("selftest: HOLD does not keep the arp going (%d)\n", got); }
+        note_on_s(2, 50); note_off_s(2, 50);             /* a new chord after all were let go: it alone */
+        ARP_RUN(150); got = 0; ARP_RUN(600);
+        for (i = 0; i < got; i++) if (seq_[i] != 50) break;
+        if (!got || i < got) { fails++; printf("selftest: HOLD's new chord does not replace the old (%d notes, %d first)\n", got, got ? seq_[0] : -1); }
+        ui.val[2][PG_ROLL][2][0] = choice_val(AR_CHORD, AR_N); sp_sync();
+        note_on_s(2, 53); note_on_s(2, 57); note_on_s(2, 60);
+        ARP_RUN(200);
+        for (on = 0, v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2 && vc[v].src == SRC_ARP;
+        if (on < 3) { fails++; printf("selftest: the arp's Chord does not strike them together (%d)\n", on); }
+        ui.val[2][PG_ROLL][2][0] = 0; sp_sync();          /* off: nothing left */
+        ARP_RUN(100);
+        for (on = 0, v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2 && vc[v].src == SRC_ARP;
+        if (on) { fails++; printf("selftest: the arp off leaves %d notes sounding\n", on); }
+        note_off_s(2, 53); note_off_s(2, 57); note_off_s(2, 60);
+        note_on_s(2, 66);                                /* a note before the arp, let go after it is on */
+        ui.val[2][PG_ROLL][2][0] = choice_val(AR_UP, AR_N); ui.val[2][PG_ROLL][2][4] = 0; sp_sync();
+        note_off_s(2, 66); wait_ms(20);
+        for (on = 0, v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 2 && vc[v].note == 66;
+        if (on) { fails++; printf("selftest: a note from before the arp sticks\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        #undef ARP_RUN
+    }
     {   /* a new song saved: a name made up for it (two words), shown on Songs; kept through a load */
         host_store_on(1, 1);
         dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -1018,7 +1073,8 @@ static void selftest(void)
         static const uint8_t DT[6] = {1, 2, 0, 2, 1, 0}, MT[6] = {FM_VHS, FM_VINYL, FM_TAPE, FM_DICTA, 0, FM_CASS};
         int i, j, v, m0 = 0, m1 = 0, prev = 0;
         dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        ui.val[0][PG_FX][1][0] = 110; ui.val[0][PG_FX][1][3] = 80; sp_sync();
+        ui.val[0][PG_FX][1][0] = 110; ui.val[0][PG_FX][1][3] = 80;
+        ui.val[0][PG_GLOBAL][2][2] = 0; sp_sync();       /* (no vinyl crackle: its pops are its own, not a switch's) */
         note_on_s(0, 57); note_on_s(0, 64); note_on_s(0, 69);
         for (i = 0; i < 40; i++) dmk_render(b, 256);
         for (j = 0; j < 13; j++) {
@@ -1151,6 +1207,33 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
     snprintf(path, sizeof path, "%s/%s.wav", dir, name);
     wav_write(path, b, n);
     free(b);
+}
+
+/* the ARP's ways, each for the owner to hear: Am7 held on the third synth (the pluck), two octaves, sixteenths at 100 */
+static void arp_demo(const char *dir)
+{
+    static const char *const NM[AR_N] = {"", "up", "down", "updown", "downup", "bounce", "converge", "diverge", "random", "walk",
+                                         "played", "chord", "thumb", "pinky"};
+    static const uint8_t CH[4] = {57, 67, 60, 64};      /* (played in this order: Played shows it) */
+    int m, n = DMK_SR * 7, i, k;
+    int16_t *b = malloc((size_t)n * 4);
+    char path[512];
+    for (m = 1; m < AR_N; m++) {
+        dmk_init(1);
+        ui.val[0][PG_HOME][0][4] = 100;
+        ui.val[2][PG_ROLL][2][0] = choice_val(m, AR_N); ui.val[2][PG_ROLL][2][1] = choice_val(2, 9);
+        ui.val[2][PG_ROLL][2][2] = choice_val(1, 4); ui.val[2][PG_ROLL][2][3] = 72;
+        sp_sync();
+        for (k = 0; k < 4; k++) note_on_s(2, CH[k]);
+        for (i = 0; i < n; i += DMK_SUB) {
+            if (i == DMK_SR * 5) for (k = 0; k < 4; k++) note_off_s(2, CH[k]);
+            dmk_render(b + i * 2, DMK_SUB);
+        }
+        snprintf(path, sizeof path, "%s/arp_%02d_%s.wav", dir, m, NM[m]);
+        wav_write(path, b, n);
+    }
+    free(b);
+    printf("arp demo: %s\n", dir);
 }
 
 static void fx_demo(const char *dir)
@@ -1366,6 +1449,7 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "--bench")) { bench(); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--demo")) { demo(argv[2], argc - 3, argv + 3); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--fxdemo")) { fx_demo(argv[2]); return 0; }
+    if (argc > 2 && !strcmp(argv[1], "--arpdemo")) { arp_demo(argv[2]); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--anim")) { anim(argv[2]); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--homes")) { homes(argv[2]); return 0; }
     if (argc > 2 && !strcmp(argv[1], "--chorddemo")) { chord_demo(argv[2]); return 0; }

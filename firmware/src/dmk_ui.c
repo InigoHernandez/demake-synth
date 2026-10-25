@@ -38,7 +38,8 @@ static const page_t PAGE[PG_COUNT] = {
     {"Home", 4, {"Level", "Verb", "Echo", "Pan"}, {"Tempo", "Tempo", "Tempo", "Tempo"},
      {{"Level 1", "Level 2", "Level 3", "Verb"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
-    {"Roll", 2, {"Roll", "Vary"}, {"Zoom", "Zoom"}, {{"Cursor", "View", "Length", "Steps"}, {"Mutate", "Range", "Chance", "Keep"}}},
+    {"Roll", 3, {"Roll", "Vary", "Arp"}, {"Zoom", "Zoom", "Hold"},
+     {{"Cursor", "View", "Length", "Steps"}, {"Mutate", "Range", "Chance", "Keep"}, {"Mode", "Rate", "Octave", "Gate"}}},
     {"Sound", 3, {"Main", "Layer", "Voice"}, {"Fine", "Sound", ""},
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
@@ -124,13 +125,22 @@ static const char *const ECHOS[] = {"Off", "Tape", "Grains"};   /* (the delays: 
 #define FX_ECHOS 3
 static const char *const DELAYS[] = {"Off", "Delay", "Ping-pong"};
 static const char *const KEEPS[] = {"Off", "On"};      /* the roll's Vary: mutations heard, or written in */
+static const char *const RANGES[] = {"1", "2", "3", "4", "5", "6", "7"};   /* its reach, scale steps (a click a step) */
+static const char *const SPREADS[] = {"0", "1", "2", "3"};   /* the chord's spread, octaves */
+/* the ARP's (dmk_seq.c AR_, ARP24): its ways, its rates, its octaves, HOLD */
+static const char *const ARPS[] = {"Off", "Up", "Down", "Hill", "Valley", "Bounce", "Fold", "Unfold", "Dice", "Walk",
+                                   "Played", "Chord", "Thumb", "Pinky"};   /* (each within a field's 48 px, measured) */
+static const char *const ARPDIVS[] = {"1/32", "1/16T", "1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4"};
+static const char *const ARPOCTS[] = {"1", "2", "3", "4"};
+static const char *const HOLDS[] = {"Off", "On"};
 static const char *const DIVS[] = {"1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4", "1/4D", "1/2"};   /* the delay's (dmk_seq: DIV24) */
 #define DIV_N 9
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, 3, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
     {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, FX_VERBS, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS},
-    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
+    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_ROLL, 1, 1, 7, RANGES}, {PG_CHORD, 0, 2, 4, SPREADS},
+    {PG_ROLL, 2, 0, AR_N, ARPS}, {PG_ROLL, 2, 1, 9, ARPDIVS}, {PG_ROLL, 2, 2, 4, ARPOCTS}, {PG_ROLL, 2, 4, 2, HOLDS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
     {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 20, PROGS}, {PG_CHORD, 1, 4, 20, PROGS},
@@ -314,6 +324,7 @@ static uint8_t *vp(int page, int row, int k)
     if (page == PG_LFO && k == 4) return &ui.val[ui.synth][PG_LFO][0][4];   /* the LFO's target, on both rows */
     if (page == PG_ROLL && row == 1 && k < 4) return &ui.val[ui.synth][PG_ROLL][1][k];   /* Vary: each synth's own (it
                                                            was the first synth's whichever was picked: the owner) */
+    if (page == PG_ROLL && row == 2) return &ui.val[ui.synth][PG_ROLL][2][k];   /* the Arp: each synth's, HOLD too */
     if (page == PG_HOME && k < 3) {
         static const uint8_t PG[4] = {PG_AMP, PG_FX, PG_FX, PG_FX}, RW[4] = {0, 3, 3, 3}, KK[4] = {4, 0, 1, 2};
         return &ui.val[k][PG[row]][RW[row]][KK[row]];
@@ -344,9 +355,17 @@ static void sp_sync(void)
         p->cut = (int16_t)(VS(s, PG_FILTER, 0, 0) >= 127 ? 255 : VS(s, PG_FILTER, 0, 0) * 2);
         p->resq = T_RESQ[VS(s, PG_FILTER, 0, 1)];
         sq[s].mut = (uint16_t)(VS(s, PG_ROLL, 1, 0) * 258);   /* the roll's Vary: a note's chance to move, how far, to play */
-        sq[s].mrange = (uint8_t)(1 + VS(s, PG_ROLL, 1, 1) * 6 / 127);
+        sq[s].mrange = (uint8_t)(1 + choice_index(choice_of(PG_ROLL, 1, 1), VS(s, PG_ROLL, 1, 1)));   /* (a choice: a click a step) */
         sq[s].chance = (uint16_t)(VS(s, PG_ROLL, 1, 2) >= 127 ? 32768 : VS(s, PG_ROLL, 1, 2) * 258);
         sq[s].keep = (uint8_t)(VS(s, PG_ROLL, 1, 3) >= 64);
+        {                                               /* the ARP: off, its notes let go; HOLD off, the held ones too */
+            int am = choice_index(choice_of(PG_ROLL, 2, 0), VS(s, PG_ROLL, 2, 0)), ah = VS(s, PG_ROLL, 2, 4) >= 64;
+            if ((!am && arp[s].mode) || (arp[s].hold && !ah && !arp[s].held)) arp_clear(s);
+            arp[s].mode = (uint8_t)am; arp[s].hold = (uint8_t)ah;
+            arp[s].div = (uint8_t)choice_index(choice_of(PG_ROLL, 2, 1), VS(s, PG_ROLL, 2, 1));
+            arp[s].oct = (uint8_t)choice_index(choice_of(PG_ROLL, 2, 2), VS(s, PG_ROLL, 2, 2));
+            arp[s].gate = VS(s, PG_ROLL, 2, 3);
+        }
         p->fenv = (int16_t)((VS(s, PG_FILTER, 0, 2) - 64) * 4);
         p->atk = T_ATK[VS(s, PG_AMP, 0, 0)];
         p->dec = T_EXP[VS(s, PG_AMP, 0, 1)];
@@ -463,6 +482,11 @@ static void roll_vary_defaults(int s)                  /* the roll's Vary: no mu
     uint8_t *v = ui.val[s][PG_ROLL][1];
     v[0] = 0; v[1] = 32; v[2] = 127; v[3] = 0; v[4] = 64;
 }
+static void arp_defaults(int s)                         /* the ARP: off, sixteenths, an octave, a short gate, no hold */
+{
+    uint8_t *v = ui.val[s][PG_ROLL][2];
+    v[0] = 0; v[1] = choice_val(2, 9); v[2] = choice_val(0, 4); v[3] = 72; v[4] = 0;
+}
 static void delay_defaults(int s)                       /* a synth's DELAY: off, a dotted eighth, a few repeats */
 {
     uint8_t *v = ui.val[s][PG_FX][1];
@@ -516,6 +540,7 @@ DMK_SMALL static void ui_init(void)
         ui.val[s][PG_FX][2][4] = 0;
         delay_defaults(s);
         roll_vary_defaults(s);
+        arp_defaults(s);
         ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
         snd_new_defaults(s);
     }
@@ -615,13 +640,13 @@ static void val_text(char *o, int page, int row, int k)
     }
     if (page == PG_SOUND && row == 2 && (k == 1 || k == 2)) { if (!v) str_cat(o, "Off"); else str_cat(fmt_int(o, v * 100 / 127), "%"); return; }
     if (page == PG_FILTER && k == 3 && !v) { str_cat(o, "Off"); return; }
-    if (page == PG_ROLL && row == 1 && k < 3) {        /* the roll's Vary: how often a note moves, how far, how often it plays */
-        if (k == 1) { fmt_int(o, 1 + v * 6 / 127); return; }   /* (scale steps, up or down)  */
+    if (page == PG_ROLL && row == 1 && (k == 0 || k == 2)) {   /* the roll's Vary: how often a note moves, plays (Range: a choice) */
         if (!k && !v) { str_cat(o, "Off"); return; }
         str_cat(fmt_int(o, v * 100 / 127), "%");
         return;
     }
     if (page == PG_FX && row == 1 && k == 0 && !v) { str_cat(o, "Off"); return; }
+    if (page == PG_ROLL && row == 2 && k == 3) { if (v >= 127) str_cat(o, "Legato"); else str_cat(fmt_int(o, (8 + v) * 100 / 136), "%"); return; }   /* the gate */
     if (page == PG_FX && row == 2 && k == 2 && choice_index(choice_of(PG_FX, 2, 4), *vp(PG_FX, 2, 4)) == FO_TREM) {
         str_cat(o, TREMS[v * TREM_N / 128]);            /* the tremolo's rate: its division of the tempo */
         return;
@@ -639,7 +664,6 @@ static void val_text(char *o, int page, int row, int k)
         return;
     }
     if (page == PG_LFO && row == 0 && (k == 1 || k == 3) && !v) { str_cat(o, "Off"); return; }
-    if (page == PG_CHORD && row == 0 && k == 2) { fmt_int(o, v * 4 / 128); return; }   /* spread: octaves */
     if (page == PG_CHORD && row == 0 && k == 3) {       /* strum: ms between voices */
         int t = (v - 64) * 250 / 64;
         if (t > 0) *o++ = '+';
@@ -743,8 +767,16 @@ static void text_mfit(int x, int y, int w, const char *s, int c)
 static void meter(int x, int y, int w, int v, const choice_t *c, int on, int off)
 {
     int ink = on ? HOLO : C_INK, k;
-    if (c && c->n > 1 && !off && c->n * (DOT + 3) - 3 > w) v = choice_index(c, v) * 127 / (c->n - 1);   /* too many dots: ticks */
-    else if (c && c->n > 1 && !off) {
+    if (c && c->n > 1 && !off && c->n * (DOT + 3) - 3 > w) {   /* too many dots: a tick a choice, so a click is a tick (the
+                                                           owner: the bar jumped, its ticks more than the choices) */
+        int sel = choice_index(c, v);
+        for (k = 0; k < c->n; k++) {
+            int tx = x + k * (w - 2) / (c->n - 1);
+            if (k == sel) round_fill(tx, y, 2, 10, 1, ink);
+            else vline(tx, y + 3, 6, k < sel ? C_INK : C_LINE);
+        }
+        return;
+    } else if (c && c->n > 1 && !off) {
         int sel = choice_index(c, v);
         for (k = 0; k < c->n; k++) {
             int dx = x + k * (DOT + 3);
@@ -840,9 +872,9 @@ static void roll_fields(void)                           /* the cursor's, or a he
         }
         return;
     }
-    if (ui.row[PG_ROLL]) {                              /* its Vary row: the page's own fields */
-        int k;
-        for (k = 0; k < 4; k++) field(k, PAGE[PG_ROLL].k[1][k], PG_ROLL, 1);
+    if (ui.row[PG_ROLL]) {                              /* its Vary, its Arp: the page's own fields */
+        int k, r = ui.row[PG_ROLL];
+        for (k = 0; k < 4; k++) field(k, PAGE[PG_ROLL].k[r][k], PG_ROLL, r);
         return;
     }
     fmt_int(v, ui.roll_cur[ui.synth] + 1);
@@ -955,8 +987,9 @@ static void foot(void)
     if (ui.page == PG_ROLL) {                           /* the zoom, or a held note's velocity */
         char v[16];
         int h = roll_held(), j = h >= 0 ? seq_find(ui.synth, ui.key_step[h], ui.key_note[h]) : -1;
-        int x = text(PAD + 1, Y_FOOT + 2, j >= 0 ? "Velocity" : "Zoom", &FS, C_LABEL);
-        fmt_int(v, j >= 0 ? sq[ui.synth].n[j].vel : roll_z());
+        int arow = ui.row[PG_ROLL] == 2 && j < 0, x = text(PAD + 1, Y_FOOT + 2, j >= 0 ? "Velocity" : arow ? "Hold" : "Zoom", &FS, C_LABEL);
+        if (arow) val_text(v, PG_ROLL, 2, 4);           /* the Arp's HOLD */
+        else fmt_int(v, j >= 0 ? sq[ui.synth].n[j].vel : roll_z());
         text_fit(x + 6, Y_FOOT + 2, 100 - x, v, &FS, lit(4) ? HOLO : C_INK);
         {                                               /* the chord at the cursor (or where it plays), else how it follows */
             const seq_t *q = &sq[ui.synth];
@@ -2833,7 +2866,7 @@ DMK_SMALL static void ui_encoder(int e, int d)
         notice(t);
         return;
     }
-    if (ui.page == PG_ROLL && (!ui.row[PG_ROLL] || k == 4 || roll_held() >= 0)) { roll_turn(k, d); return; }   /* (Vary: its values) */
+    if (ui.page == PG_ROLL && (!ui.row[PG_ROLL] || (k == 4 && ui.row[PG_ROLL] != 2) || roll_held() >= 0)) { roll_turn(k, d); return; }   /* (Vary, Arp: their values; the Arp's ALGO HOLD) */
     if (ui.page == PG_ARR) {
         /* ARRANGE: ALGORITHM the rows. The Scene row: K1-K3 each synth's pattern, K4 the progression. The Song row: K1
          * the step, K2 its scene, K3 its bars, K4 the end */

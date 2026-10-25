@@ -12,7 +12,7 @@ dithered, for what is lit.
   Chrome.
 - **Read the manual:** [the manual](https://inigohernandez.github.io/demake-synth/manual.html).
 
-**Status: Demake 0.4.11** (FM-1_969), on the install page and as a [GitHub release](https://github.com/InigoHernandez/demake-synth/releases/tag/v0.4.11).
+**Status: Demake 0.4.12** (FM-1_969), on the install page; 0.4.11 is the latest [GitHub release](https://github.com/InigoHernandez/demake-synth/releases/tag/v0.4.11).
 
 ## What it does
 
@@ -27,7 +27,8 @@ dithered, for what is lit.
   - Shared: eleven reverbs (room, hall, space, haze, bloom, lofi, plate, spring, shimmer, reverse, freeze), a tape
     echo or grains, and Media over the whole mix (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
 - **The music.**
-  - Three synths, each with a piano roll of up to 64 steps and eight patterns of its own.
+  - Three synths, each with a piano roll of up to 64 steps and eight patterns of its own, notes that can move in
+    the scale and play by chance (Vary), and an arpeggiator with Hold and thirteen ways to play.
   - Sixteen scenes say which pattern each synth plays, and switch on the bar with HOME held and a white key.
   - A song arranges the scenes, up to 128 steps of 1 to 8 bars, typed in or recorded live.
 - **The harmony.**
