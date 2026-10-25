@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.7.fwsc",
-  "version": "0.4.7",
+  "file": "demake-0.4.8.fwsc",
+  "version": "0.4.8",
   "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "a8ec7ca045c820a47ab7b4cf02592eb2d081db1b5c497a94d19dc5c039f0e81d",
-  "note": "A delay on each synth, in time (delay or ping-pong); the media over the whole mix, on GLO. The roll's Vary: notes that move in the scale and a chance to play. Keys write the roll only with REC. Song names, palms, a pool house."
+  "sha256": "160a356e6bb9dff0ab4a6bc139ac2e298857f49fd2e347bc26b2ce8b2d9a0903",
+  "note": "Ready for the FM-1 Firmware Hub: one identity for every release (FM-1_969), the USB port named Demake FM-1, the version at boot. Since 0.4.7: a delay on each synth, the media over the whole mix, the roll's Vary."
 }

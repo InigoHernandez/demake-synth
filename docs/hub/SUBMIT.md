@@ -116,8 +116,8 @@ If any fails, don't publish: tell Claude what happened.
 - [x] README: "On the FM-1" (what it keeps, backup, leaving, OCT− rescue)
 - [x] `fmhub.json` (what: 271 characters, kinds: synth, play)
 - [x] A 240 × 240 screen picture (+ 4x, a GIF), linked
-- [ ] Installer: the same file, SHA-256 checked; it names only FM-1_969 as Demake (done in the page's code)
-- [ ] Tests on a real FM-1: from V15, from another, leaving, USB, interrupted, what it keeps, playing
-- [ ] Release `v0.4.8` with the `.fwsc`; its digest = the installer's
+- [x] Installer: the same file, SHA-256 checked; it names only FM-1_969 as Demake
+- [x] Tests on a real FM-1: from V15, from another, leaving, USB, interrupted, what it keeps, playing (the owner, 2026-10-25: "it works")
+- [x] Release `v0.4.8` with the `.fwsc`; its digest = the installer's
 - [ ] The mail on the hub's form, after the tests and the release
 - [ ] (Optional) the signed workflow from `zvenson/fm1-build@v1`
