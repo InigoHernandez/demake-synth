@@ -39,7 +39,9 @@ BANK_A = 32                                              # the FM-1's bank in th
 
 # the names: one word each, the Latin name of a plant that grows where the sound's landscape is (the owner, 2026-10-24):
 # alpine and snow plants for the peaks, water plants for the lake, seaside plants for the coast, night-blooming and
-# shade plants for the night, houseplants for the room, succulents for the desk; given in the recordings' order, a pool
+# shade plants for the night, houseplants for the room, succulents for the desk; woodland plants for the forest, a
+# living room's for the living room, Mediterranean ones for the villa, Californian for the street, a harbour's marsh
+# for the harbour, cliff-top plants for the lighthouse; given in the recordings' order, a pool
 # a scene and kind
 NAMES = {
     (0, "pad"): ["Soldanella", "Galanthus", "Saxifraga", "Dryas", "Gentiana", "Leontopodium", "Chionodoxa",
@@ -54,6 +56,14 @@ NAMES = {
                  "Maranta", "Hoya", "Chlorophytum", "Begonia", "Aspidistra", "Fittonia", "Tradescantia", "Oxalis"],
     (5, "key"): ["Echeveria", "Haworthia", "Crassula", "Gasteria", "Kalanchoe", "Sempervivum", "Graptopetalum"],
     (5, "pluck"): ["Lithops", "Aloe", "Mammillaria", "Rebutia", "Opuntia"],
+    # the later six (a sound that moved to one is named for it; one that stayed keeps its name)
+    (6, "pad"): ["Quercus", "Fagus", "Dryopteris", "Anemone", "Digitalis", "Convallaria", "Vaccinium", "Hepatica"],
+    (7, "key"): ["Dracaena", "Strelitzia", "Schefflera", "Aglaonema"],
+    (8, "pad"): ["Olea", "Cupressus", "Nerium", "Jasminum", "Citrus", "Laurus", "Cistus", "Punica"],
+    (9, "pluck"): ["Washingtonia", "Eschscholzia", "Yucca", "Encelia"],
+    (10, "pad"): ["Spartina", "Phragmites", "Juncus", "Suaeda", "Halimione", "Ruppia", "Puccinellia"],
+    (10, "bass"): ["Scirpus", "Carex"],
+    (11, "pad"): ["Silene", "Cochlearia", "Calluna", "Ulex", "Asplenium", "Mertensia", "Armoracia"],
 }
 
 
@@ -311,6 +321,13 @@ def main():
         pool = NAMES[k]
         e["name"] = pool[used.get(k, 0) % len(pool)]
         used[k] = used.get(k, 0) + 1
+    used = {}                                           # then a sound that moved to a later landscape: a plant of it
+    for e in entries:                                   # (the owner, 2026-10-25)
+        if e["scene"] != e["named"]:
+            k = (e["scene"], e["kind"])
+            e["name"] = NAMES[k][used.get(k, 0) % len(NAMES[k])]
+            used[k] = used.get(k, 0) + 1
+    for e in entries:
         assert len(e["name"]) <= 12, e["name"]
     assert len({e["name"] for e in entries}) == len(entries), "a name given twice"
     for e in entries:

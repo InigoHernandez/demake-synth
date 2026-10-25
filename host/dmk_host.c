@@ -955,7 +955,7 @@ static void fx_demo(const char *dir)
     fx_one(dir, "media_1_tape", "Lunaria", PG_FX, 1, FM_TAPE, TA, 0, 0);
     fx_one(dir, "media_2_cassette", "Lunaria", PG_FX, 1, FM_CASS, CA, 0, 0);
     fx_one(dir, "media_3_vhs", "Lunaria", PG_FX, 1, FM_VHS, VH, 0, 0);
-    fx_one(dir, "motion_1_chorus", "Lithops", PG_FX, 2, FO_CHORUS, CH, 0, 0);
+    fx_one(dir, "motion_1_chorus", "Washingtonia", PG_FX, 2, FO_CHORUS, CH, 0, 0);
     fx_one(dir, "motion_2_vibrato", "Nymphaea", PG_FX, 2, FO_VIB, VI, 0, 0);
     fx_one(dir, "motion_3_drift", "Lunaria", PG_FX, 2, FO_DRIFT, DR, 0, 0);
     {                                                   /* stage 4's (docs/sound-design.md, 5) */
@@ -965,10 +965,10 @@ static void fx_demo(const char *dir)
         static const uint8_t TR[4] = {100, 40, 55, 0}, TP[4] = {110, 20, 20, 127};
         fx_one(dir, "dry_nymphaea", "Nymphaea", -1, 0, 0, WA, 0, 0);   /* each sound as it is, to hear them against */
         fx_one(dir, "dry_lunaria", "Lunaria", -1, 0, 0, WA, 0, 0);
-        fx_one(dir, "dry_lithops", "Lithops", -1, 0, 0, WA, 0, 0);
+        fx_one(dir, "dry_washingtonia", "Washingtonia", -1, 0, 0, WA, 0, 0);
         fx_one(dir, "colour_5_warm", "Nymphaea", PG_FX, 0, FC_WARM, WA, 0, 0);
-        fx_one(dir, "colour_6_distort", "Lithops", PG_FX, 0, FC_DIST, DI, 0, 0);
-        fx_one(dir, "colour_6_distort_fold", "Lithops", PG_FX, 0, FC_DIST, DF, 0, 0);
+        fx_one(dir, "colour_6_distort", "Washingtonia", PG_FX, 0, FC_DIST, DI, 0, 0);
+        fx_one(dir, "colour_6_distort_fold", "Washingtonia", PG_FX, 0, FC_DIST, DF, 0, 0);
         fx_one(dir, "media_4_vinyl", "Lunaria", PG_FX, 1, FM_VINYL, VY, 0, 0);
         fx_one(dir, "media_5_radio", "Lunaria", PG_FX, 1, FM_RADIO, RA, 0, 0);
         fx_one(dir, "media_6_dictaphone", "Lunaria", PG_FX, 1, FM_DICTA, DC, 0, 0);
