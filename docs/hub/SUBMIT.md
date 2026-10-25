@@ -4,7 +4,7 @@ Everything the hub asks for (<https://thefirmwarehub.com/submit/>, <https://thef
 It follows the owner's handbook (`Git/FIRMWARE-HUB-HANDBOOK.md`); the hub's own pages win where they differ. Read
 them again on the day you send.
 
-**The order: the tests below → the GitHub release `v0.4.8` → the mail.**
+**The order: the tests below → the GitHub release `v0.4.11` → the mail.**
 
 ## The mail
 
@@ -17,13 +17,13 @@ Tested lines say so.
 >
 > Name of the firmware: Demake
 > Your name (as it should appear): Sequencist
-> Repository: https://github.com/InigoHernandez/demake-synth (release v0.4.8, demake-0.4.8.fwsc attached)
+> Repository: https://github.com/InigoHernandez/demake-synth (release v0.4.11, demake-0.4.11.fwsc attached)
 > Identity (FM-1_...): FM-1_969
 > Licence: GPL-3.0-only, the complete source in the repository
 > What it does (two or three sentences): An ambient lofi machine built on 64 of my own pedal recordings, played by
 > three synths, each with its own piano roll, eight patterns and a chain of colour, a delay in time and motion.
-> Shared reverbs, a tape echo or grains and old media over the whole mix; a chord machine that plays and
-> harmonizes the synths, sixteen scenes and a song mode. Each start shows one of twelve pixel landscapes.
+> Eleven shared reverbs, a tape echo or grains and old media over the whole mix; a chord machine that plays and
+> harmonizes the synths, sixteen scenes and a song mode. Each start shows one of thirteen pixel landscapes.
 > Picture (link or attached): https://raw.githubusercontent.com/InigoHernandez/demake-synth/main/docs/hub/screen-4x.png
 > (the screen while it plays: https://raw.githubusercontent.com/InigoHernandez/demake-synth/main/docs/hub/demake-2x.gif)
 > Play in the browser / editor / video (optional): https://inigohernandez.github.io/demake-synth/ · the manual:
@@ -55,11 +55,11 @@ Tested lines say so.
 
 ## The package
 
-- **File:** `demake-0.4.8.fwsc` (610,113 B, SHA-256 `160a356e6bb9dff0ab4a6bc139ac2e298857f49fd2e347bc26b2ce8b2d9a0903`), from
-  `.venv/bin/python tools/fm1/build.py --release 0.4.8`. The installer page and the release carry this same file;
+- **File:** `demake-0.4.11.fwsc` (610,113 B, SHA-256 `04dfc485e161c41d442f707bccd53a35cf212974a9d37c2be8ae58fc70e1c794`), from
+  `.venv/bin/python tools/fm1/build.py --release 0.4.11`. The installer page and the release carry this same file;
   check both digests after publishing.
-- **Release:** a GitHub release `v0.4.8` on the commit it was built from (under 1.0: the card says beta). The hub
-  takes every later release by itself, within three hours. The notes: `docs/hub/release-0.4.8.md`.
+- **Release:** a GitHub release `v0.4.11` on the commit it was built from (under 1.0: the card says beta). The hub
+  takes every later release by itself, within three hours. The notes: `docs/hub/release-0.4.11.md`.
 - **Identity:** FM-1_969, for every release (`build.py --release` sets only the version, shown at boot, and the
   file's name). The hub's live catalogue, 2026-10-25: no firmware claims it (only the catch-all `FM-1_\d{3,8}` of
   some Felucca builds matches it); 966, Demake 0.1's, is GR!MM's. Of the form FM-1_9NN, so the hub resumes an
@@ -73,8 +73,8 @@ Tested lines say so.
 ## Before sending: the hub's tests, on a real FM-1, with that file
 
 1. **From the official firmware:** on <https://thefirmwarehub.com>, "Back to official V15"; then install Demake from
-   <https://inigohernandez.github.io/demake-synth/install.html> (step 02, "Choose a .fwsc", the 0.4.8 file). It
-   starts, shows 0.4.8 under the word at boot, and after "Connect the FM-1" the hub shows FM-1_969.
+   <https://inigohernandez.github.io/demake-synth/install.html> (step 02, "Choose a .fwsc", the 0.4.11 file). It
+   starts, shows 0.4.11 under the word at boot, and after "Connect the FM-1" the hub shows FM-1_969.
 2. **From another firmware:** install another one from the hub (Felucca, for one), then Demake again.
 3. **Leave it:** with Demake running, install any firmware from the hub. The update must start: the most important
    test.
@@ -88,16 +88,16 @@ If any fails, don't publish: tell Claude what happened.
 
 ## Then
 
-1. The installer page gets the same file (`web/firmware/demake-0.4.8.fwsc` and `demake.json`).
+1. The installer page gets the same file (`web/firmware/demake-0.4.11.fwsc` and `demake.json`).
 2. The release:
 
    ```bash
-   gh release create v0.4.8 build/fm1/demake-0.4.8.fwsc --target "$(git rev-parse HEAD)" \
-       --title "Demake 0.4.8" --notes-file docs/hub/release-0.4.8.md
+   gh release create v0.4.11 build/fm1/demake-0.4.11.fwsc --target "$(git rev-parse HEAD)" \
+       --title "Demake 0.4.11" --notes-file docs/hub/release-0.4.11.md
    ```
 
    ```bash
-   gh release view v0.4.8 --json assets -q '.assets[] | .name + " " + .digest'
+   gh release view v0.4.11 --json assets -q '.assets[] | .name + " " + .digest'
    ```
 
    Its digest must be the installer's SHA-256. Never replace a published release's file: make another release.
@@ -109,7 +109,7 @@ If any fails, don't publish: tell Claude what happened.
 ## Checklist
 
 - [x] `FM-1_969` free in the hub's catalogue (2026-10-25), fixed in `build.py`; `--release` does not change it
-- [x] The firmware shows its version (at boot, under the word); the release build is `demake-0.4.8.fwsc`
+- [x] The firmware shows its version (at boot, under the word); the release build is `demake-0.4.11.fwsc`
 - [x] USB port "Demake FM-1" (not "Felucca"); the loader keeps Felucca's names, the hub finds it waiting by them
 - [ ] It boots in fm1-emulator (Simon Johansson's, optional)
 - [x] `LICENSE`, the complete source, how to build (README, `firmware/fm1/README.md`)
@@ -118,6 +118,6 @@ If any fails, don't publish: tell Claude what happened.
 - [x] A 240 × 240 screen picture (+ 4x, a GIF), linked
 - [x] Installer: the same file, SHA-256 checked; it names only FM-1_969 as Demake
 - [x] Tests on a real FM-1: from V15, from another, leaving, USB, interrupted, what it keeps, playing (the owner, 2026-10-25: "it works")
-- [x] Release `v0.4.8` with the `.fwsc`; its digest = the installer's
+- [x] Release `v0.4.11` with the `.fwsc`; its digest = the installer's
 - [ ] The mail on the hub's form, after the tests and the release
 - [ ] (Optional) the signed workflow from `zvenson/fm1-build@v1`
