@@ -509,7 +509,12 @@ code { font: inherit; color: var(--ink); }
   .flash { grid-row: 4 / span 8; grid-auto-rows: calc(2 * var(--m)); }
   .mdocs { grid-template-rows: auto auto; padding-top: 0; }
   .mside { grid-column: 1 / -1; grid-row: 1; position: static; margin-bottom: var(--m); }
-  .mside summary { padding: 0 24px; display: flex; align-items: center; border: 1px solid var(--ink); border-radius: 24px; width: calc(4 * var(--m)); height: var(--m); cursor: pointer; }
+  .mside summary { padding: 0 24px; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--ink);
+                  border-radius: 24px; width: calc(100% + 1px); height: calc(var(--m) + 1px); cursor: pointer; }   /* (the owner: a
+                                                           dropdown, the full width) */
+  .mside summary::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+                          transform: translateY(-3px) rotate(45deg); transition: transform 0.15s; }   /* its arrow: down, up open */
+  .mside[open] summary::after { transform: translateY(3px) rotate(225deg); }
   .mdoc { grid-column: 1 / -1; grid-row: 2; }
   .mfigs { grid-template-columns: 1fr; }
   .mdoc .mt { grid-auto-rows: calc(2 * var(--m)); }
