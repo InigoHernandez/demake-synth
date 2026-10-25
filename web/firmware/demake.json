@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.12.fwsc",
-  "version": "0.4.12",
+  "file": "demake-0.4.13.fwsc",
+  "version": "0.4.13",
   "date": "2026-10-25",
   "product": "FM-1_969",
-  "sha256": "41279e42e681c65f9bad7ed2f932ae9f03d182e7e75151084260f1cbc2dee27e",
-  "note": "An arpeggiator on each synth (SEQ, its third row): thirteen ways, rate, octave, gate and Hold; it plays the keys, the roll, the chords and MIDI. A list's meter a tick a choice, so a click is a tick."
+  "sha256": "5d01ee69a58b5c1ecbb9b69388d87ab61ad1aaca0297470ac8fa20e77e7fc44f",
+  "note": "Recorded as played: each note's micro timing and a strum's spacing kept; NUDGE moves a held note by 32nds; REC and PLAY wait for the first key."
 }
