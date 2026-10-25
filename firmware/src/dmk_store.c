@@ -16,7 +16,8 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 6u   /* 6: more effects in each FX row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
+#define ST_VER 7u   /* 7: the rolls' Vary row, the echo's delays (its types' places moved); 6: more effects in each FX
+                       row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
 
 static uint8_t st_buf[ST_SECTOR] POOL;                  /* a sector as it is written or was read */
@@ -26,6 +27,16 @@ static uint8_t lib[ST_USER][ST_SOUND] POOL;             /* the library, as the f
 static uint32_t st_gen;                                 /* the newest song's generation */
 static uint32_t song_gen[ST_SONGS];                     /* each slot's (0: empty) */
 static uint8_t song_prog[ST_SONGS];                     /* each slot's progression, for its name */
+/* a new song's name (the owner: a name made up as it is first saved): two words, kept in the Songs page's values,
+ * which nothing else uses (its row 1: the words' places and a mark; a song of before has none, its progression's) */
+static const char *const NM_A[24] = {"Quiet", "Late", "Slow", "Pale", "Low", "Soft", "Blue", "Neon", "Paper", "Glass",
+    "Silver", "Hazy", "Faded", "Warm", "Still", "Hollow", "Velvet", "Distant", "Sleepy", "Empty", "Golden", "Rainy", "Lunar", "Small"};
+static const char *const NM_B[24] = {"harbour", "radio", "window", "tape", "motel", "garden", "station", "lantern", "signal",
+    "orchard", "tide", "hallway", "rooftop", "meadow", "comet", "ferry", "arcade", "forest", "pool", "street", "screen",
+    "cassette", "palms", "lights"};
+#define NM_MARK 0xA5u
+static char song_nm[ST_SONGS][20];                      /* each slot's name, if it has one ("" : its progression's) */
+static void nm_of(char *o, const uint8_t *v) { o[0] = 0; if (v[2] == NM_MARK && v[0] < 24u && v[1] < 24u) str_cat(str_cat(str_cat(o, NM_A[v[0]]), " "), NM_B[v[1]]); }
 
 /* a sound: the rows a synth owns (SOUND, LAYER, FILTER, AMP, the four FX rows, LFO; then VOICE and the LFO's sync,
  * after the first nine so a sound of before 0.4 is these nine), five values each */
@@ -211,6 +222,11 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 6 / 128 + 1, 7);
         ui.val[0][PG_GLOBAL][1][4] = choice_val(ui.val[0][PG_GLOBAL][1][4] * 2 / 128 + 1, 3);
     }
+    if (st_ver < 7u) {                                  /* before 0.5: the rolls' Vary off; the echo's type at its place of five */
+        int t = ui.val[0][PG_GLOBAL][1][4] * 3 / 128;
+        for (s = 0; s < DMK_SYNTHS; s++) roll_vary_defaults(s);
+        ui.val[0][PG_GLOBAL][1][4] = t ? choice_val(t, FX_ECHOS) : 0;
+    }
     theme = *p++ % DMK_THEMES;
     for (s = 0; s < DMK_SYNTHS; s++) { ch.follow[s] = *p++; if (ch.follow[s] >= FW_COUNT) ch.follow[s] = FW_FREE; }
     for (i = 0; i < 4; i++) {
@@ -301,25 +317,33 @@ static void songs_scan(void)                            /* which slots hold a so
     uint32_t n, g;
     st_gen = 0;
     for (i = 0; i < ST_SONGS; i++) {
-        song_gen[i] = 0;
+        song_gen[i] = 0; song_nm[i][0] = 0;
         if (st_load(slot_at(i), ST_MAGIC_SONG, &n, &g)) continue;
         song_gen[i] = g ? g : 1;
         /* the progression's place, for the slot's name: the CHORD page's value, packed after the counts */
         song_prog[i] = st_buf[ST_HDR + 1 + PG_CHORD * 20 + 4];
+        nm_of(song_nm[i], &st_buf[ST_HDR + 1 + PG_DISCS * 20 + 5]);   /* (synth 0's Songs page, its row 1) */
         if (g > st_gen) st_gen = g;
     }
 }
 static int song_used(int i) { return i >= 0 && i < ST_SONGS && song_gen[i]; }
-static const char *song_name(int i) { return PROGS[choice_index(choice_of(PG_CHORD, 0, 4), song_prog[i])]; }
+static const char *song_name(int i) { return song_nm[i][0] ? song_nm[i] : PROGS[choice_index(choice_of(PG_CHORD, 0, 4), song_prog[i])]; }
 
 /* the song open into slot i: 0 saved, -1 not (no store, too long, the write failed) */
 static int song_save(int i)
 {
-    int n = song_pack(st_buf + ST_HDR);
+    int n;
+    if (!song_used(i)) {                                /* a new song: a name made up for it */
+        uint8_t *v = ui.val[0][PG_DISCS][1];
+        uint32_t r = hsh(ui.now * 2654435761u ^ (st_gen + 1u) * 40503u ^ (uint32_t)i);
+        v[0] = (uint8_t)(r % 24u); v[1] = (uint8_t)((r >> 8) % 24u); v[2] = NM_MARK;
+    }
+    n = song_pack(st_buf + ST_HDR);
     if (n < 0 || st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
     st_gen = (st_gen + 1u) & 0xFFFFu;
     song_gen[i] = st_gen ? st_gen : 1;
     song_prog[i] = ui.val[0][PG_CHORD][0][4];
+    nm_of(song_nm[i], ui.val[0][PG_DISCS][1]);
     return 0;
 }
 static int song_load(int i)
@@ -333,6 +357,7 @@ static int song_erase(int i)                            /* an empty record: the 
     if (!store_on()) return -1;
     st_put32(st_buf, 0); st_put32(st_buf + 4, 0); st_put32(st_buf + 8, 0); st_put32(st_buf + 12, 0);
     if (dmk_store_write(slot_at(i), st_buf, ST_HDR)) return -1;
+    song_nm[i][0] = 0;
     song_gen[i] = 0;
     return 0;
 }

@@ -38,7 +38,7 @@ static const page_t PAGE[PG_COUNT] = {
     {"Home", 4, {"Level", "Verb", "Echo", "Pan"}, {"Tempo", "Tempo", "Tempo", "Tempo"},
      {{"Level 1", "Level 2", "Level 3", "Verb"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
-    {"Roll", 1, {"Roll"}, {"Zoom"}, {{"Cursor", "View", "Length", "Steps"}}},
+    {"Roll", 2, {"Roll", "Vary"}, {"Zoom", "Zoom"}, {{"Cursor", "View", "Length", "Steps"}, {"Mutate", "Range", "Chance", "Keep"}}},
     {"Sound", 3, {"Main", "Layer", "Voice"}, {"Fine", "Sound", ""},
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
@@ -118,11 +118,15 @@ static const int8_t LTUNE[7] = {-24, -12, -7, 0, 7, 12, 24};
 static const char *const GRITS[] = {"Off", "22 kHz", "11 kHz"};
 static const char *const LOOPS[] = {"Off", "Full"};
 static const char *const VERBS[] = {"Off", "Room", "Hall", "Space", "Haze", "Bloom", "Lofi"};   /* (the owner: off too) */
-static const char *const ECHOS[] = {"Off", "Tape", "Grains"};
+static const char *const ECHOS[] = {"Off", "Tape", "Grains", "Delay", "Ping-pong"};   /* (later ones after: dmk_store's 7) */
+#define FX_ECHOS 5
+static const char *const KEEPS[] = {"Off", "On"};      /* the roll's Vary: mutations heard, or written in */
+static const char *const DIVS[] = {"1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4", "1/4D", "1/2"};   /* the delay's (dmk_seq: DIV24) */
+#define DIV_N 9
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, FX_COLOURS, COLOURS}, {PG_FX, 1, 4, FX_MEDIAS, MEDIAS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS}, {PG_GLOBAL, 3, 0, DMK_THEMES, THEME_NAME},
-    {PG_GLOBAL, 0, 4, 7, VERBS}, {PG_GLOBAL, 1, 4, 3, ECHOS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
+    {PG_GLOBAL, 0, 4, 7, VERBS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
     {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 20, PROGS}, {PG_CHORD, 1, 4, 20, PROGS},
@@ -189,6 +193,22 @@ static void roll_heard(int s)
     ch.follow[s] = FW_FREE;
     str_cat(fmt_int(str_cat(t, "Synth "), s + 1), " plays its roll");
     notice(t);
+}
+
+/* a note written where the roll's seven rows don't reach: the view moved to it (the owner: a note sounded and wasn't
+ * there); the roll full, said (a note past 64 is not kept) */
+static void roll_show(int s, int note)
+{
+    int d = degree_of(note), v = ui.roll_view[s];
+    if (d < v) v = d; else if (d > v + 6) v = d - 6;
+    ui.roll_view[s] = (uint8_t)(v < 14 ? 14 : v > 43 ? 43 : v);
+}
+static void roll_full(void) { notice("The roll is full: 64 notes"); }
+static void roll_unarmed(void)                          /* the first time keys play a stopped roll: how to write */
+{
+    if (ui.hinted >> 15 & 1u) return;
+    ui.hinted |= 0x8000u;
+    notice("REC: the keys write");
 }
 
 /* the patterns' progression is the CHORD page's (dmk_seq.c keeps the rest) */
@@ -312,6 +332,10 @@ static void sp_sync(void)
         p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 8 / 128);
         p->cut = (int16_t)(VS(s, PG_FILTER, 0, 0) >= 127 ? 255 : VS(s, PG_FILTER, 0, 0) * 2);
         p->resq = T_RESQ[VS(s, PG_FILTER, 0, 1)];
+        sq[s].mut = (uint16_t)(VS(s, PG_ROLL, 1, 0) * 258);   /* the roll's Vary: a note's chance to move, how far, to play */
+        sq[s].mrange = (uint8_t)(1 + VS(s, PG_ROLL, 1, 1) * 6 / 127);
+        sq[s].chance = (uint16_t)(VS(s, PG_ROLL, 1, 2) >= 127 ? 32768 : VS(s, PG_ROLL, 1, 2) * 258);
+        sq[s].keep = (uint8_t)(VS(s, PG_ROLL, 1, 3) >= 64);
         p->fenv = (int16_t)((VS(s, PG_FILTER, 0, 2) - 64) * 4);
         p->atk = T_ATK[VS(s, PG_AMP, 0, 0)];
         p->dec = T_EXP[VS(s, PG_AMP, 0, 1)];
@@ -376,6 +400,7 @@ static void sp_sync(void)
     gp.eret = VS(0, PG_GLOBAL, 1, 0) * 258;
     gp.elp = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
     gp.etime = T_ETIME[VS(0, PG_GLOBAL, 1, 2)];
+    gp.ediv = (uint8_t)(VS(0, PG_GLOBAL, 1, 2) * DIV_N / 128);   /* (a delay's: dmk_seq makes its time of the tempo) */
     gp.efb = VS(0, PG_GLOBAL, 1, 3) * 240;
     { int t = choice_index(choice_of(PG_GLOBAL, 1, 4), VS(0, PG_GLOBAL, 1, 4)); gp.etype = (uint8_t)(t ? t - 1 : ET_OFF); }   /* Off first */
     gp.glen = 441 + VS(0, PG_GLOBAL, 1, 1) * 62;        /* GRAINS: 20..380 ms */
@@ -401,6 +426,11 @@ static void sp_sync(void)
 
 /* the controls 0.4 added (the layer, the voice, the filter's drive, the LFO): off, and what older songs and sounds
  * load with, since none of them sounded before */
+static void roll_vary_defaults(int s)                  /* the roll's Vary: no mutation, two steps, every note, heard only */
+{
+    uint8_t *v = ui.val[s][PG_ROLL][1];
+    v[0] = 0; v[1] = 32; v[2] = 127; v[3] = 0; v[4] = 64;
+}
 static void snd_new_defaults(int s)
 {
     uint8_t *l = ui.val[s][PG_SOUND][1], *vo = ui.val[s][PG_SOUND][2], *f = ui.val[s][PG_LFO][0], *y = ui.val[s][PG_LFO][1];
@@ -448,6 +478,7 @@ DMK_SMALL static void ui_init(void)
         ui.val[s][PG_FX][1][4] = t[8] ? choice_val(FM_TAPE, FX_MEDIAS) : 0;   /* Media: tape, or off */
         ui.val[s][PG_FX][0][4] = 0;                     /* Colour, Motion: off */
         ui.val[s][PG_FX][2][4] = 0;
+        roll_vary_defaults(s);
         ui.val[s][PG_FX][1][0] = t[9]; ui.val[s][PG_FX][1][1] = 90;
         ui.val[s][PG_FX][3][0] = t[10]; ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
         snd_new_defaults(s);
@@ -460,7 +491,7 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* keys: chords on CHORD, sevenths */
     ui.val[0][PG_GLOBAL][0][0] = 84; ui.val[0][PG_GLOBAL][0][1] = 56; ui.val[0][PG_GLOBAL][0][2] = 96;   /* the verb: a hall */
     ui.val[0][PG_GLOBAL][0][4] = choice_val(2, 7); ui.val[0][PG_GLOBAL][0][3] = 64;
-    ui.val[0][PG_GLOBAL][1][4] = choice_val(1, 3);      /* the echo: tape */
+    ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS);   /* the echo: tape */
     ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
     ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
     ui.val[0][PG_GLOBAL][2][0] = choice_val(0, 2); ui.val[0][PG_GLOBAL][2][1] = choice_val(1, 4);   /* MIDI: the synth, notes out */
@@ -543,6 +574,16 @@ static void val_text(char *o, int page, int row, int k)
     }
     if (page == PG_SOUND && row == 2 && (k == 1 || k == 2)) { if (!v) str_cat(o, "Off"); else str_cat(fmt_int(o, v * 100 / 127), "%"); return; }
     if (page == PG_FILTER && k == 3 && !v) { str_cat(o, "Off"); return; }
+    if (page == PG_ROLL && row == 1 && k < 3) {        /* the roll's Vary: how often a note moves, how far, how often it plays */
+        if (k == 1) { fmt_int(o, 1 + v * 6 / 127); return; }   /* (scale steps, up or down)  */
+        if (!k && !v) { str_cat(o, "Off"); return; }
+        str_cat(fmt_int(o, v * 100 / 127), "%");
+        return;
+    }
+    if (page == PG_GLOBAL && row == 1 && k == 2) {     /* the echo's time: a delay's, its division of the tempo */
+        int t = choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4));
+        if (t >= 3) { str_cat(o, DIVS[v * DIV_N / 128]); return; }
+    }
     if (page == PG_FX && row == 2 && k == 2 && choice_index(choice_of(PG_FX, 2, 4), *vp(PG_FX, 2, 4)) == FO_TREM) {
         str_cat(o, TREMS[v * TREM_N / 128]);            /* the tremolo's rate: its division of the tempo */
         return;
@@ -617,7 +658,7 @@ static int rows_built(int page) { int r, n = 0; for (r = 0; r < PAGE[page].rows;
  * the synth, as on the roll, the filter and the amp), and the songs' slots */
 static int sel_scrolls(int page)
 {
-    return page == PG_DISCS || (PAGE[page].rows > 1 && page != PG_HOME);
+    return page == PG_DISCS || (PAGE[page].rows > 1 && page != PG_HOME && page != PG_ROLL);   /* (the roll's: SEQ again) */
 }
 
 /* a row with nothing behind it: those not built, MEDIA while its effect is off */
@@ -698,8 +739,8 @@ static void head(void)
 {
     const page_t *pg = &PAGE[ui.page];
     int x = text(PAD + 1, 6, pg->name, &FH, C_INK), i;
-    if (pg->rows > 1) text(x + 7, 6, pg->row[ui.row[ui.page]], &FH, C_LABEL);
-    else if (ui.page == PG_ROLL) {                      /* which of the synth's patterns */
+    if (pg->rows > 1 && !(ui.page == PG_ROLL && !ui.row[PG_ROLL])) text(x + 7, 6, pg->row[ui.row[ui.page]], &FH, C_LABEL);
+    else if (ui.page == PG_ROLL) {                      /* which of the synth's patterns (its Vary row: named) */
         char t[12];
         fmt_int(str_cat(t, "Pattern "), syn_pat(ui.synth) + 1);
         text(x + 7, 6, t, &FH, C_LABEL);
@@ -751,6 +792,11 @@ static void roll_fields(void)                           /* the cursor's, or a he
             if (i == 2) fmt_int(v, n->len);
             field_show(i, HELD[i], v, i == 0 ? n->step * 127 / st : i == 1 ? (degree_of(n->note) - 14) * 127 / 35 : n->len * 8);
         }
+        return;
+    }
+    if (ui.row[PG_ROLL]) {                              /* its Vary row: the page's own fields */
+        int k;
+        for (k = 0; k < 4; k++) field(k, PAGE[PG_ROLL].k[1][k], PG_ROLL, 1);
         return;
     }
     fmt_int(v, ui.roll_cur[ui.synth] + 1);
@@ -1215,7 +1261,7 @@ static void scene_frame(int sc, uint32_t tick)
         if (sc == 2) round_fill(SX + 128, SY + 56, 30, 30, 15, HOLO);    /* the sun, low on the sea */
         if (sc == 3) { round_fill(SX + 150, SY + 14, 30, 30, 15, HOLO); round_fill(SX + 156, SY + 20, 18, 18, 9, lt); }   /* the moon, haloed */
         if (sc == 4) round_fill(SX + 158, SY + 12, 10, 10, 5, lt);   /* the moon over the city, in the window's corner */
-        if (sc == 8) round_fill(SX + 132, SY + 38, 26, 26, 13, HOLO);   /* the sun going into the sea */
+        if (sc == 8) round_fill(SX + 196, SY + 30, 20, 20, 10, HOLO);   /* the sun over the sea */
         if (sc == 9) round_fill(SX + 92, SY + 30, 44, 44, 22, HOLO);    /* the sun at the street's end */
         if (sc == 10) round_fill(SX + 40, SY + 30, 18, 18, 9, C_HOLO6); /* the sun, pale in the fog */
         if (sc == 11) { round_fill(SX + 70, SY + 18, 22, 22, 11, HOLO); round_fill(SX + 74, SY + 22, 14, 14, 7, lt); }   /* the moon */
@@ -1374,9 +1420,13 @@ static void stage_roll(void)
     for (i = 0; i < q->count; i++) {                    /* the notes; those at the cursor lit */
         const snote_t *n = &q->n[i];
         int row = 6 - (degree_of(n->note) - view), s0 = n->step - x0, len = n->len, w;
-        if (row < 0 || row > 6 || s0 < 0 || s0 >= end) continue;
+        if (s0 < 0 || s0 >= end) continue;
         if (s0 + len > end) len = end - s0;
         w = len * cw - 2 < 2 ? 2 : len * cw - 2;
+        if (row < 0 || row > 6) {                       /* above or below the view: a mark at its edge, where it plays */
+            round_fill(gx + s0 * cw + 1, row < 0 ? gy - 5 : gy + rh * 7 + 2, w, 2, 1, C_LABEL);
+            continue;
+        }
         round_fill(gx + s0 * cw + 1, gy + row * rh + 3, w, rh - 6, (rh - 6) / 2, !seq_on && n->step == at ? HOLO : C_INK);
     }
     round_fill(gx + (at - x0) * cw - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);   /* the cursor, or the playhead */
@@ -2233,7 +2283,7 @@ static void stress_set(int on)
             else ui.val[s][PG_FX][r][4] = stress.kept[s][r];
         }
     for (r = 0; r < 2; r++) {
-        if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = (uint8_t)(r ? 100 : 74); }
+        if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = r ? choice_val(2, FX_ECHOS) : 74; }   /* haze, grains */
         else ui.val[0][PG_GLOBAL][r][4] = stress.gkept[r];
     }
     sp_sync();
@@ -2562,8 +2612,11 @@ DMK_SMALL static void ui_button(int b, int down)
             return;
         }
         ui.song_arm = 0;
+        { int fresh = !song_used(at);
         if (song_save(at)) { notice("Not saved"); return; }
         ui.song = (uint8_t)at;
+        if (fresh) { char m[32]; str_cat(str_cat(m, "Saved: "), song_name(at)); notice(m); return; }   /* its new name */
+        }
         fmt_int(str_cat(t, at < 9 ? "Saved in song 0" : "Saved in song "), at + 1);
         notice(t);
         return;
@@ -2711,7 +2764,7 @@ DMK_SMALL static void ui_encoder(int e, int d)
         notice(t);
         return;
     }
-    if (ui.page == PG_ROLL) { roll_turn(k, d); return; }
+    if (ui.page == PG_ROLL && (!ui.row[PG_ROLL] || k == 4 || roll_held() >= 0)) { roll_turn(k, d); return; }   /* (Vary: its values) */
     if (ui.page == PG_ARR) {
         /* ARRANGE: ALGORITHM the rows. The Scene row: K1-K3 each synth's pattern, K4 the progression. The Song row: K1
          * the step, K2 its scene, K3 its bars, K4 the end */
@@ -2863,14 +2916,15 @@ DMK_SMALL static void ui_key(int k, int down)
             ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */
             ui.key_t0[k] = seq_now();
             if (ui.key_roll[k] == 2) ui.key_step[k] = (uint8_t)seq_rec_step(s);   /* where on its own roll */
-            if (ui.page == PG_ROLL && !seq_on) {        /* the roll, stopped: the chord written at the cursor */
+            if (ui.page == PG_ROLL && !seq_on && seq_rec) {   /* the roll, stopped, REC lit: the chord written at the cursor */
                 int c = ui.roll_cur[s];
                 roll_heard(s);
                 for (j = 0; j < ui.key_nch[k]; j++)
-                    if (seq_find(s, c, ui.key_ch[k][j]) < 0) seq_add(s, c, ui.roll_pen[s], ui.key_ch[k][j], VEL_KEY);
+                    if (seq_find(s, c, ui.key_ch[k][j]) < 0 && seq_add(s, c, ui.roll_pen[s], ui.key_ch[k][j], VEL_KEY) < 0) roll_full();
+                roll_show(s, ui.key_ch[k][0]);
                 ui.key_roll[k] = 4;
                 ui.key_step[k] = (uint8_t)c;
-            }
+            } else if (ui.page == PG_ROLL && !seq_on) roll_unarmed();
             return;
         }
         s = ui.key_sy[k];
@@ -2882,7 +2936,8 @@ DMK_SMALL static void ui_key(int k, int down)
             if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll */
                 uint32_t t0 = ui.key_t0[k], t1 = seq_now();
                 int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
-                seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_ch[k][j], 100);
+                if (seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_ch[k][j], 100) < 0) roll_full();
+                else if (!j) roll_show(s, ui.key_ch[k][j]);
             }
         }
         ui.key_nch[k] = 0;
@@ -2893,11 +2948,15 @@ DMK_SMALL static void ui_key(int k, int down)
         s = ui.synth;
         ui.key_sy[k] = (uint8_t)s;
         ui.key_roll[k] = 0;
-        if (ui.page == PG_ROLL && !seq_on) {
+        if (ui.page == PG_ROLL && !seq_on) {            /* the roll, stopped: a note there held, to edit or delete; a new
+                                                           one written only while REC is lit (the owner: else it records
+                                                           without REC), else it only plays */
             int c = ui.roll_cur[s];
             n = snap(n);
-            if (seq_find(s, c, n) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }   /* held: to edit or delete */
-            else if (seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); }
+            if (seq_find(s, c, n) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }
+            else if (!seq_rec) roll_unarmed();
+            else if (seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); roll_show(s, n); }
+            else roll_full();
         } else if (seq_on && seq_rec && !song_rec) {   /* a song's take records the switches, not the keys */
             n = snap(n);
             ui.key_roll[k] = 2;
@@ -2928,7 +2987,8 @@ DMK_SMALL static void ui_key(int k, int down)
         uint32_t t0 = ui.key_t0[k], t1 = seq_now();
         int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
         roll_heard(s);
-        seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_note[k], 100);
+        if (seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_note[k], 100) < 0) roll_full();
+        else roll_show(s, ui.key_note[k]);
     }
     ui.key_roll[k] = 0;
 }

@@ -146,7 +146,7 @@
         <p class="msub">Each synth has its own roll and length, so the three loop against each other.</p>
         <figure class="mfig"><img src="img/screens/02_roll.png" alt="Roll" width="240" height="240"><figcaption>The pad's 32 steps; the cursor lit.</figcaption></figure>
         <div class="mt">
-          <p><b>A key</b><span>Stopped: writes at the cursor, then moves it on</span></p>
+          <p><b>A key</b><span>Stopped, REC lit: writes at the cursor, then moves it on; REC off, it only plays</span></p>
           <p><b>Held + K1</b><span>Moves the note; K2 its pitch, K3 its length</span></p>
           <p><b>Held + ALGO</b><span>Its velocity</span></p>
           <p><b>Held + OCT&minus;</b><span>Deletes it; OCT+ copies it after itself</span></p>
@@ -158,6 +158,13 @@
           <p><b>HOME + OCT&minus;</b><span>Twice: clears all three</span></p>
           <p><b>Keys: All</b><span>A key writes its chord at the cursor; the foot names the chord there</span></p>
         </div>
+        <div class="mt">
+          <p><b>SEQ again</b><span>The Vary row, this synth's</span></p>
+          <p><b>Mutate</b><span>How often a note plays another of the scale, Range steps up or down</span></p>
+          <p><b>Chance</b><span>How often a note plays at all</span></p>
+          <p><b>Keep</b><span>On: the notes moved stay, so the roll evolves by itself</span></p>
+        </div>
+        <p class="note">A note above or below the seven rows in view leaves a mark at the roll's edge; one you write, the view goes to.</p>
         <p class="note">A roll written to is heard: a synth that played the chords plays its roll from then (SEQ + ALGORITHM puts it back). A roll cleared is silent, the chords it played too.</p>
       </article>
       <article id="chords" data-group="Playing">
@@ -221,6 +228,7 @@
         <figure class="mfig"><img src="img/screens/18_discs.png" alt="Songs" width="240" height="240"><figcaption>Songs: the one open has a dot.</figcaption></figure>
         <div class="mt">
           <p><b>SAVE</b><span>The song into its slot, while stopped</span></p>
+          <p><b>A new song saved</b><span>Gets a name of its own, two words</span></p>
           <p><b>SAVE held</b><span>Songs: K1 picks a slot</span></p>
           <p><b>On Songs, PLAY twice</b><span>Opens it (the song open is left, unsaved changes too); an empty slot starts a new song</span></p>
           <p><b>On Songs, SAVE</b><span>Saves there; twice over another song</span></p>
@@ -283,6 +291,8 @@
           <p><b>Lofi</b><span>Eleven kHz, eight bits, wow</span></p>
           <p><b>Tape echo</b><span>Darkening repeats</span></p>
           <p><b>Grains</b><span>A cloud of what you played: size, density, texture</span></p>
+          <p><b>Delay</b><span>Clean repeats in time: Time is a division of the tempo</span></p>
+          <p><b>Ping-pong</b><span>The same, left, then right</span></p>
         </div>
       </article>
       <article id="midi" data-group="Reference">

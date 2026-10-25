@@ -44,7 +44,7 @@ enum { FC_OFF, FC_SAT, FC_CRUSH, FC_LOSSY, FC_NOISE, FC_WARM, FC_DIST };        
 enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS, FM_VINYL, FM_RADIO, FM_DICTA };                  /* MEDIA */
 enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT, FO_ENS, FO_PHASER, FO_FLANGER, FO_TREM };      /* MOTION */
 enum { VB_ROOM, VB_HALL, VB_SPACE, VB_HAZE, VB_BLOOM, VB_LOFI, VB_OFF };   /* the VERB's types (off: nothing run) */
-enum { ET_TAPE, ET_GRAINS, ET_OFF };                                     /* the ECHO's */
+enum { ET_TAPE, ET_GRAINS, ET_DELAY, ET_PING, ET_OFF };                  /* the ECHO's */
 typedef struct {
     uint8_t smp, loops, ftype, tape;
     int16_t tune, cut, fenv;       /* semitones; the cutoff's index 0..255 (255: open); the envelope's reach in indexes */
@@ -81,7 +81,7 @@ enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's t
 static synth_t syn[DMK_SYNTHS];
 
 /* the shared buses' controls */
-static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex, width; uint32_t vrate; uint8_t vtype, etype; } gp;
+static struct { int32_t vret, vfb, vdamp, eret, efb, elp, etime, vfbq, vmod, glen, gdens, gtex, width; uint32_t vrate, edt; uint8_t vtype, etype, ediv; } gp;   /* (edt: a delay's time, half-rate samples, of the tempo) */
 /* the VERB's and ECHO's types as they run: a new one is taken once the return has faded out (5.8 ms), then faded in */
 static uint8_t v_cur, e_cur;
 static int32_t v_g = 32768, e_g = 32768;
@@ -846,7 +846,7 @@ static const uint16_t DF_OFF[4] = {0, 142, 249, 628};
 static uint8_t el_buf[EL_LEN] POOL;
 static struct {
     uint16_t cb_pos[4], ap_pos[4];
-    int32_t cb_lp[4], vl, vr, el, er, elp, ehp;
+    int32_t cb_lp[4], vl, vr, el, er, elp, ehp, etq;
     uint32_t ew;
     int32_t vacc, eacc;
     uint8_t half;
@@ -1022,6 +1022,30 @@ static void grains_step(int32_t ein)
     bus.er = (r * gp.eret) >> 16;
 }
 
+/* ECHO's DELAY and PING-PONG (the owner: a delay, in time): the same line and loop as the tape's, read at the tempo's
+ * division (dmk_seq sets edt), the reading glided there (a new time or tempo bends, never clicks) and between two of
+ * the line's bytes; PING-PONG reads the right twice as late and feeds back from it, so the repeats go left, right */
+static int32_t el_at(uint32_t q8)                       /* the line q8 (Q8) samples back */
+{
+    uint32_t i = q8 >> 8;
+    int32_t a = T_MULAW[el_buf[(bus.ew - i) & (EL_LEN - 1)]], b = T_MULAW[el_buf[(bus.ew - i - 1u) & (EL_LEN - 1)]];
+    return a + (((b - a) * (int32_t)(q8 & 255u)) >> 8);
+}
+static void delay_step(int32_t ein)
+{
+    int32_t l, r, back;
+    bus.etq += ((int32_t)(gp.edt << 8) - bus.etq) >> 10;  /* ~50 ms to a new time */
+    l = el_at((uint32_t)bus.etq);
+    r = e_cur == ET_PING ? el_at((uint32_t)bus.etq * 2u) : el_at((uint32_t)bus.etq + ((uint32_t)bus.etq >> 6));
+    back = e_cur == ET_PING ? r : (l + r) / 2;
+    bus.elp += ((back - bus.elp) * gp.elp + 16384) >> 15;
+    bus.ehp += (bus.elp * 256 - bus.ehp) / 128;
+    el_buf[bus.ew & (EL_LEN - 1)] = mulaw_enc(curve(T_SAT, ein + (((bus.elp - (bus.ehp + 128) / 256) * gp.efb + 16384) >> 15)));
+    bus.ew++;
+    bus.el = (l * gp.eret) >> 15;
+    bus.er = (r * gp.eret) >> 15;
+}
+
 /* one half-rate step: the verb's and the echo's inputs in, their stereo outputs kept in bus.vl/vr, el/er */
 static void bus_step(int32_t vin, int32_t ein)
 {
@@ -1029,6 +1053,7 @@ static void bus_step(int32_t vin, int32_t ein)
     if (v_cur == VB_ROOM) room_step(vin);
     if (e_cur == ET_OFF) { bus.el = bus.er = 0; return; }
     if (e_cur == ET_GRAINS) { grains_step(ein); return; }
+    if (e_cur == ET_DELAY || e_cur == ET_PING) { delay_step(ein); return; }
     /* ECHO: the left read at the time, the right a little later; the loop through a low-pass and a soft clip */
     l = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime) & (EL_LEN - 1)]];
     r = T_MULAW[el_buf[(bus.ew - (uint32_t)gp.etime - (uint32_t)(gp.etime >> 4)) & (EL_LEN - 1)]];
@@ -1420,7 +1445,7 @@ static void dsp_render(int16_t *lr, int frames)
         }   /* faded out: the new
                                                            type, from the next run; out of off, from silence (not
                                                            what was held when it went off) */
-        if (e_cur != gp.etype && !e_g) { if (e_cur == ET_OFF) echo_clear(); e_cur = gp.etype; }
+        if (e_cur != gp.etype && !e_g) { if (e_cur == ET_OFF) echo_clear(); e_cur = gp.etype; bus.etq = (int32_t)(gp.edt << 8); }
         if (v_cur == VB_ROOM || v_cur == VB_OFF) { vq_r = vq_w; wq_r = wq_w; }   /* the room runs in the mix, off nothing: the queue stays empty */
         vfill = wq_w - wq_r;
         ch_nb = nb;

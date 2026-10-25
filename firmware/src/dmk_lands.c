@@ -47,23 +47,28 @@ DMK_SMALL static void cv_wire(int x0, int y0, int x1, int y1, int sag, int c)   
         cv_put(x, y0 + (y1 - y0) * t / w + sag * 4 * t * (w - t) / (w * w), c);
     }
 }
-/* a palm: its trunk curving by lean, thick at its foot; its crown, nine fronds drooping more as they go, leaflets
- * hanging from them */
+/* a palm, in the synthwave picture's way (the owner's reference): a slim trunk leaning a little, and a crown of seven
+ * fronds fanned up and out like a star, each a solid blade, thickest at its middle, pointed, its tip curving a little
+ * down, its edge stepped */
 DMK_SMALL static void cv_palm(int x, int base, int h, int lean, int c)
 {
-    static const int8_t FR[9][2] = {{-16, 0}, {-14, -7}, {-9, -13}, {-3, -16}, {3, -16}, {9, -13}, {14, -7}, {16, 0}, {0, -9}};
-    int t, k, s, xt = x + lean, yt = base - h, L = 5 + h / 5;
-    for (t = 0; t <= h; t++) {
-        int px = x + lean * t * t / (h * h), w = t < h / 5 ? 4 : 3;
+    static const int8_t FR[7][3] = {{-12, -11, 8}, {-16, -4, 8}, {-13, 6, 5}, {-3, -16, 6}, {11, -12, 8}, {16, -3, 8},
+                                    {13, 7, 5}};        /* its way out (16 a pixel), its length in eighths */
+    int t, k, s, j, xt = x + lean, yt = base - h, L = 6 + h / 7;
+    for (t = 0; t <= h; t++) {                          /* the trunk */
+        int px = x + lean * t / h, w = t < h / 5 ? 3 : 2;
         cv_rect(px - w / 2, base - t, w, 1, c);
     }
-    for (k = 0; k < 9; k++)
-        for (s = 0; s <= L; s++) {
-            int fx = xt + FR[k][0] * s / 16, fy = yt + FR[k][1] * s / 16 + s * s * 5 / (L * 4), dir = FR[k][0] > 0 ? 1 : -1;
-            cv_rect(fx, fy, 2, 1 + (s < L / 2), c);
-            if (s > 2 && !(s & 1)) cv_line(fx, fy + 1, fx + dir * (s > L / 2 ? 1 : 2), fy + 3, c);
+    for (k = 0; k < 7; k++) {
+        int len = L * FR[k][2] / 8, mw = 1 + len / 5, dx = FR[k][0], dy = FR[k][1];
+        for (s = 0; s <= len; s++) {
+            int cx = xt * 16 + dx * s, cy = yt * 16 + dy * s + s * s * 16 / (len * 3);   /* (Q4) the tip bending down */
+            int hw = mw * 4 * s * (len - s) / (len * len) + ((s / 2) & 1);   /* the blade's half width, its steps */
+            for (j = -hw; j <= hw; j++) cv_put((cx - dy * j / 2 + 8) >> 4, (cy + dx * j / 2 + 8) >> 4, c);
+            cv_put((cx + 8) >> 4, (cy + 8) >> 4, c);
         }
-    cv_disc(xt, yt + 1, 2, c);
+    }
+    cv_disc(xt, yt, 2, c);
 }
 /* a broadleaf, old: its trunk, a fork, a crown of round masses (holes left where the sky shows through) */
 DMK_SMALL static void cv_oak(int x, int base, int h, int r, int c, uint32_t seed)
@@ -95,6 +100,20 @@ DMK_SMALL static void cv_boat(int x, int wl, int w, int c, int lt)   /* a fishin
     cv_rect(x + w / 3, wl - 28, 1, 22, c);
     cv_line(x + w / 3, wl - 28, x + 1, wl - 7, c);
     cv_line(x + w / 3, wl - 28, x + w - 2, wl - 7, c);
+}
+/* a plant's leaves in the light, not a black mass: each a dark shadow, the leaf, its lit side, a split or two */
+DMK_SMALL static void cv_leaves(int x0, int y0, int w, int h, int n, uint32_t seed)
+{
+    int k;
+    for (k = 0; k < n; k++) {
+        uint32_t q = hsh(seed + (uint32_t)k * 7u);
+        int cx = x0 + (int)(q % (uint32_t)w), cy = y0 + (int)((q >> 8) % (uint32_t)h), r = 5 + (int)((q >> 16) % 4u);
+        cv_disc(cx + 1, cy + 1, r, C_HOLO0);
+        cv_disc(cx, cy, r, C_HOLO1);
+        cv_disc(cx - 1, cy - 1, r - 2, C_HOLO2);
+        cv_disc(cx - 2, cy - 2, r / 3, C_HOLO3);
+        cv_line(cx, cy, cx + r - 1, cy - (int)((q >> 24) % 3u), C_HOLO0);   /* a split */
+    }
 }
 /* fog over what is drawn: from a row's density at y0 to none at y1 (or the other way), in the fog's two greys */
 DMK_SMALL static void cv_fog(int y0, int y1, int n0, int n1)
@@ -141,6 +160,15 @@ static int ray_at(int x, int y)
         if (d < half) { v = (half - d) * 6 / half - y / 30; if (v > best) best = v; }
     }
     return best;
+}
+
+/* CALIFORNIA's nearest palms, one each side, on the sidewalks: so tall their crowns are over the band; drawn whole on
+ * the band (which shows their trunks, from the ground up) and above it (their crowns), in each one's place, so they meet */
+static void ca_near(int dk, int above)
+{
+    int ox = above ? LF_X0 : 0, oy = above ? LF_H : 0;
+    cv_palm(12 + ox, 106 + oy, 146, 6, dk);             /* (on the sidewalks, past the curbs: the owner, not on the road) */
+    cv_palm(SC_W - 12 + ox, 106 + oy, 152, -7, dk);
 }
 
 /* ---- the bands */
@@ -235,37 +263,51 @@ DMK_SMALL static void land_band(int sc, int dk, int lt)
                     cv_put(184 + x, 85 + y, left || top ? (left ? C_HOLO1 : C_HOLO0) : dk);
                 }
         }
-    } else if (sc == 8) {                               /* VILLA */
-        for (y = 52; y < 82; y++) for (x = 0; x < SC_W; x++)   /* the sea, lit to the sun */
-            cv_put(x, y, y < 55 ? (bay(x, y) < 8 ? C_HOLO4 : C_HOLO3) : bay(x, y) < (82 - y) / 4 ? C_HOLO3 : y < 64 ? C_HOLO2 : C_HOLO1);
-        for (x = 0; x < 80; x++) { int top = 52 - tri(x + 8, 76, 7) - tri(x, 23, 2); for (y = top; y < 52; y++) cv_put(x, y, bay(x, y) < 6 ? C_HOLO3 : C_HOLO2); }   /* an island */
-        cv_rect(0, 70, SC_W, 3, lt); cv_rect(0, 73, SC_W, 1, C_LABEL);   /* the balustrade's rail, its balusters */
-        for (x = 2; x < SC_W; x += 6) { cv_rect(x, 74, 3, 7, lt); cv_rect(x + 2, 74, 1, 7, C_LABEL); }
-        cv_rect(0, 81, SC_W, 2, lt);
-        for (y = 83; y < SC_H; y++) for (x = 0; x < SC_W; x++) {   /* the pool, the terrace round it */
-            int pool = y >= 87 && y < 110 && x >= 44 && x < 200, c;
-            if (pool) c = (y + tri(x, 19, 2)) % 6 == 0 ? C_HOLO6 : bay(x, y) < 5 ? C_HOLO1 : C_HOLO0;
-            else c = (x - y * 2) % 30 == 0 || (y - 83) % 9 == 0 ? C_LINE : bay(x, y) < 14 ? lt : C_LINE;
-            cv_put(x, y, c);
+    } else if (sc == 8) {                               /* VILLA: a pool house in the Californian way (the owner's
+                                                           picture): a flat white roof on pink walls and dark glass, a
+                                                           pink deck, the pool before it in perspective (its ripples
+                                                           move: land_anim), the sea and its hills to the right */
+        for (x = 150; x < SC_W; x++) {                  /* the hills, the sea */
+            int top = 46 - tri(x, 41, 5) - tri(x + 7, 13, 2);
+            for (y = top; y < 52; y++) cv_put(x, y, bay(x, y) < 6 ? C_HOLO3 : C_HOLO2);
+            for (y = 52; y < 58; y++) cv_put(x, y, y == 52 ? C_HOLO5 : bay(x, y) < 6 ? C_HOLO1 : C_HOLO0);
         }
-        cv_rect(44, 86, 156, 1, C_LABEL);
-        for (y = 87; y < 110; y++) if (bay(146, y) < 10) cv_rect(141 + (y & 3), y, 4, 1, C_HOLO5);   /* the sun in it */
-        for (y = 6; y < 83; y++) for (x = SC_W - 34; x < SC_W; x++) {   /* the villa: a white wall, an arch, the room lit */
-            int ax = x - (SC_W - 17), ay = y - 40, arch = y > 34 && x > SC_W - 27 && x < SC_W - 7 && (y > 40 || ax * ax + ay * ay * 2 < 100);
-            cv_put(x, y, arch ? (bay(x, y) < 6 ? C_HOLO5 : C_HOLO4) : x < SC_W - 31 ? C_LABEL : bay(x, y) < 14 ? lt : C_LINE);
+        cv_palm(190, 58, 34, 2, dk);                    /* a palm by the sea */
+        cv_rect(40, 25, 56, 33, C_HOLO5);               /* the house: its left wing, glass between pink */
+        cv_rect(44, 29, 48, 29, dk);
+        for (k = 0; k < 3; k++) cv_rect(56 + k * 12, 29, 1, 29, C_HOLO2);
+        for (y = 29; y < 58; y++) for (x = 44; x < 92; x++) if (((x + y) % 23) < 3 && bay(x, y) < 8) cv_put(x, y, C_HOLO1);   /* the sky in it */
+        cv_rect(96, 25, 14, 33, C_HOLO6); cv_rect(109, 25, 1, 33, C_HOLO5);   /* a pillar, pale */
+        cv_rect(110, 25, 48, 33, C_HOLO4);              /* the right wing: a deeper wall, a doorway of dark glass */
+        cv_rect(116, 30, 36, 28, dk);
+        for (k = 0; k < 2; k++) cv_rect(128 + k * 12, 30, 1, 28, C_HOLO2);
+        cv_rect(26, 20, 138, 4, lt); cv_rect(26, 24, 138, 1, C_LABEL);   /* the roof, a white slab over all */
+        for (y = 58; y < 67; y++) for (x = 0; x < SC_W; x++) cv_put(x, y, y >= 65 ? C_HOLO4 : bay(x, y) < 9 ? C_HOLO6 : lt);   /* the deck */
+        cv_line(60, 62, 72, 56, lt); cv_line(60, 63, 72, 57, lt); cv_rect(61, 63, 1, 2, C_LABEL); cv_rect(71, 58, 1, 6, C_LABEL);   /* a lounger */
+        for (y = 14; y < 66; y++) {                     /* a stone pine at the left: a tall trunk, bent, lit on its side */
+            int tx = 14 + (66 - y) * (66 - y) / 220;
+            cv_rect(tx, y, 3, 1, dk); cv_put(tx + 2, y, C_HOLO2);
         }
-        for (k = 0; k < 4; k++) cv_rect(SC_W - 37 + k, 3 + k, 37 - k, 1, k & 1 ? C_HOLO3 : C_HOLO4);   /* its roof's tiles */
-        cv_cypress(SC_W - 44, 82, 60, dk); cv_cypress(SC_W - 54, 82, 46, dk);
-        cv_rim(dk, C_HOLO3, 6);
-        cv_rect(22, 30, 3, 40, dk);                     /* the stone pine: a bent trunk, a flat crown */
-        cv_line(23, 32, 13, 20, dk); cv_line(24, 32, 35, 22, dk);
-        for (k = 0; k < 11; k++) { uint32_t q = hsh((uint32_t)k + 300u); cv_disc(k * 5 - 2, 14 + (int)(q % 5u), 5 + (int)((q >> 8) % 3u), dk); }
-        for (k = 0; k < 2; k++) {                       /* urns on the balustrade, bougainvillea in them */
-            int px = 70 + k * 52, j;
-            cv_rect(px, 62, 10, 8, C_HOLO3); cv_rect(px - 1, 61, 12, 2, C_HOLO4); cv_rect(px + 8, 63, 1, 6, C_HOLO2);
-            for (j = 0; j < 9; j++) { uint32_t q = hsh((uint32_t)(px * 7 + j)); cv_disc(px + 1 + (int)(q % 9u), 55 + (int)((q >> 8) % 6u), 1 + (int)((q >> 16) & 1u), j % 3 ? C_HOLO5 : C_HOLO2); }
+        cv_line(26, 20, 36, 12, dk); cv_line(25, 20, 12, 13, dk);   /* its limbs */
+        for (x = 0; x < 66; x++) {                      /* its crown: flat, wide, one mass; lit on top, shaded under */
+            int top = 4 + tri(x * 3, 23, 2) + (x < 6 ? 6 - x : 0) + (x > 56 ? (x - 56) : 0), bot = 21 + tri(x * 2 + 5, 17, 2) - (x > 58 ? x - 58 : 0);
+            for (y = top; y < bot; y++)
+                cv_put(x, y, y < top + 2 ? (bay(x, y) < 8 ? C_HOLO3 : C_HOLO2) : y > bot - 3 ? (bay(x, y) < 6 ? C_HOLO0 : dk) : bay(x, y) < 7 ? C_HOLO2 : C_HOLO1);
         }
-        cv_line(4, 104, 22, 96, C_LABEL); cv_line(4, 105, 22, 97, C_LABEL); cv_rect(5, 105, 1, 6, C_LABEL); cv_rect(20, 98, 1, 8, C_LABEL);   /* a lounger */
+        for (y = 67; y < SC_H; y++) for (x = 0; x < SC_W; x++) {   /* the pool: lighter far, deeper near; the house in it */
+            int m = 66 - (y - 67) - 1, c = y < 82 ? cv_get(x + tri(y * 3, 5, 1), m) : 0xFF;
+            if (c == dk) c = C_HOLO0;                   /* (its glass, deep in the water) */
+            cv_put(x, y, c != 0xFF && c != C_HOLO4 && bay(x, y) < 4 ? c : bay(x, y) < (y - 67) / 4 ? C_HOLO0 : C_HOLO1);
+        }
+        for (y = 76; y < SC_H; y++) {                   /* a coping slanting across it to the bottom, the water both sides */
+            int x0 = (y - 76) * 132 / 42;
+            cv_rect(x0 - 3, y, 6, 1, lt); cv_put(x0 + 3, y, C_LABEL); cv_put(x0 + 4, y, C_HOLO0); cv_put(x0 - 4, y, C_HOLO7);
+        }
+        for (k = 0; k < 60; k++) {                      /* the diving board, out over the water from the corner */
+            int bx = SC_W - 1 - k, by = 114 - k * 2 / 5;
+            cv_rect(bx, by, 1, 6, k < 4 ? C_LABEL : bay(bx, by) < 12 ? lt : C_HOLO7);
+            cv_put(bx - 2, by + 8, C_HOLO0);            /* its shadow on the water */
+        }
     } else if (sc == 9) {                               /* CALIFORNIA: the street to the sun, palms along it */
         int vx = 114, vy = 66;
         for (x = 0; x < SC_W; x++) { int top = 66 - tri(x + 30, 90, 7) - tri(x, 31, 2); for (y = top; y < 68; y++) cv_put(x, y, bay(x, y) < 8 ? C_HOLO2 : C_HOLO1); }   /* hills */
@@ -286,11 +328,12 @@ DMK_SMALL static void land_band(int sc, int dk, int lt)
             }
         }
         cv_rect(22, 30, 20, 10, C_HOLO4); cv_rect(24, 32, 16, 6, dk); cv_rect(26, 34, 12, 2, C_HOLO6); cv_rect(31, 40, 2, 30, dk);   /* the motel's sign */
-        for (k = 0; k < 4; k++) {                       /* the palms, nearer and taller, both sides */
+        for (k = 0; k < 3; k++) {                       /* the palms, nearer and taller, both sides */
             int d = 8 + k * k * 7, h = 16 + k * k * 9, lean = k & 1 ? 4 : -3;
             cv_palm(vx - d * 3 / 2 - 8, vy + d / 2 + 2, h, lean, dk);
             cv_palm(vx + d * 3 / 2 + 8, vy + d / 2 + 2, h, -lean, dk);
         }
+        ca_near(dk, 0);                                 /* the nearest two: their trunks (their crowns above, in full screen) */
         for (k = 0; k < 3; k++) {                       /* the streetlamps up the right side, their arms over the street */
             static const uint8_t LD[3] = {10, 24, 44};
             int d = LD[k], bx = vx + d * 5 / 2, by = vy + d, ht = d * 6 / 5 + 12;
@@ -371,16 +414,8 @@ DMK_SMALL static void land_top(int sc, int dk, int lt)
         cv_rect(146, 46, 68, 2, C_LABEL);               /* the shelf: records on their spines, a plant */
         for (k = 0; k < 14; k++) cv_rect(150 + k * 3, 33 + (k * 5 % 3), 2, 13 - (k * 5 % 3), k % 5 == 2 ? C_HOLO3 : k % 3 ? C_A_INK2 : C_LABEL);
         cv_rect(196, 40, 10, 6, C_HOLO3); for (k = 0; k < 5; k++) cv_line(201, 40, 195 + k * 3, 30 + (k & 1) * 4, C_HOLO0);
-    } else if (sc == 8) {                               /* a pergola's beam, bougainvillea hanging at its ends */
-        cv_rect(0, 4, DMK_W, 5, lt); cv_rect(0, 9, DMK_W, 1, C_LABEL);
-        for (k = 0; k < 120; k++) {
-            uint32_t q = hsh((uint32_t)k * 40503u + 3u);
-            int side = k & 1, bx = side ? DMK_W - 1 - (int)(q % 56u) : (int)(q % 56u), reach = 40 - (side ? DMK_W - 1 - bx : bx) * 2 / 3;
-            int by = 10 + (int)((q >> 8) % (uint32_t)(reach > 4 ? reach : 4));
-            cv_disc(bx, by, 1 + (int)((q >> 16) % 2u), (q >> 20) % 3u ? ((q >> 22) & 1u ? C_HOLO5 : C_HOLO4) : dk);
-        }
-    } else if (sc == 9) {                               /* the near palms' crowns, the wires going on */
-        cv_palm(12, 76, 64, 6, dk); cv_palm(228, 76, 70, -8, dk);
+    } else if (sc == 9) {                               /* the nearest palms' crowns, the wires going on */
+        ca_near(dk, 1);
         cv_wire(0, 50, DMK_W - 1, 40, 10, dk);
         cv_rim(dk, C_HOLO3, 6);
     } else if (sc == 10) {                              /* a crane's arm into the fog, gulls */
@@ -414,20 +449,12 @@ DMK_SMALL static void land_bottom(int sc, int dk, int lt)
         }
         cv_rect(150, 44, 18, 10, dk); cv_rect(152, 46, 14, 4, lt); cv_rect(153, 47, 8, 1, C_HOLO3);   /* a tape's box */
         cv_rect(78, 46, 16, 6, C_LABEL); cv_rect(80, 47, 2, 2, C_HOLO4); cv_rect(84, 47, 6, 1, dk);   /* the remote */
-    } else if (sc == 8) {                               /* the terrace nearer: its tiles, lavender in pots */
+    } else if (sc == 8) {                               /* the pool nearer: deeper, its coping across it and the board going on */
         for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
-            int gx = (x + (y / 12 & 1) * 12) % 24, gy = y % 12;
-            cv_put(x, y, !gx || !gy ? C_LINE : bay(x, y) < 14 ? lt : C_LINE);
+            int x0 = LF_X0 + (y + SC_H - 76) * 132 / 42;
+            cv_put(x, y, x >= x0 - 3 && x < x0 + 3 ? lt : x == x0 + 3 ? C_LABEL : bay(x, y) < 12 ? C_HOLO0 : C_HOLO1);
         }
-        for (k = 0; k < 2; k++) {
-            int px = k ? 196 : 22;
-            cv_rect(px, 34, 22, 18, C_HOLO3); cv_rect(px - 2, 32, 26, 3, C_HOLO4); cv_rect(px + 18, 36, 2, 14, C_HOLO2);
-            for (y = 0; y < 40; y++) {
-                uint32_t q = hsh((uint32_t)(y + k * 50));
-                int lx = px + 2 + (int)(q % 18u), ly = 10 + (int)((q >> 8) % 22u);
-                cv_line(lx, 32, lx + (int)((q >> 16) % 5u) - 2, ly, C_HOLO0); cv_put(lx + (int)((q >> 16) % 5u) - 2, ly, C_HOLO2);
-            }
-        }
+        for (k = 0; k < 40; k++) { int bx = DMK_W - 1 - k, by = 4 - k * 2 / 5; cv_rect(bx, by < 0 ? 0 : by, 1, 6 + (by < 0 ? by : 0), lt); }
     } else if (sc == 9) {                               /* the street nearer: the curbs, the line */
         for (y = 0; y < LF_H; y++) for (x = 0; x < DMK_W; x++) {
             int d = y + SC_H - 66, ax = x - 120 < 0 ? 120 - x : x - 120, half = d * 2 + 2;
@@ -483,15 +510,22 @@ DMK_SMALL static void land_anim(int sc, uint32_t tick, int dk, int lt)
             round_line(SX + sx - r, SY + 78 - r, r * 2 + 1, r * 2 + 1, r, 1, C_LABEL);
         }
     }
-    if (sc == 8) {                                      /* the pool's light moving, the sea's glints, a sail */
-        for (i = 0; i < 40; i++) {
-            uint32_t h = hsh((uint32_t)i * 977u + tick / 2u);
-            px_put(SX + 46 + (int)(h % 152u), SY + 85 + (int)((h >> 9) % 24u), h & 0x100u ? C_HOLO6 : C_HOLO7);
+    if (sc == 8) {                                      /* the pool's ripples, Hockney's: a few short lines of light a row,
+                                                           the rows apart, each line in its own place (none crossing),
+                                                           drifting; wider nearer; only on the water */
+        for (y = 72; y < SC_H; y += 6) {
+            int n = 3 + (y - 72) / 18, cell = SC_W / n, j;
+            for (i = 0; i < n; i++) {
+                uint32_t h = hsh((uint32_t)(y * 131 + i));
+                int len = 4 + (int)(h >> 28) + (y - 72) / 8, rx = i * cell + (int)((h % (uint32_t)(cell - len > 1 ? cell - len : 1) + tick / 4u) % (uint32_t)cell);
+                for (j = 0; j < len; j++) {
+                    int px = rx + j, py = y + (j > len / 4 && j < len * 3 / 4) * ((int)((tick / 6u + h) & 1u) ? -1 : 0);
+                    int c = px < SC_W && py < SC_H ? sc_fg[py * SC_W + px] : 0xFF;
+                    if (c == C_HOLO0 || c == C_HOLO1) px_put(SX + px, SY + py, j == 0 || j == len - 1 ? C_HOLO6 : C_HOLO7);
+                }
+            }
         }
-        for (i = 0; i < 18; i++) { uint32_t h = hsh((uint32_t)i * 131u + tick); px_put(SX + 120 + (int)(h % 50u), SY + 55 + (int)((h >> 8) % 14u), C_HOLO6); }
-        x = (int)(tick / 4u % 260u) - 20;               /* the sail, crossing slow */
-        for (y = 0; y < 6; y++) fill(SX + x + 6 - y, SY + 44 + y, y + 1, 1, lt);
-        fill(SX + x, SY + 50, 9, 2, C_LABEL);
+        for (i = 0; i < 6; i++) { uint32_t h = hsh((uint32_t)i * 131u + tick); px_put(SX + 160 + (int)(h % 60u), SY + 53 + (int)((h >> 8) % 4u), C_HOLO6); }
     }
     if (sc == 9) {                                      /* the sun's bands moving down, a car going away */
         for (y = 0; y < 8; y++) { int by = 50 + (int)((tick / 2u + (uint32_t)y * 4u) % 16u); if (by < 66) fill(SX + 96, SY + by, 36, 1, C_HOLO4); }
@@ -539,7 +573,7 @@ DMK_SMALL static void land_light(int sc, int i, int on, uint32_t tick)
         fill(SX + x - 2, SY + y, 5, 2, on ? C_HOLO7 : C_HOLO3);
         if (on) { px_put(SX + x - 3, SY + y + 1, C_HOLO5); px_put(SX + x + 3, SY + y + 1, C_HOLO5); px_put(SX + x, SY + y - 1, C_HOLO5); }
     } else if (sc == 7) fill(SX + 60 + i * 4, SY + 93, 2, 1, on ? C_HOLO6 : C_A_INK2);   /* the deck's LEDs */
-    else if (sc == 8) { x = 80 + i * 36; fill(SX + x, SY + 106, 6, 3, on ? C_HOLO7 : C_HOLO2); if (on) fill(SX + x - 2, SY + 104, 10, 1, C_HOLO5); }   /* pool lights */
+    else if (sc == 8) { x = 84 + i * 40; fill(SX + x, SY + 70, 6, 2, on ? C_HOLO7 : C_HOLO2); if (on) { fill(SX + x - 2, SY + 72, 10, 1, C_HOLO5); fill(SX + x + 1, SY + 73, 4, 1, C_HOLO6); } }   /* pool lights */
     else if (sc == 9) {                                 /* the streetlamps' heads */
         static const uint8_t LD[3] = {10, 24, 44};
         int d = LD[i], hx = 114 + d * 5 / 2 - 5 - d / 8, hy = 66 + d - d * 6 / 5 - 12 + 1, w = 2 + d / 16;
@@ -564,9 +598,17 @@ DMK_SMALL static void land_full_anim(int sc, uint32_t t, int dk, int lt)
             uint32_t h = hsh((uint32_t)k * 2654435761u + t / 140u);
             px_put(30 + (int)(h % 170u), LF_Y0 + SC_H + 22 + (int)((h >> 9) % 34u), h & 0x200u ? lt : C_HOLO1);
         }
-    if (sc == 8)                                        /* a gull or two, gliding */
-        for (k = 0; k < 2; k++) {
-            int gx = (int)((t / 120u + (uint32_t)k * 97u) % 280u) - 20, gy = 22 + k * 9;
-            px_put(gx - 2, gy, lt == C_PAPER ? C_INK : C_PAPER); px_put(gx - 1, gy + 1, C_A_INK2); px_put(gx, gy, C_A_INK2); px_put(gx + 1, gy + 1, C_A_INK2); px_put(gx + 2, gy, C_A_INK2);
+    if (sc == 8)                                        /* the ripples nearer: longer, apart, on the water only */
+        for (y = 3; y < LF_H; y += 8) {
+            int i, j, n = 4, cell = DMK_W / n;
+            for (i = 0; i < n; i++) {
+                uint32_t h = hsh((uint32_t)(y * 977 + i));
+                int len = 10 + (int)(h >> 28) + y / 6, rx = i * cell + (int)((h % (uint32_t)(cell - len) + t / 560u) % (uint32_t)cell);
+                int x0 = LF_X0 + (y + SC_H - 76) * 132 / 42;
+                for (j = 0; j < len; j++) {
+                    int px = rx + j, py = LF_Y0 + SC_H + y - (j > len / 4 && j < len * 3 / 4 && ((t / 840u + h) & 1u));
+                    if ((px > x0 + 5 || px < x0 - 5) && px >= 0 && px < DMK_W && py < DMK_H) px_put(px, py, j == 0 || j == len - 1 ? C_HOLO6 : C_HOLO7);
+                }
+            }
         }
 }

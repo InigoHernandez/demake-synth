@@ -15,6 +15,10 @@ typedef struct {
     uint8_t count, steps, pos;                          /* notes, length in steps, the step that sounds next */
     uint8_t live[SEQ_LIVE], left[SEQ_LIVE];             /* the notes it sounds and the steps each has left */
     uint8_t from[SEQ_LIVE];                             /* a harmony's: its lead + 1 (0: the roll's own) */
+    uint16_t mut, chance;                               /* Vary (the owner's): a note's chance to move in the scale, to
+                                                           play at all (Q15; 32768 always) */
+    uint8_t mrange, keep;                               /*   how far it moves (scale steps); kept in the roll */
+    uint32_t rng;
 } seq_t;
 
 static seq_t sq[DMK_SYNTHS];
@@ -295,11 +299,20 @@ static void seq_step(void)                              /* every synth one step 
     for (s = 0; s < DMK_SYNTHS; s++) {
         seq_t *q = &sq[s];
         for (i = 0; i < q->count; i++) {
-            const snote_t *n = &q->n[i];
-            int len = n->len, note;
+            snote_t *n = &q->n[i];
+            int len = n->len, note = n->note;
             if (n->step != q->pos || plays_chords(s) || harm_of(s) >= 0 || pat_mute >> s & 1u) continue;   /* a follower leaves its roll */
             if (n->step + len > q->steps) len = q->steps - n->step;   /* cut at the pattern's end */
-            note = follow_note(s, n->note);
+            if (q->chance < 32768u && (xs32(&q->rng) >> 17) >= q->chance) continue;   /* Vary: this time it rests */
+            if (q->mut && (xs32(&q->rng) >> 17) < q->mut) {   /* Vary: another note of the scale, up or down */
+                uint32_t r = xs32(&q->rng);
+                int d = degree_of(note) + (int)(1u + r % q->mrange) * (r >> 31 ? -1 : 1), m = note_of(d);
+                if (m >= 24 && m <= 108) {
+                    note = m;
+                    if (q->keep && seq_find(s, n->step, m) < 0) n->note = (uint8_t)m;   /* kept: the roll evolves */
+                }
+            }
+            note = follow_note(s, note);
             roll_on(s, note, len, n->vel, 0);
             for (k = 0; k < DMK_SYNTHS; k++)            /* the synths in harmony with this one: its note, moved */
                 if (k != s && harm_of(k) == s && !(pat_mute >> k & 1u)) roll_on(k, harm_note(k, note), len, n->vel, s + 1);
@@ -357,6 +370,14 @@ static void lfo_sync(void)
         }
         lfo[s].rst = 0;
     }
+    if (gp.etype == ET_DELAY || gp.etype == ET_PING) {  /* the ECHO's delays: their time a division of the tempo, halved
+                                                           till the line holds it (so still in time) */
+        static const uint8_t DIV24[9] = {6, 8, 9, 12, 16, 18, 24, 36, 48};   /* in 24ths of a beat (the screen's DIVS) */
+        uint32_t t = 55125u * DIV24[gp.ediv < 9 ? gp.ediv : 6] / (uint32_t)(seq_bpm > 0 ? seq_bpm : 120);   /* 22050 * 60 / 24 */
+        uint32_t most = gp.etype == ET_PING ? EL_LEN / 2u - 2u : EL_LEN - 2u;
+        while (t > most) t /= 2u;
+        gp.edt = t;
+    }
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* MOTION's tremolo: its step at the tempo, in time with the bars */
         uint32_t n3, blocks;
         if (syn[s].motion != FO_TREM) continue;
@@ -403,7 +424,7 @@ static void seq_init(void)
     static const uint8_t PLUCK[][3] = {{0, 1, 76}, {3, 1, 69}, {6, 1, 72}, {9, 1, 74}};
     ext_seen = 0;                                       /* no outside clock heard yet */
     unsigned i;
-    for (i = 0; i < DMK_SYNTHS; i++) { sq[i].count = 0; sq[i].pos = 0; }
+    for (i = 0; i < DMK_SYNTHS; i++) { sq[i].count = 0; sq[i].pos = 0; sq[i].rng = 0x2545F491u * (i + 1u); }   /* (Vary's dice) */
     sq[0].steps = 32; sq[1].steps = 16; sq[2].steps = 12;
     for (i = 0; i < sizeof PAD / sizeof PAD[0]; i++) seq_add(0, PAD[i][0], PAD[i][1], PAD[i][2], 100);
     for (i = 0; i < sizeof PIANO / sizeof PIANO[0]; i++) seq_add(1, PIANO[i][0], PIANO[i][1], PIANO[i][2], 100);
