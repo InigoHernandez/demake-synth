@@ -708,8 +708,11 @@ static void head(void)
             char ini[2] = {DMK_SAMPLES[VS(i, PG_SOUND, 0, 0)].name[0], 0};
             int bx = rx - bw;
             if (ini[0] >= 'a' && ini[0] <= 'z') ini[0] = (char)(ini[0] - 32);
-            if (i == ui.synth) round_fill(bx, y - 3, bw, bw, 5, HOLO);   /* the current one lit, its letter on the light */
-            text_c(bx + bw / 2 + 1, y, ini, &FS, i == ui.synth ? (THEME_DARK[theme] ? C_PAPER : C_INK) : C_LABEL);
+            if (i == ui.synth) {                        /* the current one lit, its white letter on the light: the
+                                                           light held under its pale core, so the letter stays clear */
+                holo_heat = 72; round_fill(bx, y - 3, bw, bw, 5, HOLO); holo_heat = 255;
+            }
+            text_c(bx + bw / 2 + 1, y, ini, &FS, i == ui.synth ? (THEME_DARK[theme] ? C_INK : C_PAPER) : C_LABEL);   /* (white on it) */
             rx = bx - 3;
         }
     }
