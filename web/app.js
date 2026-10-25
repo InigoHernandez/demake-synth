@@ -125,7 +125,7 @@
       node = new AudioWorkletNode(ctx, "demake", { outputChannelCount: [2] });
       gain = ctx.createGain(); gain.gain.value = master;
       node.connect(gain).connect(ctx.destination);
-      const bytes = await (await fetch("dmk.wasm?v=13")).arrayBuffer();
+      const bytes = await (await fetch("dmk.wasm?v=14")).arrayBuffer();
       node.port.onmessage = (ev) => onmsg(ev.data);
       node.port.postMessage({ t: "wasm", bytes, seed: (Math.random() * 4294967296) >>> 0, store: storeLoad() });
       power.textContent = "On";
