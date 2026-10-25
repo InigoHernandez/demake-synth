@@ -66,7 +66,7 @@ static const char *const BTN_NAME[B_COUNT] = {"FX", "SEL", "ENV", "LFO", "EDIT",
 /* what a button held does (shown after 350 ms); none: a slow press is a tap (the audit: placeholders, and layers
  * named that were never there) */
 static const char *const LAYER_NAME[B_COUNT] = {"", "", "", "", "SAVE keeps, OCT\xE2\x88\x92 init", "",
-                                                "", "", "OCT+ to the roll, K1 a slot", "ALGO follow, K2 harmony, OCT\xE2\x88\x92 clear", "", "", "", ""};
+                                                "", "", "OCT+ to the roll, K1 a slot", "ALGO follow, OCT+ copy, OCT\xE2\x88\x92 clear", "", "", "", ""};
 
 /* a choice field: its names (none: a number 0..127) */
 typedef struct { uint8_t page, row, k, n; const char *const *name; } choice_t;
@@ -1111,7 +1111,18 @@ static void foot(void)
             for (i = 0; i < q->count && c < 8; i++) if (q->n[i].step <= t && t < q->n[i].step + q->n[i].len) nt[c++] = q->n[i].note;
             cn[0] = 0;
             if (c >= 2 && chord_of(nt, c, cn)) text_r(DMK_W - PAD - 1, Y_FOOT + 2, cn, &FS, C_INK);
-            else text_r(DMK_W - PAD - 1, Y_FOOT + 2, FOLLOWS[ch.follow[ui.synth]], &FS, C_LABEL);   /* (SEQ + ALGORITHM) */
+            else {                                      /* its pattern in other scenes too: which (SEQ + OCT+ makes
+                                                           this scene's own); else how it follows */
+                char sc[24], *o = str_cat(sc, "Scenes");
+                int g, n = 0;
+                for (g = 0; g < SCENES; g++)
+                    if ((scn[g].used || g == scn_cur) && scn[g].pat[ui.synth] == syn_pat(ui.synth)) {
+                        if (n < 5) { *o++ = ' '; o = fmt_int(o, g + 1); }
+                        n++;
+                    }
+                if (n > 5) str_cat(o, "\xE2\x80\xA6");
+                text_r(DMK_W - PAD - 1, Y_FOOT + 2, n > 1 ? sc : FOLLOWS[ch.follow[ui.synth]], &FS, n > 1 ? C_INK : C_LABEL);
+            }
         }
         return;
     }
@@ -2860,6 +2871,17 @@ DMK_SMALL static void ui_button(int b, int down)
                 notice(song_erase(ui.song_pick) ? "Not deleted" : "Deleted");
                 ui.clear_arm = 0;
             } else { ui.clear_arm = 3; ui.arm_at = ui.song_pick; ui.clear_at = ui.now; notice("OCT\xE2\x88\x92 again: delete it"); }
+            return;
+        }
+        if (b == B_OCTU && ui.btn_held >> B_SEQ & 1u) {   /* SEQ held, OCT+: this synth's pattern copied into a new one,
+                                                           this scene's own (the owner: a new scene shares the one it
+                                                           came from, and editing one changed both) */
+            char m[28];
+            int from = syn_pat(ui.synth), q = spat_dup(ui.synth);
+            ui.btn_used |= (uint16_t)(bit | 1u << B_SEQ);
+            if (q < 0) { notice("Eight patterns: all in use"); return; }
+            fmt_int(str_cat(fmt_int(str_cat(m, "Pattern "), from + 1), " to "), q + 1);
+            notice(m);
             return;
         }
         if (b == B_OCTD && (ui.btn_held >> B_SEQ & 1u || ui.btn_held >> B_HOME & 1u)) {

@@ -1316,6 +1316,20 @@ static void selftest(void)
         #undef ON
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
+    {   /* SEQ held + OCT+ (the owner): this scene's own copy of a synth's pattern; edited, the scene it came from stays */
+        int n1;
+        dmk_init(42); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        dmk_button(B_HOME, 1); wait_ms(30); dmk_key(2, 1); dmk_key(2, 0); dmk_button(B_HOME, 0); wait_ms(30);   /* scene 2, a copy */
+        if (scn_cur != 1 || scn[1].pat[1] != scn[0].pat[1]) { fails++; printf("selftest: a new scene does not share its patterns first\n"); }
+        ui.synth = 1; tap(B_SEQ);
+        dmk_button(B_SEQ, 1); wait_ms(30); dmk_button(B_OCTU, 1); dmk_button(B_OCTU, 0); dmk_button(B_SEQ, 0); wait_ms(30);
+        if (scn[1].pat[1] == scn[0].pat[1] || ui.octave) { fails++; printf("selftest: SEQ + OCT+ does not give the scene its own pattern\n"); }
+        n1 = spat[1][scn[0].pat[1]].count;
+        seq_add(1, 7, 1, 72, 100);
+        scn_open(0);
+        if (sq[1].count != n1 || seq_find(1, 7, 72) >= 0) { fails++; printf("selftest: editing the scene's own pattern changed the scene it came from\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* FX's Space, a synth's sends: its ALGO and PRESET the verb all share, Off first (the owner found no way to set
          * or stop it there); a send at 0 says Off */
         char t[16];
