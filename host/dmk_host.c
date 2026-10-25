@@ -297,6 +297,16 @@ static void tour(const char *dir)
     dmk_encoder(E_K2, -1); dmk_encoder(E_K2, -1); tap(B_SEQ);
     dmk_button(B_SEQ, 1); wait_ms(500); shot(dir, "roll_seq_held");                               /* SEQ: OCT- clears */
     dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); wait_ms(100); shot(dir, "roll_clear_armed"); dmk_button(B_SEQ, 0); wait_ms(2100);
+    {   /* recorded as played: a strummed chord, late in its steps; a held note's NUDGE; REC and PLAY: ready */
+        static const uint8_t CH[4] = {57, 60, 64, 67};
+        if (seq_on) tap(B_PLAY);
+        ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); sp_sync();   /* the keys: notes on the roll */
+        ui.synth = 1; sq[1].count = 0; ui.roll_cur[1] = 0;
+        for (int i = 0; i < 4; i++) { int j = seq_add(1, i * 15 / 32, i < 3 ? 6 : 5, CH[i], 100); sq[1].n[j].off = (uint8_t)(i * 15 % 32); }
+        roll_show(1, 67); roll_show(1, 57); wait_ms(60); shot(dir, "roll_strum");
+        ui.octave = 0; dmk_key(64 - 53, 1); wait_ms(60); if (roll_held() < 0) { fails++; printf("tour: no note held for NUDGE\n"); } shot(dir, "roll_nudge"); dmk_key(64 - 53, 0); wait_ms(30);
+        tap(B_REC); tap(B_PLAY); wait_ms(60); shot(dir, "roll_ready"); tap(B_REC);
+    }
     ta_reset(); boot(1650); shot_fr(dir, "boot_arrive", fb);
     ta_reset(); boot(2200); shot_fr(dir, "boot_heat", fb);
     for (int k = 0; k < DMK_SCENES; k++) { char nm[16]; boot_sc = (uint8_t)k; ta_reset(); boot(700); snprintf(nm, sizeof nm, "boot_land%d", k); shot_fr(dir, nm, fb); }
@@ -1107,6 +1117,60 @@ static void selftest(void)
             for (v = 0; v < 512; v++) { int a = b[v] < 0 ? -b[v] : b[v]; if (a > pk[t]) pk[t] = a; }
         }
         if (pk[0] > 64 || pk[1] < 300) { fails++; printf("selftest: a delay's repeats after a note: off %d, on %d\n", pk[0], pk[1]); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* recording as played (the owner): REC and PLAY wait for the first key, which starts it on the first step; a
+         * strummed chord keeps its notes' spacing and a key its micro timing, both played back late in their steps
+         * and saved; NUDGE moves a held note by 32nds, on into the next step */
+        static uint8_t pk[4096];
+        snote_t kept[SEQ_NOTES];
+        uint32_t f = 0, at[4] = {0, 0, 0, 0}, seen[DMK_VOICES];
+        int i, j, n, v, got = 0, sp = 100 * DMK_SR / 1000, kc;
+        dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (i = 0; i < DMK_SYNTHS; i++) sq[i].count = 0;
+        ui.synth = 1;
+        tap(B_ARP);
+        ui.val[0][PG_CHORD][0][3] = (uint8_t)(64 + 100 * 64 / 250); sp_sync();   /* a strum, up */
+        sp = ch.strum * (DMK_SR / 1000);
+        tap(B_REC); tap(B_PLAY); wait_ms(300);
+        if (seq_on || !ui.rec_ready) { fails++; printf("selftest: REC and PLAY do not wait for a key\n"); }
+        dmk_key(4, 1);
+        if (!seq_on || seq_ticks != 1) { fails++; printf("selftest: the first key does not start it\n"); }
+        wait_ms(1500); dmk_key(4, 0); wait_ms(60);
+        kc = n = sq[1].count;
+        for (i = 0, j = 0; i < n; i++) if (sq[1].n[i].step * 32 + sq[1].n[i].off > j) j = sq[1].n[i].step * 32 + sq[1].n[i].off;
+        if (n < 3 || sq[1].n[0].step || sq[1].n[0].off || abs(j - (n - 1) * ch.strum * 32 * seq_bpm / 15000) > 1)
+            { fails++; printf("selftest: a strummed chord recorded loses its spacing (%d notes, the last at %d/32)\n", n, j); }
+        tap(B_SEQ);                                     /* the roll: a key alone, played ~0.4 into a step */
+        do dmk_render(b, 32); while ((seq_now() & 255u) < 96u || (seq_now() & 255u) > 112u);
+        dmk_key(9, 1); wait_ms(300); dmk_key(9, 0); wait_ms(30);
+        if (sq[1].count != n + 1 || sq[1].n[n].off < 11 || sq[1].n[n].off > 15)
+            { fails++; printf("selftest: a key recorded loses its micro timing (%d/32)\n", sq[1].count > n ? sq[1].n[n].off : -1); }
+        tap(B_REC); tap(B_PLAY);
+        for (v = 0; v < DMK_VOICES; v++) seen[v] = vc[v].age;
+        dmk_button(B_PLAY, 1); wait_ms(30); dmk_button(B_PLAY, 0);   /* (PLAY on its release) */
+        for (f = 0; f < (uint32_t)DMK_SR && got < 4; f += 32) {
+            dmk_render(b, 32);
+            for (v = 0; v < DMK_VOICES; v++)
+                if (vc[v].on && vc[v].sy == 1 && vc[v].src == SRC_ROLL && vc[v].age != seen[v]) { seen[v] = vc[v].age; if (got < 4) at[got++] = f; }
+        }
+        for (i = 1; i < got && i < kc; i++) if (abs((int)(at[i] - at[i - 1]) - sp) > DMK_SR / 100)
+            { fails++; printf("selftest: a recorded strum plays back %d samples apart, not %d\n", (int)(at[i] - at[i - 1]), sp); break; }
+        if (got < 3) { fails++; printf("selftest: a recorded strum plays %d notes back\n", got); }
+        tap(B_PLAY);
+        n = sq[1].count;
+        for (i = 0; i < n; i++) kept[i] = sq[1].n[i];
+        st_ver = ST_VER;
+        if (song_unpack(pk, (uint32_t)song_pack(pk)) || sq[1].count != n) { fails++; printf("selftest: a song with late notes does not come back\n"); }
+        else for (i = 0; i < n; i++) if (memcmp(&kept[i], &sq[1].n[i], sizeof kept[i])) { fails++; printf("selftest: a late note saved comes back as another\n"); break; }
+        for (i = 0; i < DMK_SYNTHS; i++) sq[i].count = 0;
+        i = seq_add(1, 5, 2, 60, 100); sq[1].n[i].off = 31; ui.roll_cur[1] = 5;
+        dmk_key(7, 1); wait_ms(30);
+        dmk_encoder(E_K4, 1);
+        if (sq[1].n[0].step != 6 || sq[1].n[0].off) { fails++; printf("selftest: NUDGE does not move a note on into the next step\n"); }
+        dmk_encoder(E_K4, -1);
+        if (sq[1].n[0].step != 5 || sq[1].n[0].off != 31) { fails++; printf("selftest: NUDGE back does not return\n"); }
+        dmk_key(7, 0); wait_ms(30);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     printf("selftest: %s\n", fails ? "FAILED" : "ok");

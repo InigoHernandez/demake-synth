@@ -9,12 +9,17 @@
 #define SEQ_STEPS 64                                    /* the longest pattern */
 #define SEQ_LIVE 8                                      /* notes a synth sounds from its pattern at once */
 
-typedef struct { uint8_t step, len, note, vel; } snote_t;
+/* off: how late in its step it starts (and ends), in 32nds of a step: the micro timing a note was played with, a
+ * strum's spacing (the owner: both were lost to the nearest step); 0 for a note written by hand, NUDGE moves it */
+typedef struct { uint8_t step, len, note, vel, off; } snote_t;
 typedef struct {
     snote_t n[SEQ_NOTES];
     uint8_t count, steps, pos;                          /* notes, length in steps, the step that sounds next */
     uint8_t live[SEQ_LIVE], left[SEQ_LIVE];             /* the notes it sounds and the steps each has left */
     uint8_t from[SEQ_LIVE];                             /* a harmony's: its lead + 1 (0: the roll's own) */
+    uint8_t lvel[SEQ_LIVE], loff[SEQ_LIVE];             /* its velocity, its 32nds late */
+    int32_t wait[SEQ_LIVE];                             /* > 0: samples until it starts; < 0: its end on its way, as
+                                                           late as it began; 0 sounding */
     uint16_t mut, chance;                               /* Vary (the owner's): a note's chance to move in the scale, to
                                                            play at all (Q15; 32768 always) */
     uint8_t mrange, keep;                               /*   how far it moves (scale steps); kept in the roll */
@@ -248,6 +253,7 @@ static int seq_add(int s, int step, int len, int note, int vel)
     if (q->count >= SEQ_NOTES) return -1;
     i = q->count++;
     q->n[i].step = (uint8_t)step; q->n[i].len = (uint8_t)len; q->n[i].note = (uint8_t)note; q->n[i].vel = (uint8_t)vel;
+    q->n[i].off = 0;
     return i;
 }
 static void seq_del(int s, int i)
@@ -257,31 +263,56 @@ static void seq_del(int s, int i)
     q->n[i] = q->n[--q->count];
 }
 
+static int32_t roll_late(int off) { return (int32_t)((uint32_t)off * (seq_per_q8() >> 8) >> 5); }   /* 32nds: samples */
+static void roll_off(int s, int i)                      /* slot i's note off now (one still to come: never started) */
+{
+    if (sq[s].wait[i] <= 0) note_off_src(s, sq[s].live[i], SRC_ROLL);
+    sq[s].left[i] = 0; sq[s].wait[i] = 0;
+}
+static void roll_flush(int s, int note)                 /* a note's end on its way, now: before it starts again */
+{
+    int i;
+    for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i] && sq[s].wait[i] < 0 && sq[s].live[i] == note) roll_off(s, i);
+}
+static void roll_tick(int frames)                       /* the notes late in their step: on, and off, when they come */
+{
+    int s, i;
+    for (s = 0; s < DMK_SYNTHS; s++)
+        for (i = 0; i < SEQ_LIVE; i++) {
+            int32_t *w = &sq[s].wait[i];
+            if (!*w || !sq[s].left[i]) continue;
+            if (*w > 0 && (*w -= frames) <= 0) { *w = 0; roll_flush(s, sq[s].live[i]); note_on_vel(s, sq[s].live[i], SRC_ROLL, sq[s].lvel[i]); }
+            else if (*w < 0 && (*w += frames) >= 0) { *w = 0; roll_off(s, i); }
+        }
+}
 static void seq_quiet(int s)                            /* every note the pattern sounds, off */
 {
     int i;
-    for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i]) { note_off_src(s, sq[s].live[i], SRC_ROLL); sq[s].left[i] = 0; }
+    for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i]) roll_off(s, i);
 }
 static void seq_quiet_from(int lead)                    /* the notes the synths in harmony with lead sound from it, off */
 {
     int s, i;
     for (s = 0; s < DMK_SYNTHS; s++)
         for (i = 0; i < SEQ_LIVE; i++)
-            if (sq[s].left[i] && sq[s].from[i] == lead + 1) { note_off_src(s, sq[s].live[i], SRC_ROLL); sq[s].left[i] = 0; }
+            if (sq[s].left[i] && sq[s].from[i] == lead + 1) roll_off(s, i);
 }
 
-/* a note of a roll on synth s for len steps, in its free slot (all sounding: the first gives way); from: the lead it
- * harmonizes + 1, or 0 */
-static void roll_on(int s, int note, int len, int vel, int from)
+/* a note of a roll on synth s for len steps, in its free slot (all sounding: the first gives way), off 32nds of a
+ * step late (its end as late); from: the lead it harmonizes + 1, or 0 */
+static void roll_on(int s, int note, int len, int vel, int from, int off)
 {
+    int32_t wait = roll_late(off);
     seq_t *q = &sq[s];
     int k, slot = 0;
     for (k = 0; k < SEQ_LIVE; k++) if (!q->left[k]) { slot = k; break; }
-    if (k == SEQ_LIVE) note_off_src(s, q->live[0], SRC_ROLL);
+    if (k == SEQ_LIVE) roll_off(s, 0);
     q->live[slot] = (uint8_t)note;
     q->left[slot] = (uint8_t)(len < 1 ? 1 : len);
     q->from[slot] = (uint8_t)from;
-    note_on_vel(s, note, SRC_ROLL, vel);
+    q->lvel[slot] = (uint8_t)vel; q->loff[slot] = (uint8_t)off;
+    q->wait[slot] = wait > 0 ? wait : 0;
+    if (wait <= 0) { roll_flush(s, note); note_on_vel(s, note, SRC_ROLL, vel); }
 }
 
 static void seq_step(void)                              /* every synth one step on */
@@ -296,7 +327,13 @@ static void seq_step(void)                              /* every synth one step 
     chord_step();                                       /* the harmony first: the notes follow the chord now */
     for (s = 0; s < DMK_SYNTHS; s++)                    /* every synth's notes counted down first: a harmony started
                                                            this step on a later synth is not counted the same step */
-        for (i = 0; i < SEQ_LIVE; i++) if (sq[s].left[i] && !--sq[s].left[i]) note_off_src(s, sq[s].live[i], SRC_ROLL);
+        for (i = 0; i < SEQ_LIVE; i++) {
+            seq_t *q = &sq[s];
+            if (!q->left[i] || q->wait[i] < 0) continue;   /* (its end on its way) */
+            if (q->left[i] > 1) q->left[i]--;
+            else if (!q->wait[i] && q->loff[i]) q->wait[i] = -roll_late(q->loff[i]);   /* late in, late out */
+            else roll_off(s, i);
+        }
     for (s = 0; s < DMK_SYNTHS; s++) {
         seq_t *q = &sq[s];
         for (i = 0; i < q->count; i++) {
@@ -314,9 +351,9 @@ static void seq_step(void)                              /* every synth one step 
                 }
             }
             note = follow_note(s, note);
-            roll_on(s, note, len, n->vel, 0);
+            roll_on(s, note, len, n->vel, 0, n->off);
             for (k = 0; k < DMK_SYNTHS; k++)            /* the synths in harmony with this one: its note, moved */
-                if (k != s && harm_of(k) == s && !(pat_mute >> k & 1u)) roll_on(k, harm_note(k, note), len, n->vel, s + 1);
+                if (k != s && harm_of(k) == s && !(pat_mute >> k & 1u)) roll_on(k, harm_note(k, note), len, n->vel, s + 1, n->off);
         }
         q->pos = (uint8_t)((q->pos + 1) % q->steps);
     }
@@ -509,6 +546,7 @@ static void seq_render(int frames)
     lfo_sync();
     seq_frames += (uint32_t)frames;
     later_tick(frames);                                 /* the strum's notes, playing or not */
+    roll_tick(frames);                                  /* the rolls' notes late in their step */
     arp_tick(frames);                                   /* the arps, playing or not */
     if (!seq_on || ext_running()) return;               /* an outside clock running steps it instead (dmk_midi) */
     per = seq_per();
@@ -524,9 +562,9 @@ static void seq_render(int frames)
 /* where the playing is, in steps since PLAY, Q8: a recorded note starts at its nearest step */
 static uint32_t seq_now(void) { return seq_ticks ? ((seq_ticks - 1u) << 8) + seq_acc * 256u / seq_per() : 0; }
 static int seq_playing_step(int s) { return (sq[s].pos + sq[s].steps - 1) % sq[s].steps; }
-/* a key recorded on synth s: the step of its own roll it lands on (its own playhead, which a pattern or a scene
- * switched, or its length, moved from the song's count), at the nearest step */
-static int seq_rec_step(int s) { return (int)((((uint32_t)seq_playing_step(s) << 8) + (seq_now() & 255u) + 128u) >> 8) % sq[s].steps; }
+/* a key recorded on synth s: where on its own roll it lands (its own playhead, which a pattern or a scene switched, or
+ * its length, moved from the song's count), Q8 steps: as played, its micro timing kept (the owner) */
+static uint32_t seq_rec_q8(int s) { return ((uint32_t)seq_playing_step(s) << 8) + (seq_now() & 255u); }
 
 static void seq_init(void)
 {
@@ -544,7 +582,7 @@ static void seq_init(void)
     for (i = 0; i < sizeof PIANO / sizeof PIANO[0]; i++) seq_add(1, PIANO[i][0], PIANO[i][1], PIANO[i][2], 100);
     for (i = 0; i < sizeof PLUCK / sizeof PLUCK[0]; i++) seq_add(2, PLUCK[i][0], PLUCK[i][1], PLUCK[i][2], 100);
     seq_on = seq_rec = 0;
-    for (i = 0; i < DMK_SYNTHS; i++) { unsigned k; for (k = 0; k < SEQ_LIVE; k++) sq[i].left[k] = 0; }
+    for (i = 0; i < DMK_SYNTHS; i++) { unsigned k; for (k = 0; k < SEQ_LIVE; k++) sq[i].left[k] = 0, sq[i].wait[k] = 0; }
     pat_init();
     song_init();
 }

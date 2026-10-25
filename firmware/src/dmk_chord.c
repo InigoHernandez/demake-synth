@@ -358,6 +358,28 @@ static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms
     }
 }
 static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1); }   /* a key's */
+/* how late note k of n starts after the first as a key strums it: Q8 steps at the tempo (strike_src's order and
+ * spacing) */
+static uint32_t strum_q8(int k, int n)
+{
+    int ms = ch.strum < 0 ? -ch.strum : ch.strum, i = ch.strum < 0 ? n - 1 - k : k;
+    return (uint32_t)ms * (uint32_t)i * (DMK_SR / 1000) * 256u / (seq_per_q8() >> 8);
+}
+/* note k of a chord of n (one alone: 0 of 1) into synth s's roll as it strums, from a to e (Q8 steps on its roll,
+ * unwrapped; all end together): on the step it reaches, its 32nds of a step after it kept, so the roll plays the
+ * strum and the micro timing back (the owner: both were lost). keep: a note of that pitch on that step stays as it
+ * is. Its index, or -1: the roll full */
+static int roll_strum(int s, uint32_t a, uint32_t e, int note, int vel, int k, int n, int keep)
+{
+    uint32_t p = a + strum_q8(k, n);
+    int st = (int)(p >> 8), len = e > p ? (int)((e - p + 128u) >> 8) : 1, i;
+    len = len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len;
+    st %= sq[s].steps;
+    if (keep && (i = seq_find(s, st, note)) >= 0) return i;
+    i = seq_add(s, st, len, note, vel);
+    if (i >= 0) sq[s].n[i].off = (uint8_t)((p & 255u) >> 3);
+    return i;
+}
 /* a synth that comes to play the chords while they hold (set to Plays chords, unmuted): the chord sounding now, not
  * silence until the next */
 static void chord_join(int s)
@@ -565,7 +587,7 @@ static void print_to_roll(int s)
     for (i = 0; i < pr->n && at < SEQ_STEPS; i++) {
         int c = voice(48 + (seq_key + pr->s[i].root) % 12, QI[pr->s[i].q < Q_COUNT ? pr->s[i].q : 0], pr->s[i].pedal, notes), len = CHG_LEN(pr->s[i].half);
         if (at + len > SEQ_STEPS) len = SEQ_STEPS - at;
-        for (k = 0; k < c; k++) seq_add(s, at, len, notes[k], 100);
+        for (k = 0; k < c; k++) roll_strum(s, (uint32_t)at << 8, (uint32_t)(at + len) << 8, notes[k], 100, k, c, 0);   /* strummed */
         at += CHG_LEN(pr->s[i].half);
     }
     ch_pn = (uint8_t)pn;

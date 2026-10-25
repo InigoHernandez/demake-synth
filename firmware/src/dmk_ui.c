@@ -165,6 +165,9 @@ static struct {
     uint8_t key_roll[DMK_KEYS], key_step[DMK_KEYS];     /* a key's note: 1 written or held on the roll (at key_step),
                                                            2 being recorded, 3 deleted while held */
     uint32_t key_t0[DMK_KEYS];                          /* recording: where the playing was when it went down */
+    uint32_t key_q8[DMK_KEYS];                          /*   and where on its synth's roll, Q8 steps */
+    uint8_t rec_ready;                                  /* REC lit, PLAY tapped stopped: the first key starts it, at
+                                                           the first step, recording */
     uint16_t hinted;                                    /* the pages whose next row was shown how */
     uint8_t key_ch[DMK_KEYS][7], key_nch[DMK_KEYS];     /* the CHORD page: each key's chord, as it sounds */
     uint8_t clear_arm;                                  /* OCT- once: 1 this synth's roll, 2 all three, armed */
@@ -858,7 +861,7 @@ static void roll_fields(void)                           /* the cursor's, or a he
         const snote_t *n = &q->n[j < 0 ? 0 : j];
         for (i = 0; i < 4; i++) {
             v[0] = 0;
-            if (j < 0 || i == 3) {                      /* NUDGE comes with the fine timing */
+            if (j < 0) {
                 int x = i * COL + PAD;
                 text_fit(x, Y_FIELDS, COL - 2 * PAD, HELD[i], &FS, C_LABEL);
                 text(x, Y_FIELDS + 16, "—", &FM, C_LINE);
@@ -868,7 +871,8 @@ static void roll_fields(void)                           /* the cursor's, or a he
             if (i == 0) fmt_int(v, n->step + 1);
             if (i == 1) note_name(v, n->note);
             if (i == 2) fmt_int(v, n->len);
-            field_show(i, HELD[i], v, i == 0 ? n->step * 127 / st : i == 1 ? (degree_of(n->note) - 14) * 127 / 35 : n->len * 8);
+            if (i == 3) fmt_int(n->off ? str_cat(v, "+") : v, n->off * 15000 / seq_bpm / 32);   /* how late in its step, ms */
+            field_show(i, HELD[i], v, i == 0 ? n->step * 127 / st : i == 1 ? (degree_of(n->note) - 14) * 127 / 35 : i == 2 ? n->len * 8 : n->off * 127 / 31);
         }
         return;
     }
@@ -982,6 +986,11 @@ static void foot(void)
         for (s = 0; s < DMK_SYNTHS; s++) if (pat_mute >> s & 1u) { *o++ = ' '; *o++ = (char)('1' + s); *o = 0; }
         text(PAD + 1, Y_FOOT + 2, t, &FS, C_LABEL);
         text_r(DMK_W - PAD - 1, Y_FOOT + 2, ui.copy_arm ? "Paste: a scene key" : "OCT+ copy, OCT\xE2\x88\x92 clear", &FS, ui.copy_arm ? C_INK : C_LABEL);
+        return;
+    }
+    if (ui.rec_ready && seq_rec && !seq_on) {           /* ready: what starts it */
+        text(PAD + 1, Y_FOOT + 2, "Ready", &FS, HOLO);
+        text_r(DMK_W - PAD - 1, Y_FOOT + 2, "A key starts", &FS, C_LABEL);
         return;
     }
     if (ui.page == PG_ROLL) {                           /* the zoom, or a held note's velocity */
@@ -1506,15 +1515,16 @@ static void stage_roll(void)
     }
     for (i = 0; i < q->count; i++) {                    /* the notes; those at the cursor lit */
         const snote_t *n = &q->n[i];
-        int row = 6 - (degree_of(n->note) - view), s0 = n->step - x0, len = n->len, w;
+        int row = 6 - (degree_of(n->note) - view), s0 = n->step - x0, len = n->len, w, lx;
         if (s0 < 0 || s0 >= end) continue;
         if (s0 + len > end) len = end - s0;
-        w = len * cw - 2 < 2 ? 2 : len * cw - 2;
+        lx = n->off * cw / 32;                          /* late in its step (a strum recorded): drawn late */
+        w = len * cw - 2 - lx < 2 ? 2 : len * cw - 2 - lx;
         if (row < 0 || row > 6) {                       /* above or below the view: a mark at its edge, where it plays */
-            round_fill(gx + s0 * cw + 1, row < 0 ? gy - 5 : gy + rh * 7 + 2, w, 2, 1, C_LABEL);
+            round_fill(gx + s0 * cw + 1 + lx, row < 0 ? gy - 5 : gy + rh * 7 + 2, w, 2, 1, C_LABEL);
             continue;
         }
-        round_fill(gx + s0 * cw + 1, gy + row * rh + 3, w, rh - 6, (rh - 6) / 2, !seq_on && n->step == at ? HOLO : C_INK);
+        round_fill(gx + s0 * cw + 1 + lx, gy + row * rh + 3, w, rh - 6, (rh - 6) / 2, !seq_on && n->step == at ? HOLO : C_INK);
     }
     round_fill(gx + (at - x0) * cw - 2, gy - 3, 4, rh * 7 + 6, 2, HOLO);   /* the cursor, or the playhead */
 }
@@ -2516,6 +2526,11 @@ static void roll_turn(int k, int d)
             note_on_s(s, p);
         }
         if (k == 2) { int l = n->len + dir; n->len = (uint8_t)(l < 1 ? 1 : l > SEQ_STEPS ? SEQ_STEPS : l); }
+        if (k == 3) {                                   /* NUDGE: a 32nd of a step later or earlier, on into the next */
+            int t = (n->step * 32 + n->off + dir + st * 32) % (st * 32), ns = t / 32;
+            if (ns != n->step && seq_find(s, ns, n->note) >= 0) return;
+            n->step = (uint8_t)ns; n->off = (uint8_t)(t % 32); ui.key_step[h] = (uint8_t)ns; ui.roll_cur[s] = (uint8_t)ns;
+        }
         if (k == 4) { int v = n->vel + dir * 4; n->vel = (uint8_t)(v < 1 ? 1 : v > 127 ? 127 : v); }
         return;
     }
@@ -2544,12 +2559,30 @@ static void roll_oct(int dup)                           /* OCT- deletes the held
         {
             snote_t n = sq[s].n[j];
             int t = (n.step + n.len) % sq[s].steps;
-            if (seq_add(s, t, n.len, n.note, n.vel) >= 0) { ui.key_step[k] = (uint8_t)t; ui.roll_cur[s] = (uint8_t)t; }
+            int c = seq_add(s, t, n.len, n.note, n.vel);
+            if (c >= 0) { sq[s].n[c].off = n.off; ui.key_step[k] = (uint8_t)t; ui.roll_cur[s] = (uint8_t)t; }
         }
     }
 }
 
 /* ---- the controls */
+static void play_toggle(void)                           /* PLAY: started or stopped */
+{
+    if (!seq_on && ui.page == PG_ARR) {                 /* Arrange: the song from the cursor; REC armed, recorded */
+        if (seq_rec) {
+            song_rec = 1; rec_from = (uint8_t)(ui.arr_cur < song_n ? ui.arr_cur : song_n); rec_bars = 0;
+            notice("Recording the song");
+        } else {
+            if (!song_n) { notice("The song is empty"); return; }
+            song_mode = 1;
+            song_start(ui.arr_cur);
+        }
+    } else if (!seq_on && song_mode && song_n) song_start(0);   /* song mode: from the first step */
+    if (!seq_on && clock_ext && !ext_running()) notice("No clock in: its own tempo");
+    ui.rec_ready = 0;
+    seq_play(!seq_on);
+}
+
 DMK_SMALL static void ui_button(int b, int down)
 {
     uint16_t bit = (uint16_t)(1u << b);
@@ -2740,21 +2773,21 @@ DMK_SMALL static void ui_button(int b, int down)
         return;
     }
     if (b == B_PLAY) {
-        if (!seq_on && ui.page == PG_ARR) {             /* Arrange: the song from the cursor; REC armed, recorded */
-            if (seq_rec) {
-                song_rec = 1; rec_from = (uint8_t)(ui.arr_cur < song_n ? ui.arr_cur : song_n); rec_bars = 0;
-                notice("Recording the song");
-            } else {
-                if (!song_n) { notice("The song is empty"); return; }
-                song_mode = 1;
-                song_start(ui.arr_cur);
-            }
-        } else if (!seq_on && song_mode && song_n) song_start(0);   /* song mode: from the first step */
-        if (!seq_on && clock_ext && !ext_running()) notice("No clock in: its own tempo");
-        seq_play(!seq_on);
+        if (!seq_on && seq_rec && ui.page != PG_ARR && !clock_ext && !ui.rec_ready) {   /* REC lit: ready, the first
+                                                           key starts it in time (the owner: as a pocket studio does);
+                                                           PLAY again starts it at once */
+            ui.rec_ready = 1;
+            notice("Ready: a key starts");
+            return;
+        }
+        play_toggle();
         return;
     }
-    if (b == B_REC) { seq_rec ^= 1u; notice(seq_rec ? "Recording on" : "Recording off"); return; }
+    if (b == B_REC) {
+        seq_rec ^= 1u; ui.rec_ready = 0;
+        notice(seq_rec ? "Recording on" : "Recording off");
+        return;
+    }
     if (BTN_PAGE[b] >= 0 && ui.full) { ui.full = 0; return; }   /* the landscape: a page button, back to the page */
     if (BTN_PAGE[b] >= 0) {
         int p = BTN_PAGE[b];
@@ -3015,6 +3048,8 @@ DMK_SMALL static void ui_key(int k, int down)
         }
         return;
     }
+    if (down && ui.rec_ready && !seq_on && seq_rec) play_toggle();   /* ready: this key starts it, recorded from the
+                                                           first step */
     ui.keys_down[k] = (uint8_t)down;
     /* a key, a chord: on CHORD, or everywhere but the roll when the Keys row says so; released as it began */
     if (down ? chords_here() : ui.key_nch[k] > 0) {
@@ -3033,12 +3068,12 @@ DMK_SMALL static void ui_key(int k, int down)
             strike(s, ui.key_ch[k], ui.key_nch[k], k);
             ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */
             ui.key_t0[k] = seq_now();
-            if (ui.key_roll[k] == 2) ui.key_step[k] = (uint8_t)seq_rec_step(s);   /* where on its own roll */
+            if (ui.key_roll[k] == 2) ui.key_q8[k] = seq_rec_q8(s);   /* where on its own roll, as played */
             if (ui.page == PG_ROLL && !seq_on && seq_rec) {   /* the roll, stopped, REC lit: the chord written at the cursor */
                 int c = ui.roll_cur[s];
                 roll_heard(s);
-                for (j = 0; j < ui.key_nch[k]; j++)
-                    if (seq_find(s, c, ui.key_ch[k][j]) < 0 && seq_add(s, c, ui.roll_pen[s], ui.key_ch[k][j], VEL_KEY) < 0) roll_full();
+                for (j = 0; j < ui.key_nch[k]; j++)     /* as it strums, all ending at the pen's length */
+                    if (roll_strum(s, (uint32_t)c << 8, (uint32_t)(c + ui.roll_pen[s]) << 8, ui.key_ch[k][j], VEL_KEY, j, ui.key_nch[k], 1) < 0) roll_full();
                 roll_show(s, ui.key_ch[k][0]);
                 ui.key_roll[k] = 4;
                 ui.key_step[k] = (uint8_t)c;
@@ -3051,10 +3086,11 @@ DMK_SMALL static void ui_key(int k, int down)
         if (ui.key_roll[k] == 2 && seq_on) roll_heard(s);
         for (j = 0; j < ui.key_nch[k]; j++) {
             later_off(s, ui.key_ch[k][j], SRC_KEY, k + 1);
-            if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll */
-                uint32_t t0 = ui.key_t0[k], t1 = seq_now();
-                int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
-                if (seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_ch[k][j], 100) < 0) roll_full();
+            if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll, where the
+                                                           strum started it (one let go before it came never sounded) */
+                uint32_t held = seq_now() - ui.key_t0[k], d = strum_q8(j, ui.key_nch[k]);
+                if (d && d >= held) continue;
+                if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_ch[k][j], 100, j, ui.key_nch[k], 0) < 0) roll_full();
                 else if (!j) roll_show(s, ui.key_ch[k][j]);
             }
         }
@@ -3079,7 +3115,8 @@ DMK_SMALL static void ui_key(int k, int down)
             n = snap(n);
             ui.key_roll[k] = 2;
             ui.key_t0[k] = seq_now();
-            ui.key_step[k] = (uint8_t)seq_rec_step(s);  /* where on its own roll (a switched pattern starts it again) */
+            ui.key_q8[k] = seq_rec_q8(s);               /* where on its own roll, as played (a switched pattern starts
+                                                           it again) */
         }
         ui.key_note[k] = (uint8_t)n;
         note_on_s(s, n);
@@ -3101,11 +3138,10 @@ DMK_SMALL static void ui_key(int k, int down)
     if (ui.key_roll[k] == 1) {                          /* step entry: the cursor to the note's end */
         int j = seq_find(s, ui.key_step[k], ui.key_note[k]);
         if (j >= 0) ui.roll_cur[s] = (uint8_t)((sq[s].n[j].step + sq[s].n[j].len) % sq[s].steps);
-    } else if (ui.key_roll[k] == 2 && seq_on) {
-        uint32_t t0 = ui.key_t0[k], t1 = seq_now();
-        int st = ui.key_step[k] % sq[s].steps, len = (int)((t1 - t0 + 128u) >> 8);
+    } else if (ui.key_roll[k] == 2 && seq_on) {         /* recorded: where it began, as long as it was held */
+        uint32_t held = seq_now() - ui.key_t0[k];
         roll_heard(s);
-        if (seq_add(s, st, len < 1 ? 1 : len > SEQ_STEPS ? SEQ_STEPS : len, ui.key_note[k], 100) < 0) roll_full();
+        if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_note[k], 100, 0, 1, 0) < 0) roll_full();
         else roll_show(s, ui.key_note[k]);
     }
     ui.key_roll[k] = 0;
@@ -3127,7 +3163,7 @@ static const uint8_t *ui_leds(void)
         for (i = 0; i < DMK_SYNTHS; i++) leds[1 + 2 * i] = pat_mute >> i & 1u ? 0 : 255;
     }
     for (i = 0; i < B_COUNT; i++) leds[DMK_KEYS + i] = BTN_PAGE[i] == ui.page ? 255 : 0;
-    leds[DMK_KEYS + B_PLAY] = seq_on ? 255 : 0;
+    leds[DMK_KEYS + B_PLAY] = seq_on || (ui.rec_ready && seq_rec && (ui.now / 250u) & 1u) ? 255 : 0;   /* ready: blinking */
     leds[DMK_KEYS + B_REC] = seq_rec ? 255 : 0;         /* REC armed: lit (it never was) */
     if (ch.keys) leds[DMK_KEYS + B_ARP] = 255;          /* the keys play chords everywhere: ARP lit */
     if (song_mode) leds[DMK_KEYS + B_HOME] = !seq_on || seq_ticks % 16u < 2u || ui.page == PG_HOME ? 255 : 0;   /* the bar */

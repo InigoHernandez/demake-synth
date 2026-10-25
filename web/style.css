@@ -413,6 +413,10 @@ code { font: inherit; color: var(--ink); }
 /* ---- 7 modules (a phone) */
 @media (max-width: 799px) {
   :root { --cols: 7; --ph: 192px; --l: 32px; --xl: 96px; }
+  /* the titles' lines closer (the owner: too far apart at 32 on 48), on the 12s: a hero's last line where it was, by
+   * its text; a page's title as tall as before on one line */
+  .hero .say, .ihero .say { line-height: 36px; padding-bottom: 6px; display: flex; flex-direction: column; justify-content: flex-end; }   /* (the box on the lines, its text at its foot) */
+  .mdoc h1 { line-height: 36px; padding: 6px 0; }
   /* the index (the owner: the installer and the manual in reach): Install and Manual as the page's ruled rows, the
    * name, then what it is in the actions' column; Play is the action, the source is in the footer */
   .head { grid-template-rows: repeat(6, var(--m)); }   /* Play it, Ko-fi, air, the index's two rows, air */

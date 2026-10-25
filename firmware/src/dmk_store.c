@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 9u   /* 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
+#define ST_VER 10u  /* 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
                        a row down; 6: more effects in each FX
                        row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
                        of scenes; 3: patterns and their song; 2: patterns; 1: rolls */
@@ -181,7 +181,11 @@ DMK_SMALL static int song_pack(uint8_t *o)                        /* the song op
             if (!q->used) continue;
             *p++ = q->steps; *p++ = q->count;
             if (p - o + q->count * 4 > (int)(ST_SECTOR - ST_HDR)) return -1;
-            for (i = 0; i < q->count; i++) { *p++ = q->n[i].step; *p++ = q->n[i].len; *p++ = q->n[i].note; *p++ = q->n[i].vel; }
+            for (i = 0; i < q->count; i++) {            /* a note's 32nds after its step in the bytes' spare bits */
+                const snote_t *m = &q->n[i];
+                *p++ = (uint8_t)(m->step | (m->off & 3u) << 6); *p++ = (uint8_t)(m->len | (m->off >> 4 & 1u) << 7);
+                *p++ = (uint8_t)(m->note | (m->off >> 2 & 1u) << 7); *p++ = (uint8_t)(m->vel | (m->off >> 3 & 1u) << 7);
+            }
         }
     if (p - o + SCENES * 6 + 3 + song_n * 2 > (int)(ST_SECTOR - ST_HDR)) return -1;
     for (g = 0; g < SCENES; g++) {                      /* the scenes */
@@ -205,7 +209,11 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
     q->steps = (uint8_t)(st < 1 ? 1 : st > SEQ_STEPS ? SEQ_STEPS : st);
     q->count = 0;
     q->used = 1;
-    for (i = 0; i < c && e - p >= 4; i++, p += 4) if (q->count < SEQ_NOTES && p[0] < q->steps) q->n[q->count++] = (snote_t){p[0], p[1], p[2], p[3]};
+    for (i = 0; i < c && e - p >= 4; i++, p += 4) {     /* (before 10 the spare bits were 0: on its step) */
+        snote_t m = {(uint8_t)(p[0] & 63u), (uint8_t)(p[1] & 127u), (uint8_t)(p[2] & 127u), (uint8_t)(p[3] & 127u),
+                     (uint8_t)(p[0] >> 6 | (p[2] >> 7) << 2 | (p[3] >> 7) << 3 | (p[1] >> 7) << 4)};
+        if (q->count < SEQ_NOTES && m.step < q->steps) q->n[q->count++] = m;
+    }
     *pp = p;
     return 0;
 }

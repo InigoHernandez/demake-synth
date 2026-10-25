@@ -10,7 +10,7 @@
   <title>Demake manual</title>
   <meta name="description" content="How to play Demake on the M-VAVE FM-1 and in the emulator: the panel, the pages, the rolls, chords and effects.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=28">
+  <link rel="stylesheet" href="style.css?v=29">
 </head>
 <body class="noscript-all">
 <main class="canvas">
@@ -99,7 +99,7 @@
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
           <p><b>SAVE</b><span>The save screen: a slot, its name; again, saved</span></p>
-          <p><b>PLAY, REC</b><span>Play the rolls and chords; record the keys</span></p>
+          <p><b>PLAY, REC</b><span>Play the rolls and chords; record the keys as played</span></p>
           <p><b>OCT&minus; OCT+</b><span>The octave as you let go; with a note held, delete or copy</span></p>
         </div>
         <div class="mt">
@@ -148,12 +148,14 @@
         <div class="mt">
           <p><b>A key</b><span>Stopped, REC lit: writes at the cursor, then moves it on; REC off, it only plays</span></p>
           <p><b>Held + K1</b><span>Moves the note; K2 its pitch, K3 its length</span></p>
+          <p><b>Held + K4</b><span>Nudge: later or earlier, in ms after its step</span></p>
           <p><b>Held + ALGO</b><span>Its velocity</span></p>
           <p><b>Held + OCT&minus;</b><span>Deletes it; OCT+ copies it after itself</span></p>
           <p><b>K1 K2 K3</b><span>The cursor, the view, the pen's length</span></p>
           <p><b>K4</b><span>This synth's length, 1 to 64 steps</span></p>
           <p><b>PLAY</b><span>Plays all three; the keys play along</span></p>
-          <p><b>PLAY + REC</b><span>Records the keys from their nearest step</span></p>
+          <p><b>REC, then PLAY</b><span>Ready: the first key starts it, recording</span></p>
+          <p><b>Recorded</b><span>As played: each note&#39;s timing, a strum&#39;s spacing</span></p>
           <p><b>SEQ + OCT&minus;</b><span>Twice: clears this synth's roll</span></p>
           <p><b>HOME + OCT&minus;</b><span>Twice: clears all three</span></p>
           <p><b>Keys: All</b><span>A key writes its chord at the cursor; the foot names the chord there</span></p>
@@ -358,7 +360,7 @@
     <span class="legal">GPL-3.0. M&#8209;VAVE and FM&#8209;1 are their owners' marks; Demake is not made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 <script src="manual.js?v=9"></script>
 </body>
 </html>
