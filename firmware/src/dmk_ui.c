@@ -106,6 +106,9 @@ static const char *const PROGS[20] = {"First snow", "Last train", "Fogbound", "O
     "Power lines", "Tower beacon", "Slow thaw", "Candle", "Embers", "Low clouds", "Snowfield", "Static", "Mixtape", "Night drive",
     "User 1", "User 2", "User 3", "User 4"};
 static uint8_t choice_val(int i, int n) { return (uint8_t)(i * 128 / n + 64 / n); }   /* a choice's place, its middle */
+/* a list goes round: past its last, its first, and back (the owner: no turning back to reach the start). Numbers stop
+ * at their ends: a cutoff or a level going round would jump */
+static int wrap(int i, int n) { return n > 0 ? (i % n + n) % n : 0; }
 static const char *const TARGETS[] = {"Pitch", "Cutoff", "Level", "Pan", "Start"};
 static const char *const SYNCS[] = {"Free", "4 bars", "2 bars", "1 bar", "1/2", "1/4", "1/8", "1/16"};
 static const uint8_t SYNC16[8] = {0, 64, 32, 16, 8, 4, 2, 1};   /* sixteenths a cycle */
@@ -199,9 +202,8 @@ static int choice_index(const choice_t *c, int v);
 /* the progression stepped: its own mode and voicing come with it (CHORD's ALGORITHM, Arrange's Chords) */
 static void prog_step(int d)
 {
-    int p = choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]) + (d > 0 ? 1 : -1);
+    int p = wrap(choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]) + (d > 0 ? 1 : -1), PROG_N);
     const prog_t *pr;
-    if (p < 0 || p >= PROG_N) return;
     pr = p < 16 ? &PROG[p] : &uprog[p - 16];
     ui.val[0][PG_CHORD][0][4] = choice_val(p, PROG_N);
     keys_unslot();
@@ -2323,7 +2325,7 @@ static void roll_turn(int k, int d)
         if (ui.roll_cur[s] >= t) ui.roll_cur[s] = (uint8_t)(t - 1);
         if (sq[s].pos >= t) sq[s].pos = 0;
     }
-    if (k == 4) { int z = ui.roll_zoom[s] + dir; ui.roll_zoom[s] = (uint8_t)(z < 0 ? 0 : z > 2 ? 2 : z); }
+    if (k == 4) ui.roll_zoom[s] = (uint8_t)wrap(ui.roll_zoom[s] + dir, 3);   /* (16, 32, 64: round) */
 }
 
 static void roll_oct(int dup)                           /* OCT- deletes the held notes; OCT+ copies each after itself */
@@ -2575,16 +2577,15 @@ static void ui_encoder(int e, int d)
         if (!(ui.btn_held >> B_HOME & 1u) && sel_scrolls(ui.page)) {   /* it scrolls (the owner's feedback: the most
                                                            intuitive): a page's rows, the songs' slots */
             ui.touch_k = -1;
-            if (ui.page == PG_DISCS) { int n = ui.song_pick + dir; ui.song_pick = (uint8_t)(n < 0 ? 0 : n >= ST_SONGS ? ST_SONGS - 1 : n); return; }
-            {
-                int n = r;
-                do { n += dir; } while (n >= 0 && n < PAGE[ui.page].rows && row_soon(ui.page, n));
-                if (n >= 0 && n < PAGE[ui.page].rows) ui.row[ui.page] = (uint8_t)n;   /* stops at the ends, */
-                else notice("HOME + SELECT: the synth");   /* where it says how to reach the synth from here */
+            if (ui.page == PG_DISCS) { ui.song_pick = (uint8_t)wrap(ui.song_pick + dir, ST_SONGS); return; }
+            {                                           /* round, past the rows not built */
+                int n = r, i;
+                for (i = 0; i < PAGE[ui.page].rows; i++) { n = wrap(n + dir, PAGE[ui.page].rows); if (!row_soon(ui.page, n)) break; }
+                ui.row[ui.page] = (uint8_t)n;
             }
             return;
         }
-        ui.synth = (uint8_t)(s < 0 ? 0 : s >= DMK_SYNTHS ? DMK_SYNTHS - 1 : s);   /* the synth (HOME held: on any page) */
+        ui.synth = (uint8_t)wrap(s, DMK_SYNTHS);        /* the synth (HOME held: on any page) */
         sp_sync();
         return;
     }
@@ -2594,8 +2595,7 @@ static void ui_encoder(int e, int d)
         int r0 = ui.row[ui.page], n;
         const choice_t *c = choice_of(ui.page, r0, 4);
         uint8_t *v = vp(ui.page, r0, 4);
-        n = choice_index(c, *v) + (d > 0 ? 1 : -1);
-        if (n < 0 || n >= c->n) return;                 /* a choice stops at its ends */
+        n = wrap(choice_index(c, *v) + (d > 0 ? 1 : -1), c->n);
         *v = choice_val(n, c->n);
         ui.touch_k = 4; ui.touch_ms = ui.now;
         sp_sync();
@@ -2637,11 +2637,13 @@ static void ui_encoder(int e, int d)
     }
     if (k == 4 && ui.btn_held >> B_SEQ & 1u) {          /* SEQ held, ALGORITHM: how this synth follows the chords */
         char t[32];
-        int dir = d > 0 ? 1 : -1, f = ch.follow[ui.synth] + dir;
-        /* not in harmony with itself, nor with a synth that follows another or plays the chords: it has no notes of
-         * its own to move (a chain was silent) */
-        while (f >= FW_HARM1 && f <= FW_HARM3 && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS)) f += dir;
-        if (f < 0 || f >= FW_COUNT) return;
+        int dir = d > 0 ? 1 : -1, f = ch.follow[ui.synth], i;
+        /* round; not in harmony with itself, nor with a synth that follows another or plays the chords: it has no
+         * notes of its own to move (a chain was silent) */
+        for (i = 0; i < FW_COUNT; i++) {
+            f = wrap(f + dir, FW_COUNT);
+            if (!(f >= FW_HARM1 && f <= FW_HARM3 && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS))) break;
+        }
         if (ch.follow[ui.synth] == FW_PLAYS) chord_off(ui.synth);
         ch.follow[ui.synth] = (uint8_t)f;
         chord_join(ui.synth);                           /* set to play them: the chord sounding now */
@@ -2658,12 +2660,12 @@ static void ui_encoder(int e, int d)
         if (k == 4) { ui.row[PG_ARR] = (uint8_t)!ui.row[PG_ARR]; return; }
         if (!ui.row[PG_ARR]) {
             if (k < DMK_SYNTHS) {
-                c = (spat_next[k] < SYN_PATS ? spat_next[k] : syn_pat(k)) + dir;
-                if (c >= 0 && c < SYN_PATS) pat_pick_syn(k, c);
+                c = wrap((spat_next[k] < SYN_PATS ? spat_next[k] : syn_pat(k)) + dir, SYN_PATS);
+                pat_pick_syn(k, c);
             } else prog_step(dir);
             return;
         }
-        if (k == 0) { c = ui.arr_cur + dir; ui.arr_cur = (uint8_t)(c < 0 ? 0 : c > song_n ? song_n : c); }
+        if (k == 0) ui.arr_cur = (uint8_t)wrap(ui.arr_cur + dir, song_n + 1);   /* (its last place: the new step) */
         else if (k == 3) song_end = (uint8_t)((song_end + SE_COUNT + dir) % SE_COUNT);
         else if (k == 2) {                              /* a step's bars; past the last, the next one's */
             c = (t ? t->bars : ui.arr_bars) + dir;
@@ -2674,8 +2676,7 @@ static void ui_encoder(int e, int d)
         return;
     }
     if (ui.page == PG_DISCS) {                          /* SONGS: K1 picks the slot */
-        int n = ui.song_pick + (d > 0 ? 1 : -1);
-        if (k == 0) ui.song_pick = (uint8_t)(n < 0 ? 0 : n >= ST_SONGS ? ST_SONGS - 1 : n);
+        if (k == 0) ui.song_pick = (uint8_t)wrap(ui.song_pick + (d > 0 ? 1 : -1), ST_SONGS);
         return;
     }
     if (ui.page == PG_CHORD) {
@@ -2700,8 +2701,7 @@ static void ui_encoder(int e, int d)
             return;
         }
         if (k == 0 && ui.btn_held >> B_ARP & 1u) {      /* ARP held, K1: the slot cursor */
-            int c = ch_cur + (d > 0 ? 1 : -1), n = cur_prog()->n;
-            ch_cur = (uint8_t)(c < 0 ? 0 : c > n ? n : c);
+            ch_cur = (uint8_t)wrap(ch_cur + (d > 0 ? 1 : -1), cur_prog()->n + 1);
             return;
         }
     }
@@ -2714,16 +2714,15 @@ static void ui_encoder(int e, int d)
     }
     v = vp(ui.page, r, k);
     if (ui.page == PG_SOUND && ((r == 0 && k == 0) || (r == 1 && k == 4))) {   /* a recording: a step a detent */
-        int n = *v + (d > 0 ? 1 : -1);
-        *v = (uint8_t)(n < 0 ? 0 : n >= DMK_SAMPLES_N ? DMK_SAMPLES_N - 1 : n);
+        *v = (uint8_t)wrap(*v + (d > 0 ? 1 : -1), DMK_SAMPLES_N);
         sp_sync();
         return;
     }
     {
         const choice_t *c = choice_of(ui.page, r, k);
-        int n = c && c->n > 1 ? (choice_index(c, *v) + (d > 0 ? 1 : -1)) * 128 / c->n + 128 / c->n / 2 : *v + d;
-        if (c && c->n > 1 && (n < 0 || n > 127)) return;   /* a choice stops at its ends */
-        *v = (uint8_t)(n < 0 ? 0 : n > 127 ? 127 : n);
+        int n = *v + d;
+        if (c && c->n > 1) *v = choice_val(wrap(choice_index(c, *v) + (d > 0 ? 1 : -1), c->n), c->n);   /* round */
+        else *v = (uint8_t)(n < 0 ? 0 : n > 127 ? 127 : n);
     }
     sp_sync();
 }
