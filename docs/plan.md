@@ -112,6 +112,28 @@ chain, the other two there while the first mixes. Store version 12 maps an old s
 on to the mix; a library sound of form 3 or less drops its colour, its send a hall's amount. The table below is the
 plan of 2026-10-23, kept as it was.
 
+**Decision (the owner, 2026-10-26): the echo a track's, the huge reverbs GLO's Space.** "Tape and grains can go to
+delay per track and you call tape echo. So then Space will contain the huge different reverbs in global"; then "the
+big reverbs (Space name) is only in GLO, no per track, should be optimized". As built (0.4.18): each synth's Delay is
+Off, Delay, Ping-pong, Tape echo (the shared echo of before: a free time to 0.69 s, bent as it turns, a slow wow, its
+right a sixteenth later, the loop darkened and driven) or Grains (Mix, Size, Density, Texture), in its own 0.84 s line;
+GLO's rows are Colour, Space, Media, Setup, the Space one reverb all three send to: Hall, Space, Haze, Bloom, Lofi,
+Shimmer, Reverse, Freeze (all eight of the old shared verbs' huge ones; Room, Plate, Spring stay a track's), Return,
+Tone, Size (Reverse: Length; Freeze: Hold), Mod (Shimmer: Shine). FX's last row is Sends (Space, its send; Pan,
+Width; K2 and ALGO nothing); each synth's small reverb is as it was. Home has three rows, ALGO round them, PRESETS
+still the sound: Level (K4 the tempo), Space (each synth's send, K4 the Space's return), Pan (K4 the width). The
+Space is one engine for all its types: four input all-passes into Dattorro's figure of eight at full size (the
+reverbs a track's PLATE at a sixth), at half rate, 32 KB of lines in RAM and REVERSE's 16 KB (SHIMMER's window in it)
+in the pool where the echo's line was; the old eight-line network cost ~400 a sample, which no longer fit beside three
+reverbs a track; this ~245 [M]. Every product round its loop keeps its remainder (towards zero at the last few
+samples), so every type at every knob's end decays to exact silence (FREEZE's whole HOLD in ~2 minutes) and none fills
+its lines on a full chord. The second core runs it a run late (5.8 ms): its sends queued as the chains end, a third
+worked in the chains' phase, the rest with the first synth's reverb while the first core mixes; the voices go every
+other one a core and each side's limiter with its colour and media. Heaviest: CPU0 1516, CPU1 1371; with a layer under
+every voice, CPU0 1587, CPU1 1535 [M]. Store version 13 gives a synth that sent to the shared echo, with no delay of
+its own, that echo as its delay (its mix the send through the return); songs before 12 their huge verb as the Space,
+their sends its; songs of 12 the Space off.
+
 Every synth sends to both; each bus holds one type at a time (GLO, 3.4), stereo, at 22.05 kHz.
 
 | Bus | Type | Algorithm | Source | RAM | Instr / sample |

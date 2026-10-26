@@ -35,24 +35,25 @@ typedef struct {
 } page_t;
 
 static const page_t PAGE[PG_COUNT] = {
-    {"Home", 4, {"Level", "Verb", "Echo", "Pan"}, {"Tempo", "Tempo", "Tempo", "Tempo"},   /* (K4: the echo's and the mix's) */
-     {{"Level 1", "Level 2", "Level 3", "Echo"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
-      {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
+    {"Home", 3, {"Level", "Space", "Pan"}, {"", "", ""},   /* (the owner, 2026-10-26: ALGO the rows; K4 the song's: the
+                                                           tempo, the Space's return, the mix's width) */
+     {{"Level 1", "Level 2", "Level 3", "Tempo"}, {"Space 1", "Space 2", "Space 3", "Return"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
     {"Roll", 3, {"Roll", "Vary", "Arp"}, {"Zoom", "Zoom", "Hold"},
      {{"Cursor", "View", "Follow", "Steps"}, {"Mutate", "Range", "Chance", "Evolve"}, {"Mode", "Rate", "Octave", "Gate"}}},
     {"Sound", 3, {"Main", "Layer", "Voice"}, {"Fine", "Sound", ""},
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
     {"Amp", 1, {"Amp"}, {"Level"}, {{"Attack", "Decay", "Sustain", "Release"}}},
-    {"FX", 4, {"Reverb", "Delay", "Motion", "Space"}, {"Type", "Type", "Effect", "Reverb"},   /* (the owner's, 0.4.17: a
-                                                           reverb a track, first; Space: the sends, its ALGO the reverb's
-                                                           type, as Reverb's is) */
+    {"FX", 4, {"Reverb", "Delay", "Motion", "Sends"}, {"Type", "Type", "Effect", ""},   /* (the owner's, 0.4.17: a reverb a
+                                                           track, first; 2026-10-26: Sends, the send to the Space and the
+                                                           place; the Space itself GLO's alone, its ALGO nothing) */
      {{"Amount", "Tone", "Size", "Mod"}, {"Mix", "Tone", "Time", "Regen"},   /* an effect names its own */
-      {"Amount", "Tone", "Time", "Spice"}, {"Verb", "Echo", "Pan", "Width"}}},
+      {"Amount", "Tone", "Time", "Spice"}, {"Space", "", "Pan", "Width"}}},
     {"Chord", 3, {"Voice", "Key", "Keys"}, {"Prog", "Prog", "Prog"},
      {{"Voicing", "Invert", "Spread", "Strum"}, {"Key", "Mode", "Change", "Rhythm"}, {"Keys", "Type", "", ""}}},
-    {"Global", 4, {"Colour", "Echo", "Media", "Setup"}, {"Type", "Type", "Type", ""},   /* (the mix's colour, 0.4.17) */
-     {{"Amount", "Tone", "Time", "Spice"}, {"Return", "Tone", "Time", "Regen"},
+    {"Global", 4, {"Colour", "Space", "Media", "Setup"}, {"Type", "Type", "Type", ""},   /* (the mix's colour, 0.4.17; the
+                                                           Space where the echo was, 2026-10-26) */
+     {{"Amount", "Tone", "Time", "Spice"}, {"Return", "Tone", "Size", "Mod"},
       {"Amount", "Tone", "Time", "Spice"}, {"MIDI in", "MIDI out", "Clock", "Theme"}}},
     {"LFO", 2, {"Wave", "Sync"}, {"Target", "Target"}, {{"Rate", "Depth", "Shape", "Fade"}, {"Sync", "Restart", "", ""}}},
     {"Save", 2, {"Projects", "Sounds"}, {"", ""}, {{"Project", "Name", "", ""}, {"Track", "Sound", "User", "Library"}}},
@@ -129,9 +130,10 @@ static const char *const LOOPS[] = {"Off", "Full"};
 static const char *const REVERBS[] = {"Off", "Room", "Plate", "Spring", "Hall"};
 #define FX_REVERBS 5
 static const char *const RVK4[FX_REVERBS] = {"Mod", "Diffuse", "Mod", "Drip", "Mod"};
-static const char *const ECHOS[] = {"Off", "Tape", "Grains"};   /* (the delays: each synth's, FX's second row) */
-#define FX_ECHOS 3
-static const char *const DELAYS[] = {"Off", "Delay", "Ping-pong"};
+/* each track's DELAY (dmk_dsp's DT_; the shared echo's two since 0.4.18) and the shared SPACE (SP_, GLO's second row,
+ * the owner's: the huge reverbs, one for all) */
+static const char *const DELAYS[DT_N] = {"Off", "Delay", "Ping-pong", "Tape echo", "Grains"};
+static const char *const SPACES[SP_N] = {"Off", "Hall", "Space", "Haze", "Bloom", "Lofi", "Shimmer", "Reverse", "Freeze"};
 static const char *const KEEPS[] = {"Off", "On"};      /* the roll's Vary, EVOLVE (it was Keep: the owner found the name
                                                            confusing): what Mutate moves only heard, or written into the
                                                            roll, so it changes as it plays */
@@ -147,9 +149,9 @@ static const char *const DIVS[] = {"1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D
 #define DIV_N 9
 static const choice_t CHOICE[] = {
     {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
-    {PG_FX, 0, 4, FX_REVERBS, REVERBS}, {PG_FX, 1, 4, 3, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
-    {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, FX_COLOURS, COLOURS}, {PG_GLOBAL, 1, 4, FX_ECHOS, ECHOS},
-    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_FX, 3, 4, FX_REVERBS, REVERBS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_ROLL, 1, 1, 7, RANGES}, {PG_CHORD, 0, 2, 4, SPREADS},
+    {PG_FX, 0, 4, FX_REVERBS, REVERBS}, {PG_FX, 1, 4, DT_N, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
+    {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, FX_COLOURS, COLOURS}, {PG_GLOBAL, 1, 4, SP_N, SPACES},
+    {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_ROLL, 1, 1, 7, RANGES}, {PG_CHORD, 0, 2, 4, SPREADS},
     {PG_ROLL, 2, 0, AR_N, ARPS}, {PG_ROLL, 2, 1, 9, ARPDIVS}, {PG_ROLL, 2, 2, 4, ARPOCTS}, {PG_ROLL, 2, 4, 2, HOLDS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
@@ -344,33 +346,30 @@ static void lib_load(int s, int slot);
 static uint8_t ui_first[DMK_SYNTHS][SND_BYTES];         /* INIT: each synth's sound as the first song has it */
 
 /* a control's value: a synth's own on its pages, the song's on Home's last column and Global; Home's rows are views of
- * each synth's level (AMP), sends and pan (FX, SPACE); FX's Reverb and Space share its AMOUNT (Space's send) and its
- * type (the Reverb row's) */
+ * each synth's level (AMP), its send to the Space and its pan (FX's Sends row) */
 static int per_synth(int page) { return page == PG_SOUND || page == PG_FILTER || page == PG_AMP || page == PG_FX || page == PG_LFO; }
+static int dl_type(int s) { int t = ui.val[s][PG_FX][1][4] * DT_N / 128; return t < DT_N ? t : DT_N - 1; }   /* its delay's */
 static uint8_t *vp(int page, int row, int k)
 {
-    if (page == PG_HOME && k == 4) return &ui.val[0][PG_HOME][0][4];   /* the tempo, on every row */
     if (page == PG_CHORD && k == 4) return &ui.val[0][PG_CHORD][0][4];  /* the progression, on both rows */
     if (page == PG_LFO && k == 4) return &ui.val[ui.synth][PG_LFO][0][4];   /* the LFO's target, on both rows */
-    if (page == PG_FX && row == 3 && k == 4) return &ui.val[ui.synth][PG_FX][0][4];   /* Space's ALGO: its reverb's type */
-    if (page == PG_FX && row == 0 && k == 0) return &ui.val[ui.synth][PG_FX][3][0];   /* the reverb's AMOUNT: the send */
     if (page == PG_ROLL && row == 1 && k < 4) return &ui.val[ui.synth][PG_ROLL][1][k];   /* Vary: each synth's own (it
                                                            was the first synth's whichever was picked: the owner) */
     if (page == PG_ROLL && row == 2) return &ui.val[ui.synth][PG_ROLL][2][k];   /* the Arp: each synth's, HOLD too */
-    if (page == PG_HOME && k < 3) {
-        static const uint8_t PG[4] = {PG_AMP, PG_FX, PG_FX, PG_FX}, RW[4] = {0, 3, 3, 3}, KK[4] = {4, 0, 1, 2};
-        return &ui.val[k][PG[row]][RW[row]][KK[row]];
-    }
-    if (page == PG_HOME && k == 3) {                    /* the song's: the echo's return, time and regen, the width */
-        static const uint8_t KK[3] = {0, 2, 3};
-        return row == 3 ? &ui.val[0][PG_HOME][3][3] : &ui.val[0][PG_GLOBAL][1][KK[row]];
+    if (page == PG_HOME) {                              /* each synth's level, send and pan; K4 the song's: the tempo, the
+                                                           Space's return, the mix's width (ALGO: the rows, no value) */
+        static const uint8_t PG[3] = {PG_AMP, PG_FX, PG_FX}, RW[3] = {0, 3, 3}, KK[3] = {4, 0, 2};
+        row %= 3;
+        if (k < 3) return &ui.val[k][PG[row]][RW[row]][KK[row]];
+        if (k > 3) return &ui.val[0][PG_HOME][2][4];   /* (nothing's) */
+        return row == 0 ? &ui.val[0][PG_HOME][0][4] : row == 1 ? &ui.val[0][PG_GLOBAL][1][0] : &ui.val[0][PG_HOME][3][3];
     }
     return &ui.val[per_synth(page) ? ui.synth : 0][page][row][k];
 }
 #define VS(sy, page, row, k) (ui.val[sy][page][row][k])
 
 /* the controls to the sound's units (dmk_dsp.c): called on every change */
-static void sp_sync(void)
+DMK_SMALL static void sp_sync(void)                /* (on a control turned: for size) */
 {
     int s;
     for (s = 0; s < DMK_SYNTHS; s++) {
@@ -408,19 +407,28 @@ static void sp_sync(void)
         p->level = v * v * 2;                           /* Q15 on a square law: 64 is -12 dB */
         p->motion = (uint8_t)(VS(s, PG_FX, 2, 4) * FX_MOTIONS / 128);
         for (v = 0; v < 4; v++) p->ok[v] = VS(s, PG_FX, 2, v);
-        /* its REVERB: its type; AMOUNT (Space's send); TONE, a damping from ~1 kHz to open (at half rate); SIZE and
-         * its type's own as turned (dmk_dsp maps them by type) */
+        /* its REVERB: its type; AMOUNT; TONE, a damping from ~1 kHz to open (at half rate); SIZE and its type's own as
+         * turned (dmk_dsp maps them by type) */
         p->rtype = (uint8_t)choice_index(choice_of(PG_FX, 0, 4), VS(s, PG_FX, 0, 4));
-        p->ramt = VS(s, PG_FX, 3, 0) * 258;
+        p->ramt = VS(s, PG_FX, 0, 0) * 258;
         v = VS(s, PG_FX, 0, 1); p->rdamp = v >= 127 ? 32767 : T_OPH[72 + v * 55 / 127];
         p->rsize = VS(s, PG_FX, 0, 2);
         p->rx = VS(s, PG_FX, 0, 3);
-        p->dtype = (uint8_t)choice_index(choice_of(PG_FX, 1, 4), VS(s, PG_FX, 1, 4));   /* its DELAY: off, delay, ping-pong */
+        /* its DELAY: off, delay, ping-pong, the tape echo, the grains; MIX, TONE (at a quarter of the rate: 325 Hz ..
+         * 5 kHz; the tape echo's 20 Hz .. 5 kHz, as the shared one's), TIME (the tempo's division; the tape echo's 30
+         * .. 690 ms, as the shared one's), REGEN; the grains' SIZE (20 .. 377 ms), DENSITY (2 .. 40 a second), TEXTURE */
+        p->dtype = (uint8_t)dl_type(s);
         p->dmix = VS(s, PG_FX, 1, 0) * 258;
-        p->dtone = T_OPH[64 + VS(s, PG_FX, 1, 1) / 2];  /* (at a quarter of the rate: 325 Hz .. 5 kHz) */
-        p->ddiv = (uint8_t)choice_index(choice_of(PG_FX, 1, 2), VS(s, PG_FX, 1, 2));
+        v = VS(s, PG_FX, 1, 1);
+        p->dtone = p->dtype == DT_TAPE ? T_OPH[v + 13 > 127 ? 127 : v + 13] : T_OPH[64 + v / 2];
+        p->glen = (441 + v * 62) / 2;
+        v = VS(s, PG_FX, 1, 2);
+        p->ddiv = (uint8_t)(v * DIV_N / 128);
+        p->etime = T_ETIME[v] / 2u;
+        p->gdens = 12 + v * 226 / 127;
         p->dfb = VS(s, PG_FX, 1, 3) * 240;
-        p->esend = VS(s, PG_FX, 3, 1) * 258;
+        p->gtex = VS(s, PG_FX, 1, 3);
+        p->ssend = VS(s, PG_FX, 3, 0) * 258;            /* its SPACE: the send, the place */
         v = VS(s, PG_FX, 3, 2);
         p->gl = T_PAN[127 - v]; p->gr = T_PAN[v]; p->pan = v;
         p->width = VS(s, PG_FX, 3, 3) * 4;              /* 64: as it is */
@@ -466,14 +474,39 @@ static void sp_sync(void)
         p->tflut = 620000u + (uint32_t)VS(0, PG_GLOBAL, 2, 3) * 2000u; /* 6.3 .. 7.7 Hz */
     }
     gp.width = VS(0, PG_HOME, 3, 3) * 4;                /* the whole mix's width: 64 as it is */
-    gp.eret = VS(0, PG_GLOBAL, 1, 0) * 258;
-    gp.elp = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
-    gp.etime = T_ETIME[VS(0, PG_GLOBAL, 1, 2)];
-    gp.efb = VS(0, PG_GLOBAL, 1, 3) * 240;
-    { int t = choice_index(choice_of(PG_GLOBAL, 1, 4), VS(0, PG_GLOBAL, 1, 4)); gp.etype = (uint8_t)(t ? t - 1 : ET_OFF); }   /* Off first */
-    gp.glen = 441 + VS(0, PG_GLOBAL, 1, 1) * 62;        /* GRAINS: 20..360 ms (dmk_dsp holds them in its line) */
-    gp.gdens = 6 + VS(0, PG_GLOBAL, 1, 2) * 113 / 127;  /* 2..40 a second */
-    gp.gtex = VS(0, PG_GLOBAL, 1, 3);
+    {   /* the SPACE (GLO's second row): RETURN; TONE, the tank's damping (20 Hz .. 10 kHz); SIZE, its decay over the
+         * type's range (the hall 2 to 21 s, the space to two minutes, FREEZE's to five, as the shared verbs' were: DC is
+         * 3 log2(10) over 22050 times the shortest, a half's length in, Q16; DS log2 of the longest over it, Q16); MOD,
+         * the sweep's depth (at the type's own rate: 0.13 .. 0.5 Hz). The later ones' own: SHIMMER's MOD is SHINE, the
+         * octave fed back (under its runaway); REVERSE's SIZE is LENGTH (93 .. 370 ms), its tail a mid one's; FREEZE's
+         * SIZE is HOLD, the new sound let in falling and the damping opening as it rises (the old one's let more than all
+         * in, its damping past one at the bottom: a runaway). Each type's level about the hall's */
+        static const uint32_t DC[SP_N] = {0, 120600, 89714, 105094, 105094, 210188, 105094, 46957, 34484};
+        static const uint32_t DS[SP_N] = {0, 230718, 360170, 313760, 278629, 190806, 217706, 0, 355547};
+        static const uint16_t MD[SP_N] = {0, 2048, 4096, 6144, 1536, 8192, 2048, 2048, 3072};   /* the sweep at MOD's top */
+        static const uint32_t RT[SP_N] = {0, 58435, 31165, 25322, 38957, 97392, 31165, 31165, 19478};
+        static const uint16_t GN[SP_N] = {256, 142, 129, 115, 141, 113, 110, 173, 123};   /* (as loud as the shared verbs were) */
+        int t = choice_index(choice_of(PG_GLOBAL, 1, 4), VS(0, PG_GLOBAL, 1, 4)), sz = VS(0, PG_GLOBAL, 1, 2), md = VS(0, PG_GLOBAL, 1, 3), d;
+        uint32_t q = exp2n((uint32_t)sz * DS[t] / 127u), x = (uint32_t)(((uint64_t)DC[t] * q) >> 16);
+        gp.stype = (uint8_t)t;
+        gp.sret = VS(0, PG_GLOBAL, 1, 0) * 258;
+        gp.sga = (int32_t)(exp2n(x) >> 1); gp.sgb = (int32_t)(exp2n(x + x * 210u / 7451u) >> 1);   /* (the second half 210 longer) */
+        if (gp.sga > 32700) gp.sga = 32700;
+        if (gp.sgb > 32700) gp.sgb = 32700;
+        gp.smod = t == SP_SHIMMER ? MD[t] : MD[t] * md / 127;
+        gp.srate = RT[t]; gp.sgain = GN[t];
+        d = (127 - sz) * 258 + 512;
+        gp.sgin = t == SP_FREEZE && d < 32768 ? d : 32768;
+        gp.sshine = t == SP_SHIMMER ? md * 90 : 0;
+        gp.srlen = 2048 + sz * 48;
+        gp.srinv = (1 << 24) / gp.srlen;
+        d = T_OPH[VS(0, PG_GLOBAL, 1, 1)];
+        if (t == SP_HAZE) d = d * 3 / 4;                /* darker */
+        else if (t == SP_LOFI) d /= 2;
+        else if (t == SP_SHIMMER) d += (32767 - d) / 3; /* the octaves bright */
+        else if (t == SP_FREEZE) d += (int32_t)(((int64_t)(32767 - d) * (32768 - gp.sgin)) >> 15);
+        gp.sdamp = clampi(d, 1, 32767);
+    }
     midi_chans = (uint8_t)(VS(0, PG_GLOBAL, 3, 0) * 2 / 128);   /* the setup */
     midi_out = (uint8_t)(VS(0, PG_GLOBAL, 3, 1) * 4 / 128);
     clock_ext = (uint8_t)(VS(0, PG_GLOBAL, 3, 2) * 2 / 128);
@@ -505,7 +538,7 @@ static void arp_defaults(int s)                         /* the ARP: off, sixteen
     v[0] = 0; v[1] = choice_val(2, 9); v[2] = choice_val(0, 4); v[3] = 72; v[4] = 0;
 }
 /* a synth's REVERB as the first song has it (the owner's, 0.4.17: a reverb each): the pad a hall, the keys a plate, the
- * pluck a room, the shared hall's tone, size and sweep of before */
+ * pluck a room, the shared hall's tone, size and sweep of before (its amount: ui_init's) */
 static void reverb_first(int s)
 {
     static const uint8_t TY[DMK_SYNTHS] = {RV_HALL, RV_PLATE, RV_ROOM};
@@ -540,7 +573,7 @@ static int smp_named(const char *n)
 DMK_SMALL static void ui_init(void)
 {
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
-     * env, level, tape, wow, verb, echo, pan] */
+     * env, level, tape, wow, reverb (its amount), echo (its send to the shared one, now its tape echo), pan] */
     static const uint8_t FIRST[DMK_SYNTHS] = {DMK_FIRST_PAD, DMK_FIRST_KEY, DMK_FIRST_PLUCK};   /* a pad, keys, a pluck */
     static const uint8_t SET[DMK_SYNTHS][13] = {         /* (tape, wow: the mix's since 0.5, the pad's) */
         {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
@@ -561,13 +594,17 @@ DMK_SMALL static void ui_init(void)
         ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
         ui.val[s][PG_FILTER][0][0] = t[4]; ui.val[s][PG_FILTER][0][1] = t[5]; ui.val[s][PG_FILTER][0][2] = t[6];
         ui.val[s][PG_FILTER][0][4] = 0;                 /* LP24 */
-        reverb_first(s);                                /* its reverb; Delay, Motion: off */
-        ui.val[s][PG_FX][2][4] = 0;
-        delay_defaults(s);
+        reverb_first(s);                                /* its reverb, as much as the shared hall's return, 84, gave */
+        ui.val[s][PG_FX][0][0] = (uint8_t)(t[10] * 84 / 127);
+        ui.val[s][PG_FX][2][4] = 0;                     /* no motion */
+        delay_defaults(s);                              /* its delay the tape echo, as the shared one was (~0.4 s, a few
+                                                           repeats; its send through the return of 64) */
+        ui.val[s][PG_FX][1][0] = (uint8_t)(t[11] * 64 / 127); ui.val[s][PG_FX][1][1] = 52; ui.val[s][PG_FX][1][2] = 76;
+        ui.val[s][PG_FX][1][3] = 64; ui.val[s][PG_FX][1][4] = choice_val(DT_TAPE, DT_N);
         roll_vary_defaults(s);
         arp_defaults(s);
-        ui.val[s][PG_FX][3][0] = (uint8_t)(t[10] * 84 / 127);   /* (as much as the shared hall's return, 84, gave) */
-        ui.val[s][PG_FX][3][1] = t[11]; ui.val[s][PG_FX][3][2] = t[12];
+        ui.val[s][PG_FX][3][0] = 0; ui.val[s][PG_FX][3][1] = 0;   /* nothing sent to the Space; (K2: none) */
+        ui.val[s][PG_FX][3][2] = t[12];
         snd_new_defaults(s);
     }
     ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
@@ -577,9 +614,9 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
     ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* keys: chords on CHORD, sevenths */
     ui.val[0][PG_GLOBAL][0][4] = 0;                     /* the mix's colour: none */
-    ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS);   /* the echo: tape */
-    ui.val[0][PG_GLOBAL][1][0] = 64; ui.val[0][PG_GLOBAL][1][1] = 52; ui.val[0][PG_GLOBAL][1][2] = 76;
-    ui.val[0][PG_GLOBAL][1][3] = 64;                    /* the echo: ~0.4 s, a few repeats */
+    ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_HALL, SP_N);   /* the Space: the shared hall of before, nothing sent yet */
+    ui.val[0][PG_GLOBAL][1][0] = 84; ui.val[0][PG_GLOBAL][1][1] = 56; ui.val[0][PG_GLOBAL][1][2] = 96;
+    ui.val[0][PG_GLOBAL][1][3] = 64;
     ui.val[0][PG_GLOBAL][2][4] = choice_val(FM_TAPE, FX_MEDIAS);   /* the mix's media: tape, a little wow */
     ui.val[0][PG_GLOBAL][2][0] = SET[0][9]; ui.val[0][PG_GLOBAL][2][1] = 90;
     ui.val[0][PG_GLOBAL][3][0] = choice_val(0, 2); ui.val[0][PG_GLOBAL][3][1] = choice_val(1, 4);   /* MIDI: the synth, notes out */
@@ -591,7 +628,8 @@ DMK_SMALL static void ui_init(void)
         ui.roll_zoom[s] = (uint8_t)(sq[s].steps > 16);
     }
     ui.roll_view[0] = (uint8_t)degree_of(53); ui.roll_view[1] = (uint8_t)degree_of(64); ui.roll_view[2] = (uint8_t)degree_of(69);
-    ui.row[PG_FX] = 1;                                  /* the delay */
+    ui.row[PG_FX] = 1;                                  /* the delay; Home on its levels */
+    ui.row[PG_HOME] = 0;
     ui.page = PG_HOME;
     ui.octave = 0;
     ui.touch_k = -1;
@@ -604,6 +642,8 @@ DMK_SMALL static void ui_init(void)
 static const choice_t *choice_of(int page, int row, int k)
 {
     unsigned i;
+    if (page == PG_FX && row == 1 && k == 2 && dl_type(ui.synth) >= DT_TAPE) return 0;   /* the tape echo's time, the
+                                                           grains' density: numbers, not the tempo's divisions */
     for (i = 0; i < sizeof CHOICE / sizeof CHOICE[0]; i++)
         if (CHOICE[i].page == page && CHOICE[i].row == row && CHOICE[i].k == k) return &CHOICE[i];
     return 0;
@@ -647,14 +687,16 @@ static int arr_meter(int row, int k)
     return t ? t->scene * 127 / (SCENES - 1) : 0;
 }
 
-static void val_text(char *o, int page, int row, int k)
+DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, not drawing: for size) */
 {
     if (page == PG_ARR) { arr_text(o, row, k); return; }
     const choice_t *c = choice_of(page, row, k);
     int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 3) { str_cat(o, THEME_NAME[theme]); return; }
-    if (page == PG_FX && (row == 3 ? k < 2 : row == 0 && k == 0) && !v) { str_cat(o, "Off"); return; }   /* a send at 0:
-                                                           none (the reverb's AMOUNT is its send) */
+    if (!v && ((page == PG_FX && (row == 0 || row == 3) && k == 0) || (page == PG_HOME && row == 1 && k < 3))) {
+        str_cat(o, "Off");                              /* a send at 0, the reverb's amount at 0: none */
+        return;
+    }
     if (page == PG_CHORD && row == 1 && k == 1) {       /* the mode: Phrygian, Mixolydian short in the field (cut), whole
                                                            in the card's title */
         static const char *const MODEFIELD[6] = {"Aeolian", "Dorian", "Phryg", "Lydian", "Mixo", "Ionian"};
@@ -666,7 +708,12 @@ static void val_text(char *o, int page, int row, int k)
         fmt_int(o, v + 1);
         return;
     }
-    if (page == PG_HOME && k == 4) { fmt_int(o, seq_bpm); return; }   /* the tempo as it plays (at least 20; Ext: the clock's) */
+    if (page == PG_HOME && row == 0 && k == 3) { fmt_int(o, seq_bpm); return; }   /* the tempo as it plays (at least 20;
+                                                           Ext: the clock's) */
+    if (page == PG_FX && row == 1 && k == 2 && dl_type(ui.synth) == DT_TAPE) {   /* the tape echo's time, in ms */
+        str_cat(fmt_int(o, (int)(T_ETIME[v] * 1000u / 22050u)), " ms");
+        return;
+    }
     if (page == PG_SOUND && row == 1 && k == 4) { str_cat(o, DMK_SAMPLES[v < DMK_SAMPLES_N ? v : 0].name); return; }   /* the layer's */
     if (page == PG_SOUND && row == 1 && k == 0 && !v) { str_cat(o, "Off"); return; }
     if (page == PG_SOUND && row == 2 && k == 0) {       /* the glide: off, or its time in ms or s */
@@ -1018,9 +1065,13 @@ static void fields_band(void)
                                                            reverb's own */
         if (ui.page == PG_GLOBAL && r == 0) l = FXK[0][choice_index(choice_of(PG_GLOBAL, 0, 4), *vp(PG_GLOBAL, 0, 4))][k];
         if (ui.page == PG_GLOBAL && r == 2) l = FXK[1][choice_index(choice_of(PG_GLOBAL, 2, 4), *vp(PG_GLOBAL, 2, 4))][k];
-        if (ui.page == PG_HOME && k == 3 && r && r < 3 && choice_index(choice_of(PG_GLOBAL, 1, 4), ui.val[0][PG_GLOBAL][1][4]) == 2)
-            l = r == 1 ? "Density" : "Texture";      /* (the grains' own, as GLO's Echo row names them) */
-        if (ui.page == PG_GLOBAL && r == 1 && choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4)) == 2) { static const char *const GK[4] = {"Return", "Size", "Density", "Texture"}; l = GK[k]; }
+        if (ui.page == PG_FX && r == 1 && k && dl_type(ui.synth) == DT_GRAINS) { static const char *const GK[3] = {"Size", "Density", "Texture"}; l = GK[k - 1]; }
+        if (ui.page == PG_GLOBAL && r == 1 && k >= 2) { /* the later Spaces' own */
+            int t = choice_index(choice_of(PG_GLOBAL, 1, 4), *vp(PG_GLOBAL, 1, 4));
+            if (k == 2 && t == SP_REVERSE) l = "Length";
+            if (k == 2 && t == SP_FREEZE) l = "Hold";
+            if (k == 3 && t == SP_SHIMMER) l = "Shine";
+        }
         field(k, l, ui.page, r);
     }
 }
@@ -1137,6 +1188,16 @@ static void foot(void)
         text_r(DMK_W - PAD - 1, Y_FOOT + 2, t, &FS, sys.shorts || ui.loud_seen ? HOLO : C_LABEL);
         return;
     }
+    if (ui.page == PG_HOME) {                           /* Home: ALGO the rows (the owner, 2026-10-26); where the music
+                                                           is, the pattern or the song */
+        char t[20], *o = t;
+        text(PAD + 1, Y_FOOT + 2, "ALGO: the rows", &FS, C_LABEL);
+        if (song_mode && song_playing()) { o = fmt_int(str_cat(o, "Song "), song_at); *o++ = '/'; fmt_int(o, song_n); }
+        else if (song_mode) str_cat(o, "Song mode");
+        else fmt_int(str_cat(o, "Scene "), scn_cur + 1);
+        text_r(DMK_W - PAD - 1, Y_FOOT + 2, t, &FS, song_mode ? C_INK : C_LABEL);
+        return;
+    }
     if (pg->algo[r][0]) {                               /* the ALGORITHM encoder's value, under the cards */
         char v[16];
         int nd = rows_built(ui.page), x;
@@ -1147,14 +1208,6 @@ static void foot(void)
         else x = PAD + 1;
         text_fit(x, Y_FOOT + 2, end - x, v, &FS, lit(4) ? HOLO : C_INK);
         if (ui.page == PG_CHORD) text_r(DMK_W - PAD - 1, Y_FOOT + 2, seq_on ? (seq_rec ? "Recording" : "REC: record") : seq_rec ? "Keys write" : "REC: write", &FS, C_LABEL);
-
-        if (ui.page == PG_HOME) {                       /* where the music is: the pattern, or the song */
-            char t[20], *o = t;
-            if (song_mode && song_playing()) { o = fmt_int(str_cat(o, "Song "), song_at); *o++ = '/'; fmt_int(o, song_n); }
-            else if (song_mode) str_cat(o, "Song mode");
-            else fmt_int(str_cat(o, "Scene "), scn_cur + 1);
-            text_r(DMK_W - PAD - 1, Y_FOOT + 2, t, &FS, song_mode ? C_INK : C_LABEL);
-        }
     }
 }
 
@@ -1930,18 +1983,19 @@ static void stage_rows(int page, const char *const *names, int n, int open)
             text_r(SX + SW - PAD - 4, y + (h - 12) / 2, v, &FS, C_LABEL);
             continue;
         }
-        if (page != PG_FX && i >= 3) continue;              /* the setup is not an effect: no switch */
-        if ((page == PG_FX && i < 3) || page == PG_GLOBAL) {   /* the row's effect, by name, left of its switch */
+        if (i >= 3) continue;                               /* the setup, the sends: not effects, no switch */
+        {                                                   /* the row's effect, by name, left of its switch */
             char v[16];
+            int off = row_off(page, i);
             val_text(v, page, i, 4);
-            text_r(tx - 8, y + (h - 12) / 2, v, &FS, row_off(page, i) ? C_LABEL : C_INK);
-        }
-        if (row_off(page, i)) {                             /* the switch: off */
-            round_line(tx, y + h / 2 - 6, 22, 12, 6, 1, C_LABEL);
-            round_fill(tx + 3, y + h / 2 - 3, 6, 6, 3, C_LABEL);
-        } else {                                            /* on: lit, the knob to the right */
-            round_fill(tx, y + h / 2 - 6, 22, 12, 6, HOLO);
-            round_fill(tx + 13, y + h / 2 - 3, 6, 6, 3, C_PAPER);
+            text_r(tx - 8, y + (h - 12) / 2, v, &FS, off ? C_LABEL : C_INK);
+            if (off) {                                      /* the switch: off */
+                round_line(tx, y + h / 2 - 6, 22, 12, 6, 1, C_LABEL);
+                round_fill(tx + 3, y + h / 2 - 3, 6, 6, 3, C_LABEL);
+            } else {                                        /* on: lit, the knob to the right */
+                round_fill(tx, y + h / 2 - 6, 22, 12, 6, HOLO);
+                round_fill(tx + 13, y + h / 2 - 3, 6, 6, 3, C_PAPER);
+            }
         }
     }
 }
@@ -2488,10 +2542,10 @@ static void overlays(void)
 #define DMK_FM1_DIAG 0
 #endif
 /* the test build's load case (docs/sound-design.md, stage 1): HOME and SAVE held, then REC. Every synth its heaviest
- * reverb, a ping-pong and a flanger, the heaviest colour, the grains and VHS on the mix, twelve notes struck again every
- * two seconds (with each synth's sends as they are); the same keys put it all back */
-static struct { uint8_t on, kept[DMK_SYNTHS][3], gkept[3]; uint32_t at; } stress;
-static uint8_t stress_row(int r) { return r == 1 ? choice_val(2, 3) : choice_val(r == 0 ? RV_HEAVY : FO_FLANGER, r == 0 ? FX_REVERBS : FX_MOTIONS); }   /* the rows' heaviest [M] */
+ * reverb, delay and motion, sending to the heaviest Space, the heaviest colour and VHS on the mix, twelve notes struck
+ * again every two seconds; the same keys put it all back */
+static struct { uint8_t on, kept[DMK_SYNTHS][4], gkept[3]; uint32_t at; } stress;
+static uint8_t stress_row(int r) { return r == 1 ? choice_val(DT_HEAVY, DT_N) : choice_val(r == 0 ? RV_HEAVY : FO_FLANGER, r == 0 ? FX_REVERBS : FX_MOTIONS); }   /* the rows' heaviest [M] */
 static void stress_notes(int on)
 {
     int i;
@@ -2504,12 +2558,13 @@ static void stress_set(int on)
     int s, r;
     if (on == stress.on) return;
     for (s = 0; s < DMK_SYNTHS; s++)
-        for (r = 0; r < 3; r++) {
-            if (on) { stress.kept[s][r] = ui.val[s][PG_FX][r][4]; ui.val[s][PG_FX][r][4] = stress_row(r); }
-            else ui.val[s][PG_FX][r][4] = stress.kept[s][r];
+        for (r = 0; r < 4; r++) {                       /* (its fourth: the send to the Space) */
+            uint8_t *v = r < 3 ? &ui.val[s][PG_FX][r][4] : &ui.val[s][PG_FX][3][0];
+            if (on) { stress.kept[s][r] = *v; *v = r < 3 ? stress_row(r) : 100; }
+            else *v = stress.kept[s][r];
         }
     for (r = 0; r < 3; r++) {
-        const uint8_t HEAVY[3] = {choice_val(FC_HEAVY, FX_COLOURS), choice_val(2, FX_ECHOS), choice_val(FM_VHS, FX_MEDIAS)};   /* the heaviest colour, grains, VHS */
+        const uint8_t HEAVY[3] = {choice_val(FC_HEAVY, FX_COLOURS), choice_val(SP_HEAVY, SP_N), choice_val(FM_VHS, FX_MEDIAS)};   /* the heaviest colour, Space, VHS */
         if (on) { stress.gkept[r] = ui.val[0][PG_GLOBAL][r][4]; ui.val[0][PG_GLOBAL][r][4] = HEAVY[r]; }
         else ui.val[0][PG_GLOBAL][r][4] = stress.gkept[r];
     }
@@ -3035,7 +3090,7 @@ DMK_SMALL static void ui_button(int b, int down)
             if (row_soon(p, ui.row[p])) ui.row[p] = (uint8_t)row_next(p, ui.row[p]);
             if (rows_built(p) > 1 && !(ui.hinted >> p & 1u)) {   /* the first time: how to reach the next row */
                 char t[32];
-                str_cat(str_cat(str_cat(t, "PRESET, or "), BTN_NAME[b]), " again: rows");
+                str_cat(str_cat(str_cat(t, p == PG_HOME ? "ALGO, or " : "PRESET, or "), BTN_NAME[b]), " again: rows");
                 notice(t);
                 ui.hinted |= (uint16_t)(1u << p);
             }
@@ -3118,6 +3173,13 @@ DMK_SMALL static void ui_encoder(int e, int d)
         notice(t);
         return;
     }
+    if (ui.page == PG_HOME && k == 4) {                 /* Home: ALGO the rows, round (the owner, 2026-10-26: PRESETS
+                                                           stays the sound there) */
+        ui.row[PG_HOME] = (uint8_t)wrap(r + (d > 0 ? 1 : -1), PAGE[PG_HOME].rows);
+        ui.touch_k = -1;
+        return;
+    }
+    if (ui.page == PG_FX && r == 3 && k == 1) { ui.touch_k = -1; return; }   /* (Sends' K2: nothing there) */
     if (ui.page == PG_ROLL && (!ui.row[PG_ROLL] || (k == 4 && ui.row[PG_ROLL] != 2) || roll_held() >= 0)) { roll_turn(k, d); return; }   /* (Vary, Arp: their values; the Arp's ALGO HOLD) */
     if (ui.page == PG_ARR) {
         /* ARRANGE: ALGORITHM the rows. The Scene row: K1-K3 each synth's pattern, K4 the progression. The Song row: K1
@@ -3209,7 +3271,8 @@ DMK_SMALL static void ui_encoder(int e, int d)
         }
     }
     if (ui.page == PG_CHORD && k == 4) { prog_step(d); return; }   /* a progression: its own mode and voicing with it */
-    if (k == 4 && ui.page == PG_GLOBAL && r == 3) return;   /* (a row with no type; FX's Space: its reverb's) */
+    if (k == 4 && (ui.page == PG_GLOBAL || ui.page == PG_FX) && r == 3) return;   /* (the rows with no type: the setup,
+                                                           the sends) */
     if (ui.page == PG_GLOBAL && r == 3 && k == 3) {    /* theme */
         theme = (uint8_t)wrap(theme + (d > 0 ? 1 : -1), DMK_THEMES);
         ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);   /* (its dots) */

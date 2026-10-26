@@ -30,7 +30,7 @@ static void ui_yield(void) { if (dmk_yield) dmk_yield(); }
 
 static uint32_t samples;
 
-void dmk_init(uint32_t seed)
+DMK_SMALL void dmk_init(uint32_t seed)                  /* (once: for size) */
 {
     int i;
     boot_sc = (uint8_t)(((seed * 2654435761u) >> 16) % DMK_SCENES);   /* the boot's scene, by the start's clock */
