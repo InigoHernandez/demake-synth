@@ -22,10 +22,11 @@ dithered, for what is lit.
     or on the tempo.
   - A layer: a second recording under a sound. Glide, velocity, the cutoff following the key, and grit (the voice at
     22 or 11 kHz).
-  - Per synth: a Reverb of its own (room, plate, spring, hall), a Delay in time (delay or ping-pong) and Motion
-    (chorus, vibrato, drift, ensemble, phaser, flanger, tremolo).
-  - Shared: a tape echo or grains, and over the whole mix a Colour (saturate, crush, lossy, noise, warm, distort) and
-    a Media (tape, cassette, VHS, vinyl, radio, dictaphone); each can be off.
+  - Per synth: a Reverb of its own (room, plate, spring, hall), a Delay (a delay or ping-pong in time, a tape echo or
+    grains) and Motion (chorus, vibrato, drift, ensemble, phaser, flanger, tremolo).
+  - Shared: the Space, one huge reverb all three send to (hall, space, haze, bloom, lofi, shimmer, reverse, freeze),
+    and over the whole mix a Colour (saturate, crush, lossy, noise, warm, distort) and a Media (tape, cassette, VHS,
+    vinyl, radio, dictaphone); each can be off.
 - **The music.**
   - Three synths, each with a piano roll of up to 256 steps and eight patterns of its own, recorded as played
     (micro timing, a strum's spacing), notes that can move in the scale and play by chance (Vary, on the roll, the

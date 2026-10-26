@@ -89,13 +89,13 @@
         <h1>The panel</h1>
         <p class="msub">Each button opens its page; again, its next row. K1 to K4 turn the values over them, ALGORITHM the one at the foot.</p>
         <div class="mt">
-          <p><b>FX</b><span>Effects: reverb, delay, motion, space</span></p>
+          <p><b>FX</b><span>Effects: reverb, delay, motion, sends</span></p>
           <p><b>SEL</b><span>Filter</span></p>
           <p><b>ENV</b><span>Amp: the envelope and the level</span></p>
           <p><b>LFO</b><span>LFO: a slow wave on the pitch, cutoff, level, pan or start</span></p>
           <p><b>EDIT</b><span>Sound: the recording; again, its layer; again, the voice</span></p>
-          <p><b>GLO</b><span>Global: the colour, the echo, the media over the mix; the setup</span></p>
-          <p><b>HOME</b><span>Home: levels, sends, tempo; the scene</span></p>
+          <p><b>GLO</b><span>Global: the colour, the Space, the media over the mix; the setup</span></p>
+          <p><b>HOME</b><span>Home: levels and tempo, sends to the Space, pans; the scene</span></p>
           <p><b>ARP</b><span>Chord: the progression; the keys play chords</span></p>
           <p><b>SEQ</b><span>Roll: this synth's own sequence</span></p>
           <p><b>SAVE</b><span>Projects and sounds; again, saved</span></p>
@@ -105,13 +105,13 @@
         <div class="mt">
           <p><b>SELECT</b><span>The synth, on every page</span></p>
           <p><b>PRESETS</b><span>The page's rows; on Home, the synth's sound</span></p>
-          <p><b>ALGORITHM</b><span>The foot's value: on FX and GLO the row's type</span></p>
+          <p><b>ALGORITHM</b><span>The foot's value: on FX and GLO the row's type; on Home the rows</span></p>
           <p><b>K1 to K4</b><span>The four values on top</span></p>
           <p><b>MASTER</b><span>The volume</span></p>
         </div>
         <div class="mt">
           <p><b>Tap, again</b><span>A page button opens its page; again, its next row</span></p>
-          <p><b>PRESETS, ALGO</b><span>PRESETS the row, ALGORITHM its type</span></p>
+          <p><b>PRESETS, ALGO</b><span>PRESETS the row, ALGORITHM its type; on Home ALGORITHM the row</span></p>
           <p><b>Hold, then act</b><span>A held key or chord: the knobs change it, OCT&minus; deletes, OCT+ copies</span></p>
           <p><b>Lists go round</b><span>Past the last, the first; numbers stop at their ends</span></p>
         </div>
@@ -126,6 +126,12 @@
           <figure class="mfig"><img src="img/screens/04_filter.png" alt="Filter" width="240" height="240"><figcaption>Filter: the response, its cutoff.</figcaption></figure>
           <figure class="mfig"><img src="img/screens/05_amp.png" alt="Amp" width="240" height="240"><figcaption>Amp: the envelope, its points.</figcaption></figure>
           <figure class="mfig"><img src="img/screens/06_fx.png" alt="FX" width="240" height="240"><figcaption>FX: four rows, a synth each.</figcaption></figure>
+        </div>
+        <p class="note">Home has three rows, ALGORITHM round them; PRESETS stays the sound there.</p>
+        <div class="mt">
+          <p><b>Level</b><span>Each synth's level; K4 the tempo</span></p>
+          <p><b>Space</b><span>Each synth's send to the Space; K4 its return</span></p>
+          <p><b>Pan</b><span>Each synth's place; K4 the mix's width</span></p>
         </div>
       </article>
       <article id="keys" data-group="Playing">
@@ -301,13 +307,13 @@
       </article>
       <article id="effects" data-group="Sound">
         <h1>Effects</h1>
-        <p class="msub">Four rows a synth on FX: its own reverb, delay and motion, and where it sits. Then on GLO the colour, the echo and the media all three share. PRESETS the row, ALGORITHM its type.</p>
+        <p class="msub">Four rows a synth on FX: its own reverb, delay and motion, and its sends. Then on GLO the colour, the Space and the media all three share. PRESETS the row, ALGORITHM its type.</p>
         <figure class="mfig"><img src="img/screens/06_fx.png" alt="FX" width="240" height="240"><figcaption>Each row names its effect.</figcaption></figure>
         <div class="mt">
           <p><b>Reverb</b><span>The synth's own: room, plate, spring or hall; Amount, Tone, Size and the type's own knob</span></p>
-          <p><b>Delay</b><span>Off, delay or ping-pong (left, then right), in time: Time is a division of the tempo; Mix, Tone, Regen</span></p>
+          <p><b>Delay</b><span>Off, delay or ping-pong (left, then right) in time, Time a division of the tempo; a tape echo; grains. Mix, Tone, Regen</span></p>
           <p><b>Motion</b><span>Chorus, vibrato, drift, ensemble, phaser, flanger, tremolo (on the tempo)</span></p>
-          <p><b>Space</b><span>The sends: to its reverb (its Amount) and to the echo, the pan, the width; ALGORITHM its reverb's type</span></p>
+          <p><b>Sends</b><span>Space, its send to the Space on GLO; its pan and width</span></p>
         </div>
         <p class="note">Each effect names its own four knobs: crush shows bits, tone, rate and jitter. A synth's delay is lofi, at 11 kHz; a long time at a slow tempo plays at half, still in time.</p>
         <div class="mt">
@@ -316,10 +322,21 @@
           <p><b>Plate</b><span>Bright and dense; Mod sets its slow sway</span></p>
           <p><b>Spring</b><span>A tank's chirp, thin and wiry; Drip, how much</span></p>
           <p><b>Hall</b><span>A small hall, wide and long, to 16 s; Mod sets its slow sway</span></p>
+          <p><b>Tape echo</b><span>A synth's: darkening repeats to 0.69 s, bent as Time turns, a slow wow</span></p>
+          <p><b>Grains</b><span>A synth's: a cloud of what it played; Size, Density, Texture</span></p>
           <p><b>Colour</b><span>On GLO, the whole mix: saturate, crush, lossy (a codec's smear), noise, warm, distort</span></p>
-          <p><b>Tape echo</b><span>Darkening repeats</span></p>
-          <p><b>Grains</b><span>A cloud of what you played: size, density, texture</span></p>
           <p><b>Media</b><span>The whole mix through tape, cassette, VHS, vinyl, radio or a dictaphone</span></p>
+        </div>
+        <p class="note">The Space, on GLO: one huge reverb all three send to (their Sends, or Home's Space row), its tail to minutes. Return, Tone, Size, Mod.</p>
+        <div class="mt">
+          <p><b>Hall</b><span>Long and wide, to 21 s</span></p>
+          <p><b>Space</b><span>Wider still, to two minutes</span></p>
+          <p><b>Haze</b><span>Deep, slow and dark</span></p>
+          <p><b>Bloom</b><span>Swells up behind a new sound</span></p>
+          <p><b>Lofi</b><span>Grainy: 11 kHz, 8 bits, a deep wow</span></p>
+          <p><b>Shimmer</b><span>An octave up rising through it; Shine, how much</span></p>
+          <p><b>Reverse</b><span>The sound backwards into it; Length, how long</span></p>
+          <p><b>Freeze</b><span>Holds what is in it, to five minutes; Hold, how much</span></p>
         </div>
       </article>
       <article id="midi" data-group="Reference">
