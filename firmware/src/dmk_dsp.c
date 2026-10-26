@@ -2,9 +2,10 @@
 /* Demake's sound (docs/plan.md, 2.1, 1.2, 1.3): the owner's recordings are the core. The sampler reads them as 4-bit
  * block ADPCM straight from flash, pitched by a Q16 phase with linear interpolation, looped where tools/gen_samples.py
  * found the seam; each voice has a state-variable filter of eight types and an envelope. Each synth has its MOTION
- * (chorus and the like; vibrato and drift on the voices' pitch), its DELAY and its own REVERB (the owner, 2026-10-25:
- * ROOM, PLATE, SPRING and a small HALL, at half rate, the three as one job on the second core); one shared ECHO (an
- * 8-bit mu-law line, its loop filtered and clipped); then on the whole mix its COLOUR (saturate, crush, lossy, noise,
+ * (chorus and the like; vibrato and drift on the voices' pitch), its DELAY (a delay, a ping-pong, the tape echo and the
+ * grains: an 8-bit mu-law line, its loop filtered and clipped) and its own REVERB (the owner, 2026-10-25: ROOM, PLATE,
+ * SPRING and a small HALL, at half rate); one shared SPACE, the huge reverbs (the owner, 2026-10-26: an eight-line
+ * network at half rate that every synth sends to); then on the whole mix its COLOUR (saturate, crush, lossy, noise,
  * warm, distort) and its MEDIA (tape, cassette, VHS, vinyl, radio, dictaphone), and a soft limiter. 12 voices shared
  * by the three synths, half of them on the second core when there is one. Integer only. Included by dmk_core.c. */
 
@@ -12,7 +13,7 @@
 #define XG_STEP (32768 / 16)                            /* a type change's fade, a block's step of the share: 16 blocks */
 
 #ifdef DMK_METER                                        /* the host's meters: where a sound runs out of room */
-static struct { int32_t pre_max, syn_max, voice_max; uint32_t knee, sat_line, sat_rv, sat_echo, clamp_v; } dmeter;
+static struct { int32_t pre_max, syn_max, voice_max; uint32_t knee, sat_line, sat_rv, sat_sp, clamp_v; } dmeter;
 #define METER(x) (x)
 #else
 #define METER(x) ((void)0)
@@ -52,14 +53,17 @@ enum { FM_OFF, FM_TAPE, FM_CASS, FM_VHS, FM_VINYL, FM_RADIO, FM_DICTA };        
 enum { FO_OFF, FO_CHORUS, FO_VIB, FO_DRIFT, FO_ENS, FO_PHASER, FO_FLANGER, FO_TREM };      /* MOTION */
 enum { RV_OFF, RV_ROOM, RV_PLATE, RV_SPRING, RV_HALL, RV_N };   /* each synth's REVERB (FX's first row, since 0.4.17) */
 #define RV_HEAVY RV_PLATE                               /* the costliest (the load test's, --cpu's): measured */
-enum { ET_TAPE, ET_GRAINS, ET_OFF };                                     /* the ECHO's (its delays: each synth's since 0.5) */
+enum { DT_OFF, DT_DELAY, DT_PING, DT_TAPE, DT_GRAINS, DT_N };   /* each synth's DELAY (the shared echo's two since 0.4.18) */
+#define DT_HEAVY DT_GRAINS                              /* (measured: 86 a synth, the plain delay 53) */
+enum { SP_OFF, SP_HALL, SP_SPACE, SP_HAZE, SP_BLOOM, SP_LOFI, SP_SHIMMER, SP_REVERSE, SP_FREEZE, SP_N };   /* the SPACE's */
+#define SP_HEAVY SP_REVERSE                             /* (measured: 287 a sample, the hall 244) */
 typedef struct {
     uint8_t smp, loops, ftype, tape;
     int16_t tune, cut, fenv;       /* semitones; the cutoff's index 0..255 (255: open); the envelope's reach in indexes */
     int8_t fine;                   /* cents, -50..50 */
     uint16_t start, resq, dec, rel;   /* blocks; damping Q14; decay and release factors Q16 a block */
     uint32_t atk;                  /* the attack's step a block, Q24 */
-    int32_t sus, level, gl, gr, esend;   /* Q24; Q15 ... */
+    int32_t sus, level, gl, gr, ssend;   /* Q24; Q15 ... (ssend: to the SPACE) */
     int32_t pan;                   /* 0..127 as turned (the LFO swings it) */
     int32_t width;                 /* its stereo's width, Q8 (256 as it is, 0 one, 508 twice) */
     int32_t tdepth, tdrive, tcomp; /* the tape's wow depth (Q8 samples a unit of the sine), drive Q8, its makeup Q15 */
@@ -67,11 +71,13 @@ typedef struct {
     uint32_t twow, tflut;          /* its wow's and flutter's phase steps */
     uint8_t colour, media, motion; /* the rows' effects (FC_, FM_, FO_), 0 off (colour and media: the whole mix's, gcol's
                                       and gmed's) */
-    uint8_t dtype, ddiv;           /* the DELAY (FX row 2, the owner's: one a synth): 0 off, 1 delay, 2 ping-pong; its time */
+    uint8_t dtype, ddiv;           /* the DELAY (FX row 2, the owner's: one a synth): its type (DT_); its division */
     int32_t dmix, dtone, dfb;      /*   its wet share Q15, its tone (a one-pole), its regen Q15 */
     uint32_t dtime;                /*   (dmk_seq: its time, quarter-rate samples, of the tempo)  */
+    uint32_t etime;                /*   the TAPE ECHO's, free: quarter-rate samples */
+    int32_t glen, gdens, gtex;     /*   the GRAINS': length (quarter-rate samples), a grain's step a sample (Q16), texture */
     uint8_t rtype, rsize, rx;      /* the REVERB (FX's first row): its type (RV_), SIZE and its type's own knob, 0..127 */
-    int32_t ramt, rdamp;           /*   how much goes in, Q15 (Space's first knob, a send); its tone, a one-pole Q15 */
+    int32_t ramt, rdamp;           /*   how much goes in, Q15 (its AMOUNT); its tone, a one-pole Q15 */
     uint8_t ck[4], mk[4], ok[4];   /* their knobs, 0..127 as turned */
     /* the LAYER: its recording, loop and tune (semitones), its share of the voice (Q15, 0: off) and tone (a one-pole) */
     uint8_t lsmp, lloops;
@@ -94,11 +100,11 @@ typedef struct {
 enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's targets */
 static synth_t syn[DMK_SYNTHS];
 
-/* the shared ECHO's controls and the mix's width */
-static struct { int32_t eret, efb, elp, etime, glen, gdens, gtex, width; uint8_t etype; } gp;
-/* the ECHO's type as it runs: a new one is taken once the return has faded out (5.8 ms), then faded in */
-static uint8_t e_cur;
-static int32_t e_g = 32768;
+/* the shared SPACE's controls (sp_sync sets them from GLO's Space row) and the mix's width: its return (Q15), its
+ * damping (a one-pole, Q15), its tank's two halves' decays (Q15), its sweep's depth (Q8 steps) and rate, FREEZE's
+ * share of new sound in (Q15), SHIMMER's octave fed back (Q15), REVERSE's segment (half-rate steps) and its reciprocal
+ * (Q24 over it), the type's level (Q8) */
+static struct { int32_t sret, sdamp, sga, sgb, smod, sgin, sshine, srlen, srinv, sgain, width; uint32_t srate; uint8_t stype; } gp;
 
 /* ---- the voices */
 /* a recording as a voice reads it: its ADPCM blocks decoded 28 at a time, the predictor carried on; on until a
@@ -873,17 +879,7 @@ static void fx_enter(int sy, int row, int t)
     }
 }
 
-/* ---- the ECHO, shared, at half rate */
-#define EL_LEN 16384u                                   /* ECHO: 0.74 s of 8-bit mu-law at 22.05 kHz (its other half: the
-                                                           synths' delays since 0.5) */
-static uint8_t el_buf[EL_LEN] POOL;
-static struct {
-    int32_t el, er, elp, ehp, etq;                      /* (etq: its time as it glides, Q8 half-rate samples) */
-    uint32_t ew;
-    int32_t eacc;
-    uint8_t half;
-} bus;
-
+/* 8-bit mu-law, the lines' (the delays' and REVERSE's) */
 static uint8_t mulaw_enc(int32_t x)
 {
     int sign = 0, exp, mask, man;
@@ -894,82 +890,6 @@ static uint8_t mulaw_enc(int32_t x)
     exp = mask >= 16 ? (mask >= 64 ? (mask >= 128 ? 7 : 6) : (mask >= 32 ? 5 : 4)) : (mask >= 4 ? (mask >= 8 ? 3 : 2) : (mask >= 2 ? 1 : 0));
     man = (x >> (exp + 3)) & 0x0F;
     return (uint8_t)~(sign | (exp << 4) | man);
-}
-
-/* GRAINS, the ECHO's other type: the same line, read by six grains at once, each from a random moment of the last
- * 0.7 s, as long as SIZE, as often as DENSITY, some an octave or a fifth up as TEXTURE rises, each its own place
- * across the stereo, shaped by a window; a cloud of what was played */
-#define GR_N 6
-#define GR_MAXLEN ((EL_LEN - 256u) / 2u)                /* (an octave up reads twice its length: both inside the line) */
-static struct { uint32_t pos, inc, len, age; int16_t pl, pr; } gr[GR_N];
-static uint32_t gr_clock, gr_rng = 0x2545F491u;
-static void grains_step(int32_t ein)
-{
-    int k;
-    int32_t l = 0, r = 0;
-    el_buf[bus.ew & (EL_LEN - 1)] = mulaw_enc(curve(T_SAT, ein));
-    bus.ew++;
-    gr_clock += (uint32_t)gp.gdens;
-    if (gr_clock >= 65536u) {                           /* a grain begins, if one is free */
-        gr_clock -= 65536u;
-        for (k = 0; k < GR_N && gr[k].len; k++) {}
-        if (k < GR_N) {
-            uint32_t rn = xs32(&gr_rng), len = (uint32_t)gp.glen, inc = 256u, back;
-            if (len > GR_MAXLEN) len = GR_MAXLEN;       /* (SIZE past 123 left a negative room: a wild read) */
-            if ((int32_t)((rn >> 8) & 127u) < gp.gtex) inc = rn & 1u ? 512u : 384u;   /* an octave, or a fifth, up */
-            else inc = 254u + (rn >> 30);               /* or as played, a hair off */
-            back = len * inc / 256u + 64u + (xs32(&gr_rng) % (EL_LEN - 2u * len - 128u));
-            gr[k].pos = (bus.ew - back) << 8; gr[k].inc = inc; gr[k].len = len; gr[k].age = 0;
-            gr[k].pl = (int16_t)T_PAN[127 - (rn >> 25)]; gr[k].pr = (int16_t)T_PAN[rn >> 25];
-        }
-    }
-    for (k = 0; k < GR_N; k++) {
-        uint32_t i, f;
-        int32_t a, b, x, t, w;
-        if (!gr[k].len) continue;
-        i = gr[k].pos >> 8; f = gr[k].pos & 255u;
-        a = T_MULAW[el_buf[i & (EL_LEN - 1)]]; b = T_MULAW[el_buf[(i + 1) & (EL_LEN - 1)]];
-        x = a + (((b - a) * (int32_t)f) >> 8);
-        t = (int32_t)(gr[k].age * 256u / gr[k].len);    /* the window: a parabola over the grain */
-        w = t * (255 - t) / 64;
-        x = (x * w) >> 8;
-        l += (x * gr[k].pl) >> 15;
-        r += (x * gr[k].pr) >> 15;
-        gr[k].pos += gr[k].inc;
-        if (++gr[k].age >= gr[k].len) gr[k].len = 0;
-    }
-    bus.el = (l * gp.eret) >> 16;
-    bus.er = (r * gp.eret) >> 16;
-}
-
-/* the echo's line q8 (Q8) half-rate samples back, between its two samples there */
-static int32_t el_at(uint32_t q8)
-{
-    uint32_t i = bus.ew - (q8 >> 8);
-    int32_t a = T_MULAW[el_buf[i & (EL_LEN - 1)]], b = T_MULAW[el_buf[(i - 1u) & (EL_LEN - 1)]];
-    return a + (((b - a) * (int32_t)(q8 & 255u)) >> 8);
-}
-
-/* one half-rate step of the ECHO: its input in, its stereo kept in bus.el/er */
-static void echo_step(int32_t ein)
-{
-    int32_t l, r, e, st;
-    uint32_t tq;
-    if (e_cur == ET_OFF) { bus.el = bus.er = 0; return; }
-    if (e_cur == ET_GRAINS) { grains_step(ein); return; }
-    /* the left read at the time, the right a sixteenth later; a new time glided to (~23 ms: TIME read as it was turned
-     * stepped the read, a zipper; glided, it bends as a tape's does); the loop through a low-pass and a soft clip */
-    e = gp.etime * 256 - bus.etq; st = e >> 9;
-    bus.etq += st ? st : (e > 0) - (e < 0);
-    tq = (uint32_t)bus.etq;
-    l = el_at(tq);
-    r = el_at(tq + (tq >> 4));
-    bus.elp += ((((l + r) / 2) - bus.elp) * gp.elp + 16384) >> 15;
-    bus.ehp += (bus.elp * 256 - bus.ehp) / 128;         /* ~30 Hz out of the loop, Q8 so it settles: no low build-up */
-    el_buf[bus.ew & (EL_LEN - 1)] = mulaw_enc(curve(T_SAT, ein + (((bus.elp - (bus.ehp + 128) / 256) * gp.efb + 16384) >> 15)));
-    bus.ew++;
-    bus.el = (l * gp.eret) >> 15;
-    bus.er = (r * gp.eret) >> 15;
 }
 
 /* ---- each synth's REVERB (the owner's, 2026-10-25: a reverb a track, the shared ones gone; light enough for three
@@ -1255,10 +1175,258 @@ static void rv_run(int s, int32_t *out_l, int32_t *out_r)
     }
 }
 static int rv_busy(int s) { return rvs[s].cur || syn[s].rtype; }
-static void rv_job(void)                                /* (the last synth's, in chain_job, already there) */
+
+/* ---- the SPACE (the owner's, 2026-10-26: "Space will contain the huge different reverbs in global", on GLO only, as
+ * cheap as it can be): one tank that all three synths send to (each FX Sends row's first knob, Home's Space row), at
+ * half rate, the second core's job. The shared verbs of before 0.4.17 back as its types, on one engine and made safe:
+ * the input through four all-passes into Dattorro's figure of eight at full size (two halves, each a swept all-pass, a
+ * line, TONE's damping, an all-pass, a line, into the other half through the decay; the reverbs a track's PLATE is it
+ * at a sixth), its SIZE the decay of the type's range, its MOD the sweep. HALL to 21 s, swept a little; SPACE to two
+ * minutes, wider; HAZE deep and slow, darker; BLOOM the hall fed through a swell (a slow follower over a fast one: a
+ * new sound rises into the space); LOFI held at 11 kHz into the tank, kept at fewer bits, out at 8, wowing deep;
+ * SHIMMER its sound an octave up fed back in (a pitch shifter: two taps sliding through a short window, crossfaded);
+ * REVERSE the sound read backwards in segments into a mid tail; FREEZE nearly lossless, only so much new sound let in
+ * (HOLD: all of it held at the top, five minutes). The eight-line network of before cost twice this for the same
+ * types, which with three reverbs a track no longer fit. As the reverbs a track are: one memory a place runs down
+ * through, every line a stretch of it, every product round the loop with its remainder kept (or, in an all-pass,
+ * towards zero), so a tail decays to exact silence and holds no DC (the old ones' bugs gone: FREEZE's damping past
+ * one, SHIMMER's DC latched round its octaves, sums past 32 bits) */
+#define SP_MEM 16384u
+#define SP_MASK (SP_MEM - 1u)
+#define SR_LEN 16384u                                   /* REVERSE: 0.74 s of mu-law, read backwards */
+#define SH_LEN 1024u                                    /* SHIMMER: the shifter's window, 46 ms (in REVERSE's memory) */
+static int16_t sp_mem[SP_MEM];                          /* (in RAM: the pool holds the rest) */
+static union { uint8_t b[SR_LEN]; int16_t h[SR_LEN / 2]; } sr POOL;
+/* the stretches, in half-rate steps: four all-passes in (0.75, 0.75, 0.625, 0.625); the tank's halves, each a swept
+ * all-pass (0.7, its stretch 2 SP_SW + 2 longer), a line, an all-pass (0.5), a line: Dattorro's lengths at 0.7 */
+static const uint16_t FD_AL[4] = {142, 107, 379, 277}, FD_AB[4] = {0, 143, 251, 631};
+static const int16_t FD_AG[4] = {24576, 24576, 20480, 20480};
+#define SP_SW 32                                        /* a swept all-pass's reach, steps either way */
+static const uint16_t TK_L[8] = {470, 3117, 1260, 2604, 636, 2952, 1859, 2214};
+static const uint16_t TK_B[8] = {909, 1445, 4563, 5824, 8429, 9131, 12084, 13944};
+static struct {
+    uint32_t w, ph[2], rvw, rva, shf;                   /* the place; the sweeps; REVERSE's write (SHIMMER's) and its heads'
+                                                           age; the shift */
+    int32_t hp, he, lp[2], le[2], ge[2], xb, sw[2];     /* the low cut in; the damping and the decays' remainders; the
+                                                           second half's end, into the first; the sweeps (Q8) */
+    int32_t fast, slow, hold, sfb, shs, she, shp;       /* BLOOM's followers; LOFI's held; SHIMMER's way in, its low cut */
+    int32_t g;                                          /* the type's share, Q15 */
+    uint16_t quiet;
+    uint8_t cur, half;
+} sps;
+static int32_t sp_gb[DMK_SYNTHS][VB_MAX / DMK_SUB];     /* each synth's way in a block: its level, the fade, the LFO's
+                                                           tremolo, its send (Q15), set before the job */
+/* its queues, a block (eight steps) a row: the sends in, a run late; out, a run's reserve ahead (so any run's length
+ * finds its blocks there), the latency a run's at most (5.8 ms, as the shared verb's was) */
+#define SP_Q 32u
+static int32_t spq_in[SP_Q][RV_ST] POOL, spq_out[SP_Q][2][RV_ST] POOL;
+static uint32_t spq_i0, spq_i1, spq_o0, spq_o1;          /* in: read, written; out: read, written (counts, mod SP_Q) */
+static uint8_t sp_live;                                 /* the queues running: the Space on, or fading out */
+static int sp_nb;
+
+/* a tank half's decay, a * g / 2^15: the remainder kept (in *e), so a tail decays as it should; at the last few
+ * samples' worth towards zero, so it ends (the all-passes pass a sample of one on as it is: the remainders' own noise
+ * went round for ever in the near-lossless ones) */
+static inline int32_t sp_dec(int32_t a, int32_t g, int32_t *e)
 {
-    int s;
-    for (s = 0; s < DMK_SYNTHS - 1; s++) if (rv_busy(s)) rv_run(s, rv_out[0], rv_out[1]);
+    if (a < 16 && a > -16) { *e = 0; return mz15(a, g); }
+    return mr15(a, g, e);
+}
+static inline int32_t sp_ap(int16_t *m, uint32_t at, uint32_t d, int32_t x, int32_t a)
+{
+    int32_t z = m[(at + d) & SP_MASK], v = sat16(x + mz15(z, a));
+    m[at & SP_MASK] = (int16_t)v;
+    return z - mz15(v, a);
+}
+static inline int32_t sp_ap_sw(int16_t *m, uint32_t at, uint32_t d, int32_t sw, int32_t x, int32_t a)
+{
+    uint32_t q = (uint32_t)((int32_t)((d + SP_SW) * 256u) + sw), i = at + (q >> 8);
+    int32_t z = m[i & SP_MASK], v;
+    z += ((m[(i + 1u) & SP_MASK] - z) * (int32_t)(q & 255u) + 128) >> 8;
+    v = sat16(x + mz15(z, a));
+    m[at & SP_MASK] = (int16_t)v;
+    return z - mz15(v, a);
+}
+/* REVERSE: the sound in, read by two heads from each segment's end back to its start, half a segment apart, each
+ * faded in and out (triangles summing to one) */
+static inline int32_t sp_reverse(int32_t x)
+{
+    int32_t s = 0, len = gp.srlen, k;
+    if (sps.rva >= (uint32_t)len) sps.rva = 0;          /* (LENGTH turned shorter) */
+    sr.b[sps.rvw] = mulaw_enc(curve(T_SAT, x));
+    for (k = 0; k < 2; k++) {
+        int32_t a = (int32_t)sps.rva + (k ? len / 2 : 0), g;
+        if (a >= len) a -= len;
+        g = ((a < len / 2 ? a : len - a) * gp.srinv) >> 8;   /* to 32768 half way */
+        s += (T_MULAW[sr.b[(sps.rvw - 2u * (uint32_t)a) & (SR_LEN - 1u)]] * g) >> 15;
+    }
+    if (++sps.rva >= (uint32_t)len) sps.rva = 0;
+    sps.rvw = (sps.rvw + 1u) & (SR_LEN - 1u);
+    return s;
+}
+/* SHIMMER: the tank's last output an octave up (two taps reading its window twice as fast), its lows cut (~150 Hz,
+ * the remainder kept: no DC goes round the octaves), its top softened, added in by SHINE */
+static inline int32_t sp_shimmer(int32_t x)
+{
+    int32_t s = 0, e, v, k;
+    sr.h[sps.rvw & (SH_LEN - 1u)] = (int16_t)sat16(sps.sfb);
+    for (k = 0; k < 2; k++) {
+        int32_t d = (int32_t)SH_LEN - 1 - (int32_t)((sps.shf + (k ? SH_LEN / 2u : 0u)) & (SH_LEN - 1u));
+        int32_t g = (d < (int32_t)SH_LEN / 2 ? d : (int32_t)SH_LEN - d) * (65536 / (int32_t)SH_LEN);
+        s += (sr.h[(sps.rvw - (uint32_t)d) & (SH_LEN - 1u)] * g) >> 15;
+    }
+    sps.rvw++; sps.shf++;
+    e = (s - sps.shs) * 1400 + sps.she; sps.shs += e >> 15; sps.she = e & 32767;
+    s -= sps.shs;
+    v = (s + sps.shp) / 2; sps.shp = s;
+    return x + ((v * gp.sshine) >> 15);
+}
+#define TKM(k, d) m[(w + TK_B[k] + (uint32_t)(d)) & SP_MASK]
+#define TKQ(v) (lofi ? ((v) < 0 ? -(-(v) & ~31) : (v) & ~31) : (v))   /* (LOFI: fewer bits kept, towards zero) */
+/* a block (eight steps) of type t: its way in (in: the sends' sum a step, at the mix's level), the type's own, the
+ * all-passes, the tank; out to ol, orr at the type's level, its return and its share glided from g0 to g1 */
+#define SP_IN 2                                         /* the way in down, the way out up (bits): the tank's headroom */
+static void sp_block(int t, const int32_t *in, int32_t *ol, int32_t *orr, int32_t g0, int32_t g1)
+{
+    int16_t *m = sp_mem;
+    uint32_t w = sps.w;
+    int32_t yl[RV_ST], yr[RV_ST], damp = gp.sdamp, ga = gp.sga, gb = gp.sgb, hp = sps.hp, he = sps.he, bg = 32768;
+    int32_t lpa = sps.lp[0], lea = sps.le[0], lpb = sps.lp[1], leb = sps.le[1], gea = sps.ge[0], geb = sps.ge[1], xb = sps.xb;
+    int32_t any = 0, loud = 0, gq = (gp.sgain * gp.sret) >> 8, gs, gd, sw0, sw1;
+    int i, k, lofi = t == SP_LOFI;
+    sps.ph[0] += gp.srate * RV_ST; sps.ph[1] += (gp.srate + (gp.srate >> 2)) * RV_ST;   /* the sweeps, a block at a time */
+    sw0 = (sinp(sps.ph[0]) * gp.smod) >> 15; sw1 = (sinp(sps.ph[1]) * gp.smod) >> 15;
+    if (t == SP_BLOOM) {                                /* the swell's gain this block: the slow over the fast */
+        int32_t sn = sps.slow >> 8 > 32767 ? 32767 : sps.slow >> 8, f = sps.fast >> 8;
+        bg = f > 0 ? (sn << 15) / (f + 1) : 32768;
+        if (bg > 32768) bg = 32768;
+    }
+    for (i = 0; i < RV_ST; i++, w--) {
+        int32_t x = clampi(in[i] >> (1 + SP_IN), -32767, 32767), e, a, b;   /* (halved, as the shared verb's was) */
+        e = (x - hp) * 470 + he; hp += e >> 15; he = e & 32767;   /* a low cut, ~50 Hz: no boom building up */
+        x -= hp;
+        any |= x;
+        if (t == SP_REVERSE) x = sp_reverse(x);
+        else if (t == SP_SHIMMER) x = sp_shimmer(x);
+        else if (t == SP_FREEZE) x = (x * gp.sgin) >> 15;
+        else if (lofi) { if ((sps.half ^= 1)) sps.hold = x; x = sps.hold; }
+        else if (t == SP_BLOOM) {
+            int32_t ax = (x < 0 ? -x : x) << 8;
+            sps.fast += ax > sps.fast ? (ax - sps.fast) >> 4 : -(sps.fast >> 12) - (sps.fast > 0);
+            sps.slow += ax > sps.slow ? (ax - sps.slow) >> 14 : -(sps.slow >> 16) - (sps.slow > 0);
+            x = (x * bg) >> 15;
+        }
+        for (k = 0; k < 4; k++) x = sp_ap(m, w + FD_AB[k], FD_AL[k], x, FD_AG[k]);
+        a = x + sp_dec(xb, ga, &gea);                   /* the first half, from the second's end */
+        a = sp_ap_sw(m, w + TK_B[0], TK_L[0], sw0, a, 22938);
+        TKM(1, 0) = (int16_t)sat16(TKQ(a));
+        a = rv_lp(&lpa, &lea, TKM(1, TK_L[1]), damp);
+        a = sp_ap(m, w + TK_B[2], TK_L[2], a, 16384);
+        TKM(3, 0) = (int16_t)sat16(TKQ(a));
+        b = x + sp_dec(TKM(3, TK_L[3]), gb, &geb);      /* the second, from the first's */
+        b = sp_ap_sw(m, w + TK_B[4], TK_L[4], sw1, b, 22938);
+        TKM(5, 0) = (int16_t)sat16(TKQ(b));
+        b = rv_lp(&lpb, &leb, TKM(5, TK_L[5]), damp);
+        b = sp_ap(m, w + TK_B[6], TK_L[6], b, 16384);
+        TKM(7, 0) = (int16_t)sat16(TKQ(b));
+        xb = TKM(7, TK_L[7]);
+        METER(dmeter.sat_sp += a > 32767 || a < -32768 || b > 32767 || b < -32768);
+        /* his taps, at 0.7: the left from the second half's lines and the first's, the right the other way */
+        yl[i] = TKM(5, 186) + TKM(5, 2082) - TKM(6, 1339) + TKM(7, 1397) - TKM(1, 1393) - TKM(2, 131) - TKM(3, 746);
+        yr[i] = TKM(1, 247) + TKM(1, 2539) - TKM(2, 860) + TKM(3, 1871) - TKM(5, 1478) - TKM(6, 235) - TKM(7, 85);
+        sps.sfb = (yl[i] + yr[i]) / 8;                  /* (SHIMMER's: the sound to shift) */
+    }
+    sps.lp[0] = lpa; sps.le[0] = lea; sps.lp[1] = lpb; sps.le[1] = leb; sps.ge[0] = gea; sps.ge[1] = geb; sps.xb = xb;
+    sps.hp = hp; sps.he = he; sps.w = w;
+    gs = (int32_t)(((int64_t)gq * g0) >> 15); gd = ((int32_t)(((int64_t)gq * g1) >> 15) - gs) / RV_ST;
+    for (i = 0; i < RV_ST; i++) {                       /* (in 64 bits: seven taps at full, the return up) */
+        int32_t p, c;
+        loud |= (uint32_t)(yl[i] + 3) > 6u || (uint32_t)(yr[i] + 3) > 6u;
+        gs += gd;
+        p = (int32_t)(((int64_t)yl[i] * gs) >> (16 - SP_IN)); c = (int32_t)(((int64_t)yr[i] * gs) >> (16 - SP_IN));
+        if (lofi) { p = p < 0 ? -(-p & ~255) : p & ~255; c = c < 0 ? -(-c & ~255) : c & ~255; }   /* out at 8 bits */
+        ol[i] = p; orr[i] = c;
+    }
+    if (!any && !loud) sps.quiet = (uint16_t)(sps.quiet + RV_ST > RV_SLEEP ? RV_SLEEP : sps.quiet + RV_ST);
+    else sps.quiet = 0;
+}
+#undef TKM
+#undef TKQ
+/* the Space silent: its lines, its state (its type and share kept); REVERSE's line (mu-law's silence) or SHIMMER's
+ * window too when one comes in */
+DMK_SMALL static void sp_clear(void)
+{
+    uint8_t cur = sps.cur, *z = (uint8_t *)&sps;
+    int32_t g = sps.g;
+    uint32_t i;
+    for (i = 0; i < SP_MEM; i++) sp_mem[i] = 0;
+    for (i = 0; i < sizeof sps; i++) z[i] = 0;
+    sps.cur = cur; sps.g = g;
+    if (cur == SP_REVERSE) for (i = 0; i < SR_LEN; i++) sr.b[i] = 0xFF;
+    if (cur == SP_SHIMMER) for (i = 0; i < SH_LEN; i++) sr.h[i] = 0;
+}
+static int sp_busy(void) { return sps.cur || gp.stype; }
+/* this run's sends into the queue, a block a row (the second core's, after the chains): each synth's way in from its
+ * chain (vbuf, as the mix takes it, the chain's level back up; sp_gb set before), two samples into each step, the
+ * send glided across the block */
+static int32_t sp_gin[DMK_SYNTHS];                      /* each send where the last block ended */
+static void sp_feed(int nb)
+{
+    int b, i, s;
+    for (b = 0; b < nb && spq_i1 - spq_i0 < SP_Q; b++) {
+        int32_t *x = spq_in[spq_i1++ & (SP_Q - 1u)];
+        for (i = 0; i < RV_ST; i++) x[i] = 0;
+        for (s = 0; s < DMK_SYNTHS; s++) {
+            const int32_t *sl = &vbuf[0][s][b * DMK_SUB], *sr = &vbuf[1][s][b * DMK_SUB];
+            int32_t gi0 = sp_gin[s], gi1 = sp_gb[s][b];
+            sp_gin[s] = gi1;
+            if (!(gi0 | gi1)) continue;
+            for (i = 0; i < RV_ST; i++) {
+                int32_t mm = clampi((sl[2 * i] + sr[2 * i] + sl[2 * i + 1] + sr[2 * i + 1]) >> 1, -65535, 65535);
+                x[i] += (mm * (gi0 + (((gi1 - gi0) * (i + 1)) >> 3))) >> 15;
+            }
+        }
+    }
+}
+/* up to n queued blocks through the Space, out queued: a type changed fades out (5.8 ms), the new one comes in from
+ * silence; asleep (its tail at a few samples, nothing sent) until something is sent */
+static void sp_work(uint32_t n)
+{
+    int i, want = gp.stype < SP_N ? gp.stype : SP_OFF;
+    while (n-- && spq_i0 != spq_i1) {
+        const int32_t *x = spq_in[spq_i0++ & (SP_Q - 1u)];
+        int32_t g0, g1, *ol = spq_out[spq_o1 & (SP_Q - 1u)][0], *orr = spq_out[spq_o1 & (SP_Q - 1u)][1], any = 0;
+        int t;
+        spq_o1++;
+        if (want != sps.cur && !sps.cur) { sps.cur = (uint8_t)want; sps.g = 0; sp_clear(); }
+        g0 = sps.g; g1 = clampi(g0 + (want != sps.cur ? -XG_STEP : XG_STEP), 0, 32768);
+        sps.g = g1;
+        t = sps.cur;
+        for (i = 0; i < RV_ST; i++) { ol[i] = orr[i] = 0; any |= x[i]; }
+        if (t && sps.quiet >= RV_SLEEP) { if (any) sps.quiet = 0; else t = SP_OFF; }   /* asleep: woken by a send */
+        if (t) sp_block(t, x, ol, orr, g0, g1);
+        if (want != sps.cur && !g1) { sps.cur = (uint8_t)want; if (want) sp_clear(); }
+    }
+}
+/* the queues from rest: nothing in, a run's reserve of silence out */
+DMK_SMALL static void sp_rest(void)
+{
+    uint32_t i;
+    for (i = 0; i < SP_Q * 2u * RV_ST; i++) (&spq_out[0][0][0])[i] = 0;
+    spq_i0 = spq_i1 = spq_o0 = 0; spq_o1 = VB_MAX / DMK_SUB;
+    for (i = 0; i < DMK_SYNTHS; i++) sp_gin[i] = 0;
+}
+/* the mix phase's job on the second core: the Space's blocks of a run ago still queued, this run's sends in; the first
+ * synth's reverb (rv_out1: the first core runs the second's into rv_out meanwhile) */
+static int32_t rv_out1[2][VB_MAX / 2] POOL;
+static void sp_job(void)
+{
+    int i;
+    if (sp_live) { sp_work(SP_Q); sp_feed(sp_nb); }
+    if (rv_busy(0)) {
+        for (i = 0; i < rv_nb * RV_ST; i++) rv_out1[0][i] = rv_out1[1][i] = 0;
+        rv_run(0, rv_out1[0], rv_out1[1]);
+    }
 }
 
 #ifdef DMK_BENCH
@@ -1311,19 +1479,31 @@ static void rows_run(int s, int32_t *x, int32_t *l, int32_t *r)
     }
 }
 
-/* a synth's DELAY (the owner's, 2026-10-25: one a synth, the media one for the mix): its line at a quarter of the rate
- * (lofi, and the memory: 0.84 s), the input the synth after its rows, the read at the tempo's division (dmk_seq sets
- * dtime), glided to a new time; DELAY's two sides a hair apart, PING-PONG's right twice as late and fed back from it,
- * so the repeats go left, right. Its wet glided in and out (a type changed: out, then the new one in) */
+/* a synth's DELAY (the owner's, 2026-10-25: one a synth, the media one for the mix; 2026-10-26: the shared echo's two
+ * kinds too): its line at a quarter of the rate (lofi, and the memory: 0.84 s), the input the synth after its rows.
+ * DELAY and PING-PONG read at the tempo's division (dmk_seq sets dtime), glided to a new time; DELAY's two sides a hair
+ * apart, PING-PONG's right twice as late and fed back from it, so the repeats go left, right. TAPE ECHO the shared
+ * echo's of before: a free time (to 0.69 s) bent as it is turned and by a slow wow, its right a sixteenth later, the
+ * loop darkened and driven into the tape's curve. GRAINS: the line read by six grains (below). Its wet glided in and
+ * out (a type changed: out, then the new one in) */
 #define DL_LEN 9216u                                    /* 0.84 s of 8-bit mu-law at 11.025 kHz: a quarter at 72 */
 static uint8_t dl_buf[DMK_SYNTHS][DL_LEN] POOL;
-static struct { uint32_t w; int32_t nl, nr, lp, hp, tq, g; uint8_t cur; } dls[DMK_SYNTHS];
-static void dl_clear(int s)
+static struct { uint32_t w, wph[2]; int32_t nl, nr, lp, hp, tq, g; uint8_t cur; } dls[DMK_SYNTHS];
+/* GRAINS, the shared echo's other kind, a synth's own since 0.4.18: its line read by six grains at once, each from a
+ * random moment of the last 0.8 s, as long as SIZE, as often as DENSITY, some an octave or a fifth up as TEXTURE
+ * rises, each its own place across the stereo, shaped by a window; a cloud of what was played */
+#define GR_N 6
+#define GR_MAXLEN ((DL_LEN - 256u) / 2u)                /* (an octave up reads twice its length: both inside the line) */
+typedef struct { uint32_t pos, inc, len, age, wph, wst; int16_t pl, pr; } grain_t;   /* (pos Q8; the window's place, Q16) */
+static struct { grain_t g[GR_N]; uint32_t clock, rng; } grs[DMK_SYNTHS];
+DMK_SMALL static void dl_clear(int s)
 {
     uint32_t i;
     for (i = 0; i < DL_LEN; i++) dl_buf[s][i] = 0xFF;   /* (mu-law's silence) */
     dls[s].nl = dls[s].nr = dls[s].lp = dls[s].hp = 0;
-    dls[s].tq = (int32_t)(syn[s].dtime << 8);
+    dls[s].tq = (int32_t)((dls[s].cur == DT_TAPE ? syn[s].etime : syn[s].dtime) << 8);
+    for (i = 0; i < GR_N; i++) grs[s].g[i].len = 0;
+    grs[s].clock = 0;
 }
 static int32_t dl_at(int s, uint32_t q8)               /* the line q8 (Q8) quarter samples back */
 {
@@ -1334,29 +1514,90 @@ static int32_t dl_at(int s, uint32_t q8)               /* the line q8 (Q8) quart
     j = i ? i - 1 : (int32_t)DL_LEN - 1;
     return T_MULAW[dl_buf[s][i]] + (((T_MULAW[dl_buf[s][j]] - T_MULAW[dl_buf[s][i]]) * (int32_t)(q8 & 255u)) >> 8);
 }
+/* a quarter-rate step of a synth's grains: a new one begun as DENSITY says (if one is free), each read on */
+static void grains_step(int s, const synth_t *p, int32_t *ol, int32_t *orr)
+{
+    grain_t *g = grs[s].g;
+    const uint8_t *m = dl_buf[s];
+    int k;
+    int32_t l = 0, r = 0;
+    grs[s].clock += (uint32_t)p->gdens;
+    if (grs[s].clock >= 65536u) {
+        grs[s].clock -= 65536u;
+        for (k = 0; k < GR_N && g[k].len; k++) {}
+        if (k < GR_N) {
+            uint32_t rn = xs32(&grs[s].rng), len = (uint32_t)p->glen, inc, back;
+            if (len > GR_MAXLEN) len = GR_MAXLEN;
+            if (len < 64u) len = 64u;
+            if ((int32_t)((rn >> 8) & 127u) < p->gtex) inc = rn & 1u ? 512u : 384u;   /* an octave, or a fifth, up */
+            else inc = 254u + (rn >> 30);               /* or as played, a hair off */
+            back = len * inc / 256u + 64u + xs32(&grs[s].rng) % (DL_LEN - 2u * len - 128u);
+            g[k].pos = (dls[s].w + (back <= dls[s].w ? 0u : DL_LEN) - back) << 8;
+            g[k].inc = inc; g[k].len = len; g[k].age = 0; g[k].wph = 0; g[k].wst = (256u << 16) / len;
+            g[k].pl = (int16_t)T_PAN[127 - (rn >> 25)]; g[k].pr = (int16_t)T_PAN[rn >> 25];
+        }
+    }
+    for (k = 0; k < GR_N; k++) {
+        uint32_t i, j, f;
+        int32_t a, b, x, t;
+        if (!g[k].len) continue;
+        i = g[k].pos >> 8; f = g[k].pos & 255u; j = i + 1u >= DL_LEN ? 0u : i + 1u;
+        a = T_MULAW[m[i]]; b = T_MULAW[m[j]];
+        x = a + (((b - a) * (int32_t)f) >> 8);
+        t = (int32_t)(g[k].wph >> 16);                  /* the window: a parabola over the grain */
+        x = (x * ((t * (255 - t)) >> 6)) >> 8;
+        l += (x * g[k].pl) >> 15;
+        r += (x * g[k].pr) >> 15;
+        g[k].pos += g[k].inc;
+        if (g[k].pos >= DL_LEN << 8) g[k].pos -= DL_LEN << 8;
+        g[k].wph += g[k].wst;
+        if (++g[k].age >= g[k].len) g[k].len = 0;
+    }
+    *ol = l / 2; *orr = r / 2;                          /* (as the shared one came back: half the tape's) */
+}
 static void syn_delay(int s, int32_t *pl, int32_t *pr)
 {
     const synth_t *p = &syn[s];
-    int want = p->dtype, q, k;
+    int want = p->dtype < DT_N ? p->dtype : DT_OFF, q, k, t;
     int32_t g0 = dls[s].g, g1, to, el, er;
     if (want != dls[s].cur && !dls[s].cur) { dls[s].cur = (uint8_t)want; dl_clear(s); dls[s].g = g0 = 0; }   /* from off: in */
     to = want == dls[s].cur ? p->dmix : 0;
     g1 = g0 + clampi(to - g0, -1024, 1024);
     el = (dls[s].nl * g0) >> 15; er = (dls[s].nr * g0) >> 15;   /* where the last block left it, at its share then */
-    if (dls[s].cur)
+    t = dls[s].cur;
+    if (t)
         for (q = 0; q < 4; q++) {                       /* four steps at a quarter of the rate */
             const int32_t *a = pl + q * 4, *c = pr + q * 4;
-            int32_t in = (a[0] + a[1] + a[2] + a[3] + c[0] + c[1] + c[2] + c[3]) >> 3, l, r, back, gq, dl, dr, al, ar;
-            uint32_t tq;
-            dls[s].tq += ((int32_t)(p->dtime << 8) - dls[s].tq) >> 8;
-            tq = (uint32_t)dls[s].tq;
-            l = dl_at(s, tq);
-            r = dls[s].cur == 2 ? dl_at(s, tq * 2u) : dl_at(s, tq + (tq >> 6));
-            back = dls[s].cur == 2 ? r : (l + r) >> 1;
-            dls[s].lp += ((back - dls[s].lp) * p->dtone + 16384) >> 15;   /* the loop: its tone, its lows out, soft */
-            dls[s].hp += (dls[s].lp * 256 - dls[s].hp) >> 6;
-            dl_buf[s][dls[s].w] = mulaw_enc(curve(T_SAT, in + (((dls[s].lp - ((dls[s].hp + 128) >> 8)) * p->dfb + 16384) >> 15)));
-            if (++dls[s].w >= DL_LEN) dls[s].w = 0;
+            int32_t in = (a[0] + a[1] + a[2] + a[3] + c[0] + c[1] + c[2] + c[3]) >> 3, l, r, gq, dl, dr, al, ar;
+            if (t == DT_GRAINS) {                       /* the line as it is played (no regen), the grains reading it */
+                dl_buf[s][dls[s].w] = mulaw_enc(curve(T_SAT, in * 2) / 2);
+                if (++dls[s].w >= DL_LEN) dls[s].w = 0;
+                grains_step(s, p, &l, &r);
+            } else {
+                int32_t back, v;
+                uint32_t tq;
+                if (t == DT_TAPE) {                     /* its free time glided (bent as it turns), a slow wow on it */
+                    int32_t wow;
+                    dls[s].tq += ((int32_t)(p->etime << 8) - dls[s].tq) >> 8;
+                    dls[s].wph[0] += 194783u; dls[s].wph[1] += 50663u;   /* 0.5 and 0.13 Hz: ~9 cents, to 2.7 ms */
+                    wow = (sinp(dls[s].wph[0]) * 9 + sinp(dls[s].wph[1]) * 6) >> 6;
+                    tq = (uint32_t)(dls[s].tq + wow);
+                    l = dl_at(s, tq);
+                    r = dl_at(s, tq + (tq >> 4));
+                } else {
+                    dls[s].tq += ((int32_t)(p->dtime << 8) - dls[s].tq) >> 8;
+                    tq = (uint32_t)dls[s].tq;
+                    l = dl_at(s, tq);
+                    r = t == DT_PING ? dl_at(s, tq * 2u) : dl_at(s, tq + (tq >> 6));
+                }
+                back = t == DT_PING ? r : (l + r) >> 1;
+                dls[s].lp += ((back - dls[s].lp) * p->dtone + 16384) >> 15;   /* the loop: its tone, its lows out, soft */
+                dls[s].hp += (dls[s].lp * 256 - dls[s].hp) >> 6;
+                v = in + (((dls[s].lp - ((dls[s].hp + 128) >> 8)) * p->dfb + 16384) >> 15);
+                dl_buf[s][dls[s].w] = mulaw_enc(t == DT_TAPE ? curve(T_SAT, v * 2) / 2 : curve(T_SAT, v));   /* (the tape
+                                                           driven as the shared one was, at the mix's level) */
+                if (++dls[s].w >= DL_LEN) dls[s].w = 0;
+            }
             dls[s].nl = l; dls[s].nr = r;
             gq = g0 + (((g1 - g0) * (q + 1)) >> 2);     /* its share glided across the block, at each step */
             l = (l * gq) >> 15; r = (r * gq) >> 15;
@@ -1440,29 +1681,37 @@ static void gm_side(int c)
         if (half) for (i = 0; i < DMK_SUB; i++) x[i] *= 2;
     }
 }
-static void gm_job(void) { gm_side(1); }
+/* a side out through the limiter, with the colour and media's own core, when the mix's width is as it is (else the
+ * first core does both, the width first) */
+static int16_t *gm_lr;                                  /* the run's out, its two sides interleaved (0: not here) */
+static uint32_t gm_loud[2];                             /* each side's samples past full */
+static void gm_out(int c)
+{
+    int i;
+    for (i = 0; i < gm_nb * DMK_SUB; i++) {
+        int32_t v = gm_x[c][i];
+        gm_loud[c] += v > 32767 || v < -32767;
+        gm_lr[i * 2 + c] = (int16_t)curve(T_LIM, v);
+    }
+}
+static void gm_job(void) { gm_side(1); if (gm_lr) gm_out(1); }
 
 /* the screen reads these: what each synth sounds, now */
 static int32_t syn_peak[DMK_SYNTHS];
 static int32_t syn_dc[DMK_SYNTHS];                      /* each synth's DC blocker (a sample's loop can sit off zero) */
 
-/* the echo's line silent (mu-law's silence is 0xFF, not 0: 0 is its loudest negative), its grains gone */
-static void echo_clear(void)
-{
-    uint32_t i;
-    for (i = 0; i < EL_LEN; i++) el_buf[i] = 0xFF;
-    for (i = 0; i < GR_N; i++) gr[i].len = 0;
-    gr_clock = 0;
-    bus.el = bus.er = bus.elp = bus.ehp = 0;
-}
-
 /* the lines and the state, silent */
-static void dsp_reset(void)
+DMK_SMALL static void dsp_reset(void)
 {
     uint32_t i;
-    echo_clear();
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
-    for (i = 0; i < DMK_SYNTHS; i++) dl_clear((int)i);
+    for (i = 0; i < DMK_SYNTHS; i++) {                  /* the delays: off (as set, they come in from silence), their
+                                                           lines, their grains' dice (renders repeat) */
+        dls[i].cur = DT_OFF; dls[i].g = 0;
+        dl_clear((int)i);
+        dls[i].wph[0] = dls[i].wph[1] = 0;
+        grs[i].rng = 0x2545F491u * (i + 1u);
+    }
     for (i = 0; i < 2; i++) {                           /* the mix's colour and media: none running */
         uint8_t *z = (uint8_t *)&mrow[i];
         uint32_t k;
@@ -1486,9 +1735,9 @@ static void dsp_reset(void)
         lfo[i].ph = lfo[i].poff = 0; lfo[i].sm = lfo[i].gs = lfo[i].hold = lfo[i].fade = lfo[i].cut = lfo[i].pit = 0; lfo[i].rst = 0;
         lfo[i].rng = 0x2545F491u * (i + 3u); lfo[i].lv = 32768; lfo[i].pl = lfo[i].pr = -1;
     }
-    e_cur = gp.etype; e_g = 32768; rv_prev[0] = rv_prev[1] = 0;
-    bus.etq = gp.etime * 256;                           /* (the echo's time from where it is set: no glide in) */
-    bus.eacc = 0; bus.half = 0;
+    sps.cur = SP_OFF; sps.g = 0;                        /* the Space off: as set, it comes in from silence */
+    sp_clear(); sp_rest(); sp_live = 0;
+    rv_prev[0] = rv_prev[1] = 0;
 }
 
 /* ---- the render: the voices first, a whole call at once, half of them on the second core when there is one; then
@@ -1542,7 +1791,8 @@ static void voices_run(int half)
 {
     int v, i, j, s, b, nb = v_frames / DMK_SUB;
     for (s = 0; s < DMK_SYNTHS; s++) for (i = 0; i < v_frames; i++) vbuf[half][s][i] = 0;
-    for (v = half * (DMK_VOICES / 2); v < (half + 1) * (DMK_VOICES / 2); v++) {
+    for (v = half; v < DMK_VOICES; v += 2) {            /* (every other voice: a chord taken in order, low to high, was
+                                                           all its high notes, the costly ones, on one core) */
         voice_t *o = &vc[v];
         const synth_t *p = &syn[o->sy];
         /* GRIT: the voice runs every gs-th sample, held for the ones between (the console's rate); its filter's
@@ -1718,9 +1968,9 @@ static void chain_run(int s)
             }
     }
 }
-/* the second core's share of the mix, in two parts: the last synth's chain and its reverb while this core runs the
- * other two's chains; then the other two's reverbs while this core mixes (as the shared verb ran there, which the
- * owner heard clean; the three reverbs all after the chains kept this core waiting). Their sum in rv_out, which the
+/* the second core's share of the mix, in two parts: the last synth's chain and its reverb, then a third of the
+ * Space's blocks queued a run ago, while this core runs the other two's chains; then the rest of the Space and the
+ * first synth's reverb while this core mixes and runs the second's (sp_job). The reverbs' sum in rv_out, which the
  * first part starts */
 static void chain_job(void)
 {
@@ -1728,13 +1978,14 @@ static void chain_job(void)
     chain_run(DMK_SYNTHS - 1);
     for (i = 0; i < rv_nb * RV_ST; i++) rv_out[0][i] = rv_out[1][i] = 0;
     if (rv_busy(DMK_SYNTHS - 1)) rv_run(DMK_SYNTHS - 1, rv_out[0], rv_out[1]);
+    if (sp_live) sp_work((spq_i1 - spq_i0 + 2u) / 3u);
 }
 
 static void dsp_render(int16_t *lr, int frames)
 {
     int b, i, s, n, at;
     for (at = 0; at < frames; at += n) {
-        int nb, par, rv_on = 0;
+        int nb, par, rv_on = 0, sp_on, r0;
         int32_t mg[VB_MAX / DMK_SUB];
         n = frames - at > VB_MAX ? VB_MAX : frames - at;
         v_frames = n;
@@ -1748,8 +1999,6 @@ static void dsp_render(int16_t *lr, int frames)
         par = dmk_par_begin && dmk_par_begin(voices_job);
         voices_run(0);
         if (par) dmk_par_end(); else voices_run(1);
-        if (e_cur != gp.etype && !e_g) { if (e_cur == ET_OFF) echo_clear(); e_cur = gp.etype; }   /* faded out: the new
-                                                           type; out of off, from silence (not what was held then) */
         /* the song's fades, a step a block; and each synth's way into its reverb a block (its level, the fade, the LFO's
          * tremolo, its AMOUNT): both before the jobs that run the reverbs */
         for (b = 0; b < nb; b++) {
@@ -1766,19 +2015,27 @@ static void dsp_render(int16_t *lr, int frames)
             for (b = 0; b < nb; b++) {
                 int32_t lvl = mg[b] < 32768 ? (p->level * mg[b]) >> 15 : p->level, lv = 32768;
                 if (p->ltarget == LT_LEVEL) lv = 32768 - ((lfo_g[s][b] - lfo_c[s][b]) >> 1);
-                rv_gb[s][b] = (((lvl * lv) >> 15) * p->ramt) >> 15;
+                lv = (lvl * lv) >> 15;
+                rv_gb[s][b] = (lv * p->ramt) >> 15;
+                sp_gb[s][b] = (lv * p->ssend) >> 15;     /* (and to the Space) */
             }
         }
         rv_nb = nb;
-        /* the chains (and the last synth's reverb) there, the rest here */
+        sp_on = sp_busy();                              /* the Space's queues: from rest as it comes on */
+        if (sp_on && !sp_live) sp_rest();
+        sp_live = (uint8_t)sp_on;
+        /* the chains (and the last synth's reverb, a third of the Space) there, the rest here */
         ch_nb = nb;
         par = dmk_par_begin && dmk_par_begin(chain_job);
         for (s = 0; s < DMK_SYNTHS - 1; s++) chain_run(s);
         if (par) dmk_par_end(); else chain_job();
-        par = rv_on && dmk_par_begin && dmk_par_begin(rv_job);
+        /* the SPACE's rest and the first synth's reverb there (the owner: the second core's job); the mix and the second
+         * synth's reverb here */
+        sp_nb = nb; r0 = rv_busy(0);
+        par = (sp_on || r0) && dmk_par_begin && dmk_par_begin(sp_job);
         for (b = 0; b < nb; b++) {
-            int32_t L[DMK_SUB], R[DMK_SUB], ein[DMK_SUB];
-            for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = ein[i] = 0;
+            int32_t L[DMK_SUB], R[DMK_SUB];
+            for (i = 0; i < DMK_SUB; i++) L[i] = R[i] = 0;
             for (s = 0; s < DMK_SYNTHS; s++) {
                 const synth_t *p = &syn[s];
                 const int32_t *sl = &vbuf[0][s][b * DMK_SUB], *sr = &vbuf[1][s][b * DMK_SUB];
@@ -1803,34 +2060,31 @@ static void dsp_render(int16_t *lr, int frames)
                     x = (xl + xr) / 2;
                     L[i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
                     R[i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
-                    ein[i] += (x * p->esend) >> 15;
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 } else for (i = 0; i < DMK_SUB; i++) {
                     int32_t xl = clampi((clampi(sl[i], -65535, 65535) * lvl) >> 14, -65535, 65535);
                     int32_t xr = clampi((clampi(sr[i], -65535, 65535) * lvl) >> 14, -65535, 65535), x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * p->gl) >> 15;
                     R[i] += (xr * p->gr) >> 15;
-                    ein[i] += (x * p->esend) >> 15;
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 }
                 syn_peak[s] = pk > syn_peak[s] ? pk : syn_peak[s] - (syn_peak[s] >> 6);
             }
-            /* the echo's return's fade, a step a block (16 blocks); the echo at half rate, held for the sample between */
-            e_g += gp.etype != e_cur ? (e_g > 0 ? -2048 : 0) : (e_g < 32768 ? 2048 : 0);
-            for (i = 0; i < DMK_SUB; i++) {
-                int32_t el, er;
-                if (!(bus.half ^= 1)) echo_step((bus.eacc + ein[i]) >> 1);
-                else bus.eacc = ein[i];
-                el = e_g < 32768 ? (bus.el * e_g) >> 15 : bus.el;
-                er = e_g < 32768 ? (bus.er * e_g) >> 15 : bus.er;
-                gm_x[0][b * DMK_SUB + i] = L[i] + el; gm_x[1][b * DMK_SUB + i] = R[i] + er;
-            }
+            for (i = 0; i < DMK_SUB; i++) { gm_x[0][b * DMK_SUB + i] = L[i]; gm_x[1][b * DMK_SUB + i] = R[i]; }
 #ifdef DMK_BENCH
             bench_block(DMK_SUB);
 #endif
         }
-        if (par) dmk_par_end(); else if (rv_on) rv_job();
-        if (rv_on)                                      /* the reverbs, to the full rate: between two steps, half of each */
+        if (rv_busy(1)) rv_run(1, rv_out[0], rv_out[1]);
+        if (par) dmk_par_end(); else if (sp_on || r0) sp_job();
+        if (r0) for (i = 0; i < n / 2; i++) { rv_out[0][i] += rv_out1[0][i]; rv_out[1][i] += rv_out1[1][i]; }
+        if (sp_on)                                      /* the Space's blocks out, a run's reserve behind */
+            for (b = 0; b < nb && spq_o0 != spq_o1; b++, spq_o0++) {
+                const int32_t (*q)[RV_ST] = spq_out[spq_o0 & (SP_Q - 1u)];
+                for (i = 0; i < RV_ST; i++) { rv_out[0][b * RV_ST + i] += q[0][i]; rv_out[1][b * RV_ST + i] += q[1][i]; }
+            }
+        if (rv_on || sp_on)                             /* the reverbs and the Space, to the full rate: between two steps,
+                                                           half of each */
             for (i = 0; i < n / 2; i++) {
                 int32_t a = rv_out[0][i], c = rv_out[1][i];
                 gm_x[0][2 * i] += (rv_prev[0] + a) >> 1; gm_x[0][2 * i + 1] += a;
@@ -1845,10 +2099,13 @@ static void dsp_render(int16_t *lr, int frames)
         gm_nb = nb;                                     /* the mix's COLOUR and MEDIA: a side on each core */
         mrow_plan(&mrow[0], gcol.colour, nb);
         mrow_plan(&mrow[1], gmed.media, nb);
-        par = (mrow_busy(&mrow[0]) || mrow_busy(&mrow[1])) && dmk_par_begin && dmk_par_begin(gm_job);
+        gm_lr = gp.width == 256 ? lr + at * 2 : 0;
+        par = (mrow_busy(&mrow[0]) || mrow_busy(&mrow[1]) || gm_lr) && dmk_par_begin && dmk_par_begin(gm_job);
         gm_side(0);
+        if (gm_lr) gm_out(0);
         if (par) dmk_par_end(); else gm_job();
-        for (i = 0; i < n; i++) {
+        if (gm_lr) { sys.loud += gm_loud[0] + gm_loud[1]; gm_loud[0] = gm_loud[1] = 0; }   /* (past full: bent) */
+        else for (i = 0; i < n; i++) {
             int32_t ol = gm_x[0][i], orr = gm_x[1][i];
             if (gp.width != 256) {                      /* the whole mix's width (Home's Pan row) */
                 int32_t m = (ol + orr) / 2, d = (int32_t)(((int64_t)(ol - orr) * gp.width) >> 9);

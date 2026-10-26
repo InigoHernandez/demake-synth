@@ -192,10 +192,12 @@ static void tour(const char *dir)
     static const struct { int b; const char *n; } P[] = {{B_SEQ, "roll"}, {B_EDIT, "sound"}, {B_SEL, "filter"},
         {B_ENV, "amp"}, {B_FX, "fx"}, {B_ARP, "chord"}, {B_GLO, "global"}, {B_LFO, "lfo"}};
     for (unsigned i = 0; i < sizeof P / sizeof P[0]; i++) { tap(P[i].b); shot(dir, P[i].n); }
-    tap(B_FX); tap(B_FX); shot(dir, "fx_space");         /* FX again: the next row built */
-    tap(B_FX); shot(dir, "fx_sends");                    /* Space: the sends, the reverb's type on ALGO */
+    tap(B_FX); tap(B_FX); shot(dir, "fx_motion");        /* FX again: the next row built */
+    tap(B_FX); shot(dir, "fx_sends");                    /* Sends: the send to the Space, the place */
     tap(B_FX); shot(dir, "fx_reverb");                   /* round to the first: the synth's reverb */
     dmk_encoder(E_K4, 20); dmk_encoder(E_K1, -3); shot(dir, "fx_reverb_turned");
+    tap(B_HOME); dmk_encoder(E_ALGO, 1); shot(dir, "home_space");   /* Home's rows (the owner's): ALGO to the sends, */
+    dmk_encoder(E_ALGO, 1); shot(dir, "home_pan"); dmk_encoder(E_ALGO, 1);   /* the pans; round to the levels */
     tap(B_SEQ); tap(B_SEQ); tap(B_SEQ);                 /* the roll's Arp row, Converge on */
     ui.val[ui.synth][PG_ROLL][2][0] = choice_val(AR_CONV, AR_N); sp_sync(); shot(dir, "roll_arp");
     for (int m = 0; m < AR_N; m++) for (int g = 0; g < 2; g++) {   /* every way, every rate's end, audited (not kept) */
@@ -206,10 +208,9 @@ static void tour(const char *dir)
     tap(B_ARP); tap(B_ARP); shot(dir, "chord_key"); tap(B_ARP); tap(B_ARP);   /* the Key row: Mode's ticks, a click each */
     {                                                   /* every effect's knobs and values, at both ends, audited (not
                                                            kept as pictures): the labels change with the type */
-        static const int NT[3] = {FX_REVERBS, 3, FX_MOTIONS};   /* (the delay's: off, delay, ping-pong) */
+        static const int NT[3] = {FX_REVERBS, DT_N, FX_MOTIONS};
         uint8_t keep[3][5], row = ui.row[PG_FX];
         int r, t, k, e;
-        uint8_t amt = ui.val[ui.synth][PG_FX][3][0];
         memcpy(keep, ui.val[ui.synth][PG_FX], sizeof keep);
         for (r = 0; r < 3; r++)
             for (t = 1; t < NT[r]; t++)
@@ -223,21 +224,24 @@ static void tour(const char *dir)
                     shot(0, nm);
                 }
         memcpy(ui.val[ui.synth][PG_FX], keep, sizeof keep);
-        ui.val[ui.synth][PG_FX][3][0] = amt;            /* (the reverb's amount: Space's) */
         ui.row[PG_FX] = 1;                              /* the delay, on: a ping-pong (on FX: it was shot on Chord) */
-        ui.val[ui.synth][PG_FX][1][4] = choice_val(2, 3); ui.val[ui.synth][PG_FX][1][0] = 70; sp_sync();
-        { uint8_t pg = ui.page; ui.page = PG_FX; shot(dir, "fx_delay"); ui.page = pg; }
+        ui.val[ui.synth][PG_FX][1][4] = choice_val(DT_PING, DT_N); ui.val[ui.synth][PG_FX][1][0] = 70; sp_sync();
+        { uint8_t pg = ui.page; ui.page = PG_FX; shot(dir, "fx_delay");
+          ui.val[ui.synth][PG_FX][1][4] = choice_val(DT_GRAINS, DT_N); sp_sync(); shot(dir, "fx_grains"); ui.page = pg; }
         memcpy(ui.val[ui.synth][PG_FX], keep, sizeof keep);
         ui.row[PG_FX] = row;
         sp_sync();
     }
-    tap(B_GLO); tap(B_GLO); shot(dir, "global_echo"); tap(B_GLO); shot(dir, "global_media");
-    {                                                   /* the mix's colour and media: every type's knobs at both ends,
-                                                           audited; the colour on, its row (as the manual shows it) */
+    tap(B_GLO); tap(B_GLO); shot(dir, "global_space"); tap(B_GLO); shot(dir, "global_media");
+    {                                                   /* the mix's colour, the Space and the media: every type's knobs
+                                                           at both ends, audited; the colour on, its row (as the manual
+                                                           shows it) */
+        static const int NG[3] = {FX_COLOURS, SP_N, FX_MEDIAS};
+        static const char *const GN[3] = {"colour", "space", "media"};
         uint8_t keep[5], row = ui.row[PG_GLOBAL];
         int t, k, e, r;
-        for (r = 0; r < 3; r += 2) {
-            int nt = r ? FX_MEDIAS : FX_COLOURS;
+        for (r = 0; r < 3; r++) {
+            int nt = NG[r];
             memcpy(keep, ui.val[0][PG_GLOBAL][r], sizeof keep);
             ui.row[PG_GLOBAL] = (uint8_t)r;
             for (t = 1; t < nt; t++)
@@ -246,7 +250,7 @@ static void tour(const char *dir)
                     ui.val[0][PG_GLOBAL][r][4] = choice_val(t, nt);
                     for (k = 0; k < 4; k++) ui.val[0][PG_GLOBAL][r][k] = (uint8_t)(e ? 127 : 0);
                     sp_sync();
-                    snprintf(nm, sizeof nm, "%s_%d_%s", r ? "media" : "colour", t, e ? "max" : "min");
+                    snprintf(nm, sizeof nm, "%s_%d_%s", GN[r], t, e ? "max" : "min");
                     shot(0, nm);
                 }
             memcpy(ui.val[0][PG_GLOBAL][r], keep, sizeof keep);
@@ -389,6 +393,23 @@ static void tour(const char *dir)
     shot_fr(dir, "update_stopped", dmk_update_frame(9, -3));
     host_store_on(0, 0);
     printf("tour: %d screens%s%s, text audit %s\n", shots, dir ? " in " : "", dir ? dir : "", ta_bad ? "FAILED" : "clean");
+}
+
+/* the Space alone, a run (16 blocks) of what vbuf and sp_gb hold: in, through, out (a run behind) into spt_out */
+static int32_t spt_out[2][VB_MAX / 2];
+static void sp_host_run(void)
+{
+    int b, i;
+    sp_live = 1;
+    sp_feed(VB_MAX / DMK_SUB); sp_work(SP_Q);
+    for (b = 0; b < VB_MAX / DMK_SUB; b++) {
+        int on = spq_o0 != spq_o1;
+        for (i = 0; i < RV_ST; i++) {
+            spt_out[0][b * RV_ST + i] = on ? spq_out[spq_o0 & (SP_Q - 1u)][0][i] : 0;
+            spt_out[1][b * RV_ST + i] = on ? spq_out[spq_o0 & (SP_Q - 1u)][1][i] : 0;
+        }
+        spq_o0 += (uint32_t)on;
+    }
 }
 
 static void selftest(void)
@@ -872,24 +893,25 @@ static void selftest(void)
     dmk_button(B_GLO, 1); wait_ms(30); dmk_button(B_OCTD, 1); dmk_button(B_OCTD, 0); dmk_button(B_GLO, 0); wait_ms(30);
     if (ui.page != PG_FX) { fails++; printf("selftest: a used GLO opened its page on release\n"); }
     tour(NULL);
-    /* the spaces off (the owner asked): a synth's reverb and the echo off, none of them run, nothing returns; back on,
-     * from silence */
+    /* the spaces off (the owner asked): a synth's reverb, its delay and the Space off, none of them run, nothing
+     * returns; back on, from silence */
     {
         static int16_t ob[512 * 2];
         int i, v, pk = 0;
         dmk_init(25); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        ui.val[0][PG_FX][3][0] = 127; ui.val[0][PG_FX][3][1] = 127;   /* a lot sent */
-        ui.val[0][PG_FX][0][4] = 0; ui.val[0][PG_GLOBAL][1][4] = choice_val(0, FX_ECHOS); sp_sync();
+        ui.val[0][PG_FX][0][0] = 127; ui.val[0][PG_FX][3][0] = 127;   /* a lot sent */
+        ui.val[0][PG_FX][0][4] = 0; ui.val[0][PG_FX][1][4] = 0; ui.val[0][PG_GLOBAL][1][4] = 0; sp_sync();
         note_on_s(0, 60);
         for (i = 0; i < 40; i++) dmk_render(ob, 512);
-        if (rvs[0].cur != RV_OFF || e_cur != ET_OFF) { fails++; printf("selftest: the reverb and the echo do not go off (%d %d)\n", rvs[0].cur, e_cur); }
+        if (rvs[0].cur != RV_OFF || dls[0].cur != DT_OFF || sps.cur != SP_OFF) { fails++; printf("selftest: the reverb, the delay and the Space do not go off (%d %d %d)\n", rvs[0].cur, dls[0].cur, sps.cur); }
         for (v = 0; v < DMK_VOICES; v++) { vc[v].stage = 0; vc[v].on = 0; }
         for (i = 0; i < 20; i++) dmk_render(ob, 512);
         for (v = 0; v < 1024; v++) { int a = ob[v] < 0 ? -ob[v] : ob[v]; if (a > pk) pk = a; }
         if (pk > 64) { fails++; printf("selftest: with the spaces off a note leaves a tail (%d)\n", pk); }
-        ui.val[0][PG_FX][0][4] = choice_val(RV_HALL, FX_REVERBS); ui.val[0][PG_GLOBAL][1][4] = choice_val(1, FX_ECHOS); sp_sync();
+        ui.val[0][PG_FX][0][4] = choice_val(RV_HALL, FX_REVERBS); ui.val[0][PG_FX][1][4] = choice_val(DT_TAPE, DT_N);
+        ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_HAZE, SP_N); sp_sync();
         for (i = 0; i < 4; i++) dmk_render(ob, 512);
-        if (rvs[0].cur != RV_HALL || e_cur != ET_TAPE) { fails++; printf("selftest: the reverb and the echo do not come back\n"); }
+        if (rvs[0].cur != RV_HALL || dls[0].cur != DT_TAPE || sps.cur != SP_HAZE) { fails++; printf("selftest: the reverb, the delay and the Space do not come back\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     /* the chord keys: a lower key never a higher chord, in every voicing (the owner heard B under C go up) */
@@ -979,7 +1001,7 @@ static void selftest(void)
           if (ui.val[ui.synth][PG_FX][0][4] != t0 || ui.val[ui.synth][PG_SOUND][0][0] != smp || ui.row[PG_FX] != 1) { fails++; printf("selftest: PRESET on FX is not its rows\n"); }
           dmk_encoder(E_PRESET, -1); }
         for (int i = 0; i < 140; i++) { dmk_encoder(E_K1, 1); dmk_encoder(E_K2, -1); }   /* a number stops at its ends */
-        if (ui.val[ui.synth][PG_FX][3][0] != 127 || ui.val[ui.synth][PG_FX][0][1] != 0) { fails++; printf("selftest: a number went round\n"); }
+        if (ui.val[ui.synth][PG_FX][0][0] != 127 || ui.val[ui.synth][PG_FX][0][1] != 0) { fails++; printf("selftest: a number went round\n"); }
         tap(B_SEL); dmk_encoder(E_ALGO, 1);
         if (syn[ui.synth].ftype != FT_LP12) { fails++; printf("selftest: ALGO on the filter does not turn its type\n"); }
         dmk_encoder(E_ALGO, -1);
@@ -1010,7 +1032,8 @@ static void selftest(void)
         #define QUIET() do { for (v = 0; v < DMK_VOICES; v++) { vc[v].stage = 0; vc[v].on = 0; } dsp_reset(); } while (0)
         #define PEAK(n, out) do { out = 0; for (i = 0; i < (n); i++) { dmk_render(ob, 512); for (v = 0; v < 1024; v++) { int a_ = ob[v] < 0 ? -ob[v] : ob[v]; if (a_ > out) out = a_; } } } while (0)
         dmk_init(21); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][3][0] = 0; ui.val[k][PG_FX][3][1] = 0; }
+        for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][0] = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][3][0] = 0; }   /* (no
+                                                           reverb, delay or Space) */
         ui.val[0][PG_GLOBAL][2][4] = 0;                 /* (no tape on the mix) */
         ui.val[0][PG_SOUND][2][1] = 127;                /* VELOCITY all the way: a soft note is a quiet one */
         sp_sync();
@@ -1076,9 +1099,9 @@ static void selftest(void)
             { fails++; printf("selftest: a song of 0.4 loads with other effects (%d %d %d, %d)\n", gcol.colour, gmed.media, syn[0].motion, syn[0].dtype); }
         ui.val[0][PG_GLOBAL][0][4] = choice_val(FC_DIST, FX_COLOURS); ui.val[0][PG_GLOBAL][2][4] = choice_val(FM_DICTA, FX_MEDIAS);
         ui.val[0][PG_FX][0][4] = choice_val(RV_SPRING, FX_REVERBS);
-        ui.val[0][PG_FX][2][4] = choice_val(FO_TREM, FX_MOTIONS); ui.val[1][PG_FX][1][4] = choice_val(2, 3); sp_sync();
+        ui.val[0][PG_FX][2][4] = choice_val(FO_TREM, FX_MOTIONS); ui.val[1][PG_FX][1][4] = choice_val(DT_PING, DT_N); sp_sync();
         tap(B_SAVE); tap(B_SAVE); dmk_init(25); now_ms = 0; wait_ms(60);
-        if (gcol.colour != FC_DIST || gmed.media != FM_DICTA || syn[0].rtype != RV_SPRING || syn[0].motion != FO_TREM || syn[1].dtype != 2 || syn[0].dtype)
+        if (gcol.colour != FC_DIST || gmed.media != FM_DICTA || syn[0].rtype != RV_SPRING || syn[0].motion != FO_TREM || syn[1].dtype != DT_PING || syn[0].dtype)
             { fails++; printf("selftest: a song does not keep the later effects, the reverb, the colour, the media or the delays\n"); }
         sound_put(0, &lib[0][2]); lib[0][0] = 1; lib[0][1] = 1;   /* a sound of 0.4: its types where 0.4 put them, its colour */
         lib[0][2 + 4 * 5 + 4] = choice_val(FC_NOISE, 5); lib[0][2 + 5 * 5 + 4] = choice_val(FM_CASS, 4); lib[0][2 + 6 * 5 + 4] = choice_val(FO_DRIFT, 4);
@@ -1086,9 +1109,10 @@ static void selftest(void)
         lib_load(0, 0);
         if (gcol.colour != FC_DIST || syn[0].dtype || syn[0].motion != FO_DRIFT || gmed.media != FM_DICTA)
             { fails++; printf("selftest: a sound of 0.4 loads with a delay, other effects, or the mix's colour or media changed\n"); }
-        if (syn[0].rtype != RV_HALL || ui.val[0][PG_FX][3][0] != 100 * 84 / 127 || ui.val[0][PG_FX][0][2] != 96)
-            { fails++; printf("selftest: a sound of 0.4's send is not a hall's amount (%d, %d)\n", syn[0].rtype, ui.val[0][PG_FX][3][0]); }
-        ui.val[0][PG_FX][2][4] = choice_val(FO_FLANGER, FX_MOTIONS); ui.val[0][PG_FX][1][4] = choice_val(1, 3);
+        if (syn[0].rtype != RV_OFF || ui.val[0][PG_FX][3][0] != 100 || syn[0].ssend != 100 * 258)   /* (0.4.18: the Space's, where
+                                                           the shared verb is) */
+            { fails++; printf("selftest: a sound of 0.4's send is not its send to the Space (%d, %d)\n", syn[0].rtype, ui.val[0][PG_FX][3][0]); }
+        ui.val[0][PG_FX][2][4] = choice_val(FO_FLANGER, FX_MOTIONS); ui.val[0][PG_FX][1][4] = choice_val(DT_DELAY, DT_N);
         ui.val[0][PG_FX][0][4] = choice_val(RV_PLATE, FX_REVERBS); ui.val[0][PG_FX][0][3] = 99; sp_sync();
         k = sound_save(0);
         if (k < 1) { fails++; printf("selftest: a sound not saved\n"); }
@@ -1100,9 +1124,12 @@ static void selftest(void)
         if (gcol.colour != FC_DIST || syn[0].rtype != RV_OFF || ui.val[0][PG_FX][3][0])
             { fails++; printf("selftest: a sound of 0.4.16 brings its colour, or a reverb it never sent to (%d %d)\n", gcol.colour, syn[0].rtype); }
         lib[1][0] = 0;
-        /* a song of 0.4.6 (version 6): its echo where it was, its rolls' Vary off (not the 64s), its MIDI row a row
-         * down, the media of its first synth with one (here the second's) the mix's, the delays off */
-        ui.val[0][PG_GLOBAL][1][4] = choice_val(2, 3);
+        /* a song of 0.4.6 (version 6): its echo (grains) the delay of the synth that sent to it (0.4.18), its rolls'
+         * Vary off (not the 64s), its MIDI row a row down, the media of its first synth with one (here the second's) the
+         * mix's, the other delays off */
+        ui.val[0][PG_GLOBAL][1][4] = choice_val(2, 3); ui.val[0][PG_GLOBAL][1][0] = 127;
+        ui.val[0][PG_GLOBAL][1][1] = 40; ui.val[0][PG_GLOBAL][1][2] = 50; ui.val[0][PG_GLOBAL][1][3] = 60;
+        ui.val[0][PG_FX][3][1] = 0; ui.val[1][PG_FX][3][1] = 80; ui.val[2][PG_FX][3][1] = 0;
         for (k = 0; k < DMK_SYNTHS; k++) for (int q = 0; q < 5; q++) ui.val[k][PG_ROLL][1][q] = 64;
         ui.val[0][PG_GLOBAL][2][0] = choice_val(1, 2); ui.val[0][PG_GLOBAL][2][1] = choice_val(2, 4); ui.val[0][PG_GLOBAL][2][2] = choice_val(0, 2);
         ui.val[0][PG_FX][1][4] = 0; ui.val[1][PG_FX][1][4] = choice_val(FM_VHS, FX_MEDIAS); ui.val[1][PG_FX][1][0] = 99;
@@ -1111,9 +1138,10 @@ static void selftest(void)
         tap(B_SAVE); tap(B_SAVE);
         for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 6;
         dmk_init(27); now_ms = 0; wait_ms(60);
-        if (gp.etype != ET_GRAINS || ui.val[1][PG_ROLL][1][0] || ui.val[1][PG_ROLL][1][2] != 127 || sq[1].chance != 32768u)
-            { fails++; printf("selftest: a song of 0.4.6 loads with another echo or its rolls varied (%d)\n", gp.etype); }
-        if (!midi_chans || midi_out != 2 || clock_ext || gmed.media != FM_VHS || gmed.mk[0] != 99 || syn[0].dtype || syn[1].dtype || syn[2].dtype)
+        if (syn[1].dtype != DT_GRAINS || ui.val[1][PG_FX][1][0] != 80 || ui.val[1][PG_FX][1][1] != 40 || ui.val[1][PG_FX][1][2] != 50
+            || ui.val[1][PG_FX][1][3] != 60 || ui.val[1][PG_ROLL][1][0] || ui.val[1][PG_ROLL][1][2] != 127 || sq[1].chance != 32768u)
+            { fails++; printf("selftest: a song of 0.4.6 loads with its echo not the grains it sent to (%d), or its rolls varied\n", syn[1].dtype); }
+        if (!midi_chans || midi_out != 2 || clock_ext || gmed.media != FM_VHS || gmed.mk[0] != 99 || syn[0].dtype || syn[2].dtype)
             { fails++; printf("selftest: a song of 0.4.6 loads with its MIDI (%d %d %d) or its media (%d %d) elsewhere, or a delay on\n", midi_chans, midi_out, clock_ext, gmed.media, gmed.mk[0]); }
         lib[0][0] = 0;
         host_store_on(0, 0);
@@ -1376,23 +1404,23 @@ static void selftest(void)
         if (sq[1].count != n1 || seq_find(1, 7, 72) >= 0) { fails++; printf("selftest: editing the scene's own pattern changed the scene it came from\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    {   /* FX's Space, a synth's sends: its ALGO the synth's own reverb's type, as its Reverb row's, Off first
-         * (the owner found no way to set it there); its first knob the reverb's AMOUNT on both; a send at 0 says Off */
+    {   /* FX's Sends (the owner, 2026-10-26: the Space GLO's alone, none on a track): a synth's send to the Space and its
+         * place; its ALGO and its K2 nothing (no copy of the Space's type, nor of the reverb's amount); the reverb's
+         * amount its own row's; a send at 0 says Off */
         char t[16];
         dmk_init(38); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         tap(B_FX); for (int i = 0; i < 6 && ui.row[PG_FX] != 3; i++) tap(B_FX);
-        { int s = ui.synth, o = (s + 1) % DMK_SYNTHS, t0 = syn[s].rtype, to = syn[o].rtype;
-          dmk_encoder(E_ALGO, -1);
-          if (syn[s].rtype != (t0 + FX_REVERBS - 1) % FX_REVERBS || syn[o].rtype != to) { fails++; printf("selftest: Space's ALGO is not the synth's reverb\n"); }
-          for (int i = 0; i < 20 && syn[s].rtype; i++) dmk_encoder(E_ALGO, -1);
-          if (syn[s].rtype || row_off(PG_FX, 0) != 1) { fails++; printf("selftest: the reverb is not off from Space\n"); }
-          dmk_encoder(E_ALGO, 1);
-          if (syn[s].rtype != RV_ROOM || syn[o].rtype != to) { fails++; printf("selftest: ALGO on Space from Off is not the synth's Room\n"); }
+        { int s = ui.synth, o = (s + 1) % DMK_SYNTHS, a0 = ui.val[s][PG_FX][0][0];
+          static uint8_t before[sizeof ui.val];
+          if (strcmp(PAGE[PG_FX].row[3], "Sends") || strcmp(PAGE[PG_FX].k[3][0], "Space") || PAGE[PG_FX].algo[3][0]) { fails++; printf("selftest: FX's last row is not Sends, its K1 not Space\n"); }
+          memcpy(before, ui.val, sizeof before);
+          dmk_encoder(E_ALGO, 1); dmk_encoder(E_K2, 7);
+          if (memcmp(before, ui.val, sizeof before)) { fails++; printf("selftest: Sends' ALGO or K2 changes something\n"); }
           dmk_encoder(E_K1, 5);
-          if (*vp(PG_FX, 0, 0) != ui.val[s][PG_FX][3][0] || syn[s].ramt != ui.val[s][PG_FX][3][0] * 258) { fails++; printf("selftest: Space's send is not the reverb's amount\n"); } }
+          if (ui.val[s][PG_FX][3][0] != 5 || syn[s].ssend != 5 * 258 || ui.val[s][PG_FX][0][0] != a0 || syn[o].ssend) { fails++; printf("selftest: Sends' K1 is not the synth's own send to the Space\n"); } }
         ui.val[ui.synth][PG_FX][3][0] = 0; t[0] = 0; val_text(t, PG_FX, 3, 0);
         if (strcmp(t, "Off")) { fails++; printf("selftest: a send at 0 reads %s\n", t); }
-        t[0] = 0; val_text(t, PG_FX, 0, 0);
+        ui.val[ui.synth][PG_FX][0][0] = 0; t[0] = 0; val_text(t, PG_FX, 0, 0);
         if (strcmp(t, "Off")) { fails++; printf("selftest: a reverb's amount at 0 reads %s\n", t); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
@@ -1478,15 +1506,15 @@ static void selftest(void)
         tap(B_PLAY);
         for (k = 0; k < sq[s].count; k++) { moved += sq[s].n[k].note != was[k]; out += snap(sq[s].n[k].note) != sq[s].n[k].note; }
         if (!moved || out) { fails++; printf("selftest: Vary kept moved %d notes, %d out of the scale\n", moved, out); }
-        ui.val[0][PG_HOME][0][4] = 120; ui.val[2][PG_FX][1][4] = choice_val(1, 3);   /* synth 3's delay: a quarter at 120 */
+        ui.val[0][PG_HOME][0][4] = 120; ui.val[2][PG_FX][1][4] = choice_val(DT_DELAY, DT_N);   /* synth 3's delay: a quarter at 120 */
         ui.val[2][PG_FX][1][2] = choice_val(6, DIV_N); sp_sync(); dmk_render(b, 256);
-        if (syn[2].dtype != 1 || syn[2].dtime != 5512u) { fails++; printf("selftest: the delay's quarter at 120 is %u samples\n", (unsigned)syn[2].dtime); }
-        ui.val[2][PG_FX][1][4] = choice_val(2, 3); ui.val[2][PG_FX][1][2] = choice_val(8, DIV_N); ui.val[0][PG_HOME][0][4] = 30; sp_sync(); dmk_render(b, 256);
-        if (syn[2].dtype != 2 || syn[2].dtime > DL_LEN / 2u - 2u || syn[2].dtime < 1000u) { fails++; printf("selftest: the ping-pong's half at 30 is %u samples\n", (unsigned)syn[2].dtime); }
+        if (syn[2].dtype != DT_DELAY || syn[2].dtime != 5512u) { fails++; printf("selftest: the delay's quarter at 120 is %u samples\n", (unsigned)syn[2].dtime); }
+        ui.val[2][PG_FX][1][4] = choice_val(DT_PING, DT_N); ui.val[2][PG_FX][1][2] = choice_val(8, DIV_N); ui.val[0][PG_HOME][0][4] = 30; sp_sync(); dmk_render(b, 256);
+        if (syn[2].dtype != DT_PING || syn[2].dtime > DL_LEN / 2u - 2u || syn[2].dtime < 1000u) { fails++; printf("selftest: the ping-pong's half at 30 is %u samples\n", (unsigned)syn[2].dtime); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {   /* the delay's and the mix's media's types changed as a chord holds: faded, never a jump past the held sound's */
-        static const uint8_t DT[6] = {1, 2, 0, 2, 1, 0}, MT[6] = {FM_VHS, FM_VINYL, FM_TAPE, FM_DICTA, 0, FM_CASS};
+        static const uint8_t DT[6] = {DT_DELAY, DT_TAPE, 0, DT_GRAINS, DT_PING, 0}, MT[6] = {FM_VHS, FM_VINYL, FM_TAPE, FM_DICTA, 0, FM_CASS};
         int i, j, v, m0 = 0, m1 = 0, prev = 0;
         dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         ui.val[0][PG_FX][1][0] = 110; ui.val[0][PG_FX][1][3] = 80;
@@ -1495,7 +1523,7 @@ static void selftest(void)
         for (i = 0; i < 40; i++) dmk_render(b, 256);
         for (j = 0; j < 13; j++) {
             if (j) {
-                if (j & 1) ui.val[0][PG_FX][1][4] = choice_val(DT[j / 2], 3);
+                if (j & 1) ui.val[0][PG_FX][1][4] = DT[j / 2] ? choice_val(DT[j / 2], DT_N) : 0;
                 else ui.val[0][PG_GLOBAL][2][4] = choice_val(MT[j / 2 - 1], FX_MEDIAS);
                 sp_sync();
             }
@@ -1514,7 +1542,7 @@ static void selftest(void)
             ui.val[0][PG_GLOBAL][0][4] = ui.val[0][PG_GLOBAL][1][4] = ui.val[0][PG_GLOBAL][2][4] = 0;   /* no colour, echo, media */
             ui.val[2][PG_FX][0][4] = 0;                 /* nor the synth's reverb */
             ui.val[0][PG_HOME][0][4] = 120;
-            ui.val[2][PG_FX][1][4] = t ? choice_val(1, 3) : 0; ui.val[2][PG_FX][1][0] = 127; ui.val[2][PG_FX][1][3] = 64;
+            ui.val[2][PG_FX][1][4] = t ? choice_val(DT_DELAY, DT_N) : 0; ui.val[2][PG_FX][1][0] = 127; ui.val[2][PG_FX][1][3] = 64;
             ui.val[2][PG_FX][1][2] = choice_val(0, DIV_N); sp_sync();   /* a sixteenth: 125 ms */
             note_on_s(2, 60);
             for (i = 0; i < 4; i++) dmk_render(b, 256);
@@ -1591,10 +1619,10 @@ static void selftest(void)
         for (q = 0; q < 2; q++) {                       /* the second synth played: first with no reverb of its own, then with one */
             int pk;
             dmk_init(40); now_ms = 0;
-            for (c = 0; c < DMK_SYNTHS; c++) { ui.val[c][PG_FX][0][4] = 0; ui.val[c][PG_FX][3][1] = 0; ui.val[c][PG_FX][1][4] = 0; ui.val[c][PG_FX][2][4] = 0; }
+            for (c = 0; c < DMK_SYNTHS; c++) { ui.val[c][PG_FX][0][4] = 0; ui.val[c][PG_FX][3][0] = 0; ui.val[c][PG_FX][1][4] = 0; ui.val[c][PG_FX][2][4] = 0; }
             ui.val[0][PG_GLOBAL][0][4] = ui.val[0][PG_GLOBAL][1][4] = ui.val[0][PG_GLOBAL][2][4] = 0;
-            ui.val[0][PG_FX][0][4] = choice_val(RV_HALL, FX_REVERBS); ui.val[0][PG_FX][3][0] = 127; ui.val[0][PG_FX][0][2] = 127;
-            ui.val[1][PG_FX][3][0] = 127; ui.val[1][PG_FX][0][4] = q ? choice_val(RV_HALL, FX_REVERBS) : 0;
+            ui.val[0][PG_FX][0][4] = choice_val(RV_HALL, FX_REVERBS); ui.val[0][PG_FX][0][0] = 127; ui.val[0][PG_FX][0][2] = 127;
+            ui.val[1][PG_FX][0][0] = 127; ui.val[1][PG_FX][0][4] = q ? choice_val(RV_HALL, FX_REVERBS) : 0;
             sp_sync();
             note_on_s(1, 60); note_on_s(1, 67);
             for (i = 0; i < 40; i++) dmk_render(ob, 512);
@@ -1608,12 +1636,12 @@ static void selftest(void)
             for (c = 0; c < 4; c++) {
                 int early = 0, late = 0, k, quiet = -1;
                 dmk_init(41); now_ms = 0;
-                for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = 0; ui.val[k][PG_FX][3][1] = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][2][4] = 0; }
+                for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = 0; ui.val[k][PG_FX][3][0] = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][2][4] = 0; }
                 ui.val[0][PG_GLOBAL][0][4] = ui.val[0][PG_GLOBAL][1][4] = ui.val[0][PG_GLOBAL][2][4] = 0;
                 ui.val[0][PG_AMP][0][4] = 127;
                 ui.val[0][PG_FX][0][4] = choice_val(t, FX_REVERBS);
-                ui.val[0][PG_FX][3][0] = KN[c][0]; ui.val[0][PG_FX][0][1] = KN[c][1]; ui.val[0][PG_FX][0][2] = KN[c][2]; ui.val[0][PG_FX][0][3] = KN[c][3];
-                if (!KN[c][0]) ui.val[0][PG_FX][3][0] = 127;   /* (an amount of 0 sends nothing: the other knobs at 0) */
+                ui.val[0][PG_FX][0][0] = KN[c][0]; ui.val[0][PG_FX][0][1] = KN[c][1]; ui.val[0][PG_FX][0][2] = KN[c][2]; ui.val[0][PG_FX][0][3] = KN[c][3];
+                if (!KN[c][0]) ui.val[0][PG_FX][0][0] = 127;   /* (an amount of 0 sends nothing: the other knobs at 0) */
                 sp_sync();
                 for (k = 0; k < 6; k++) note_on_s(0, 45 + k * 7);
                 for (i = 0; i < 100; i++) dmk_render(ob, 512);   /* ~1.2 s */
@@ -1635,7 +1663,7 @@ static void selftest(void)
         int q, i, k;
         for (q = 0; q < 3; q++) {
             dmk_init(42); now_ms = 0;
-            for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = 0; ui.val[k][PG_FX][3][1] = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][2][4] = 0; }
+            for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = 0; ui.val[k][PG_FX][3][0] = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][2][4] = 0; }
             ui.val[0][PG_GLOBAL][1][4] = ui.val[0][PG_GLOBAL][2][4] = 0;
             ui.val[0][PG_GLOBAL][0][4] = q == 1 ? choice_val(FC_CRUSH, FX_COLOURS) : 0;
             ui.val[0][PG_GLOBAL][0][0] = 120;
@@ -1649,18 +1677,22 @@ static void selftest(void)
         if (h[2] != h[0]) { fails++; printf("selftest: the mix's colour off is not the mix as it was\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    {   /* a song of 0.4.16 (version 11: one verb for all on GLO's first row, a colour on each synth's FX first row) loads
-         * as a reverb a track and the mix's colour: the verb's type (a plate stays a plate, a shimmer is a hall), its
-         * return in each synth's amount, its tone, size and sweep; no reverb where a synth sent none; the colour the
-         * first synth's with one, its knobs */
-        static const uint8_t OLD[3] = {7, 9, 1}, NEW[3] = {RV_PLATE, RV_HALL, RV_ROOM};   /* (plate, shimmer, room of twelve) */
+    {   /* a song of 0.4.16 (version 11: one verb for all on GLO's first row, the echo on its second, a colour on each
+         * synth's FX first row) loads as the reverbs, the Space and the mix's colour (0.4.18): a room, a plate or a
+         * spring each synth's own (its amount the send through the return; the verb's tone, size and sweep), none where
+         * a synth sent none; the huge ones the shared Space as they were (its return, tone, size, mod; the sends its own);
+         * the colour the first synth's with one, its knobs */
+        static const uint8_t OLD[4] = {7, 9, 1, 4}, RV[4] = {RV_PLATE, 0, RV_ROOM, 0}, SPC[4] = {0, SP_SHIMMER, 0, SP_HAZE};   /* (plate,
+                                                           shimmer, room, haze of twelve) */
         int k, q;
         host_store_on(1, 1);
-        for (q = 0; q < 3; q++) {
+        for (q = 0; q < 4; q++) {
             dmk_init(43); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-            for (k = 0; k < DMK_SYNTHS; k++) sq[k].count = 0;   /* (no notes: a note's bytes are 11's) */
+            for (k = 0; k < DMK_SYNTHS; k++) { sq[k].count = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][3][1] = 0; }   /* (no
+                                                           notes: a note's bytes are 11's; no delay, nothing to the echo) */
             ui.val[0][PG_GLOBAL][0][0] = 100; ui.val[0][PG_GLOBAL][0][1] = 30; ui.val[0][PG_GLOBAL][0][2] = 110;
             ui.val[0][PG_GLOBAL][0][3] = 20; ui.val[0][PG_GLOBAL][0][4] = choice_val(OLD[q], 12);
+            ui.val[0][PG_GLOBAL][1][4] = 0;             /* (its echo off) */
             ui.val[0][PG_FX][3][0] = 90; ui.val[1][PG_FX][3][0] = 0; ui.val[2][PG_FX][3][0] = 64;
             ui.val[0][PG_FX][0][4] = 0;
             ui.val[1][PG_FX][0][0] = 11; ui.val[1][PG_FX][0][1] = 22; ui.val[1][PG_FX][0][2] = 33; ui.val[1][PG_FX][0][3] = 44;
@@ -1669,18 +1701,51 @@ static void selftest(void)
             tap(B_SAVE); tap(B_SAVE); tap(B_HOME);
             for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 11;
             dmk_init(44); now_ms = 0; wait_ms(60);
-            if (syn[0].rtype != NEW[q] || syn[1].rtype != RV_OFF || syn[2].rtype != NEW[q])
-                { fails++; printf("selftest: an old song's verb (%d) loads as the reverbs %d %d %d\n", OLD[q], syn[0].rtype, syn[1].rtype, syn[2].rtype); }
-            if (ui.val[0][PG_FX][3][0] != 90 * 100 / 127 || ui.val[2][PG_FX][3][0] != 64 * 100 / 127 || ui.val[0][PG_FX][0][1] != 30
-                || ui.val[2][PG_FX][0][2] != 110 || ui.val[0][PG_FX][0][3] != 20)
-                { fails++; printf("selftest: an old song's sends, return, tone, size or sweep are not its reverbs' (%d %d)\n", ui.val[0][PG_FX][3][0], ui.val[2][PG_FX][3][0]); }
+            if (syn[0].rtype != RV[q] || syn[1].rtype != RV_OFF || syn[2].rtype != RV[q] || gp.stype != SPC[q])
+                { fails++; printf("selftest: an old song's verb (%d) loads as the reverbs %d %d %d, the Space %d\n", OLD[q], syn[0].rtype, syn[1].rtype, syn[2].rtype, gp.stype); }
+            if (RV[q] && (ui.val[0][PG_FX][0][0] != 90 * 100 / 127 || ui.val[2][PG_FX][0][0] != 64 * 100 / 127 || ui.val[0][PG_FX][0][1] != 30
+                          || ui.val[2][PG_FX][0][2] != 110 || ui.val[0][PG_FX][0][3] != 20 || ui.val[0][PG_FX][3][0] || ui.val[2][PG_FX][3][0]))
+                { fails++; printf("selftest: an old song's sends, return, tone, size or sweep are not its reverbs' (%d %d)\n", ui.val[0][PG_FX][0][0], ui.val[2][PG_FX][0][0]); }
+            if (SPC[q] && (ui.val[0][PG_FX][3][0] != 90 || ui.val[1][PG_FX][3][0] || ui.val[2][PG_FX][3][0] != 64 || ui.val[0][PG_GLOBAL][1][0] != 100
+                           || ui.val[0][PG_GLOBAL][1][1] != 30 || ui.val[0][PG_GLOBAL][1][2] != 110 || ui.val[0][PG_GLOBAL][1][3] != 20))
+                { fails++; printf("selftest: an old song's huge verb is not the Space as it was, its sends the Space's (%d %d)\n", ui.val[0][PG_FX][3][0], ui.val[0][PG_GLOBAL][1][0]); }
             if (gcol.colour != FC_CRUSH || gcol.ck[0] != 11 || gcol.ck[3] != 44)
                 { fails++; printf("selftest: an old song's first colour is not the mix's (%d, %d)\n", gcol.colour, gcol.ck[0]); }
         }
+        /* a song of 0.4.17 (version 12: a reverb a track, its amount on Space's first knob; the shared echo, a tape, on GLO's
+         * second row, the sends on Space's second): the amounts back on the reverbs' rows; the tape echo the delay of each
+         * synth that sent to it with none of its own (its tone, time, regen; its mix the send through the return), one with
+         * its own delay keeps it; nothing sent to the Space, the Space off */
+        dmk_init(48); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (k = 0; k < DMK_SYNTHS; k++) { sq[k].count = 0; ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][0][0] = 99; }
+        ui.val[0][PG_GLOBAL][1][4] = choice_val(1, 3);   /* (Off, Tape, Grains) */
+        ui.val[0][PG_GLOBAL][1][0] = 100; ui.val[0][PG_GLOBAL][1][1] = 33; ui.val[0][PG_GLOBAL][1][2] = 77; ui.val[0][PG_GLOBAL][1][3] = 55;
+        ui.val[0][PG_FX][3][0] = 70; ui.val[0][PG_FX][3][1] = 127;   /* the first: a reverb's amount, the echo */
+        ui.val[1][PG_FX][3][0] = 20; ui.val[1][PG_FX][3][1] = 60; ui.val[1][PG_FX][1][4] = choice_val(2, 3);   /* the second: its own ping-pong */
+        ui.val[1][PG_FX][1][0] = 44;
+        ui.val[2][PG_FX][3][0] = 0; ui.val[2][PG_FX][3][1] = 0;   /* the third: nothing sent */
+        tap(B_SAVE); tap(B_SAVE); tap(B_HOME);
+        for (k = 0; k < ST_SONGS; k++) if (host_store[0x2000 + k * 4096] == 'D') host_store[0x2000 + k * 4096 + 12] = 12;
+        dmk_init(49); now_ms = 0; wait_ms(60);
+        if (ui.val[0][PG_FX][0][0] != 70 || ui.val[1][PG_FX][0][0] != 20 || ui.val[2][PG_FX][0][0] || syn[0].ramt != 70 * 258
+            || ui.val[0][PG_FX][3][0] || ui.val[1][PG_FX][3][0] || gp.stype)
+            { fails++; printf("selftest: a song of 0.4.17's reverb amounts (%d %d) or its Space (%d) are not where they go\n", ui.val[0][PG_FX][0][0], ui.val[1][PG_FX][0][0], gp.stype); }
+        if (syn[0].dtype != DT_TAPE || ui.val[0][PG_FX][1][0] != 100 || ui.val[0][PG_FX][1][1] != 33 || ui.val[0][PG_FX][1][2] != 77 || ui.val[0][PG_FX][1][3] != 55
+            || syn[1].dtype != DT_PING || ui.val[1][PG_FX][1][0] != 44 || syn[2].dtype)
+            { fails++; printf("selftest: a song of 0.4.17's echo is not the delays (%d %d %d, mix %d)\n", syn[0].dtype, syn[1].dtype, syn[2].dtype, ui.val[0][PG_FX][1][0]); }
+        /* a sound of 0.4.17 (form 4): its echo's send a tape echo (none of its own), its amount back on its reverb's row */
+        sound_put(0, &lib[2][2]); lib[2][0] = 1; lib[2][1] = 4;
+        lib[2][2 + 4 * 5 + 4] = choice_val(RV_ROOM, FX_REVERBS); lib[2][2 + 5 * 5 + 4] = 0;
+        lib[2][2 + 7 * 5 + 0] = 81; lib[2][2 + 7 * 5 + 1] = 90;
+        lib_load(1, 2);
+        if (syn[1].rtype != RV_ROOM || ui.val[1][PG_FX][0][0] != 81 || ui.val[1][PG_FX][3][0] || syn[1].dtype != DT_TAPE || ui.val[1][PG_FX][1][0] != 90 * 64 / 127)
+            { fails++; printf("selftest: a sound of 0.4.17 loads with its reverb's amount %d, its echo %d\n", ui.val[1][PG_FX][0][0], syn[1].dtype); }
+        lib[2][0] = 0;
         host_store_on(0, 0);
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
-    {   /* INIT and a new project: dry (the owner): a note on each synth leaves nothing after it, no reverb, no colour */
+    {   /* INIT and a new project: dry (the owner): a note on each synth leaves nothing after it, no reverb, no delay, no
+         * Space, no colour */
         static int16_t ob[512 * 2];
         int i, v, k, pk = 0;
         dmk_init(45); now_ms = 0; wait_ms(60); ui.boot_done = 1;
@@ -1690,12 +1755,17 @@ static void selftest(void)
         for (v = 0; v < DMK_VOICES; v++) { vc[v].stage = 0; vc[v].on = 0; }
         for (i = 0; i < 40; i++) dmk_render(ob, 512);   /* (0.5 s: the synths' DC blockers settled) */
         for (v = 0; v < 1024; v++) { int a = ob[v] < 0 ? -ob[v] : ob[v]; if (a > pk) pk = a; }
-        if (pk || gcol.colour || syn[0].rtype || syn[1].rtype || syn[2].rtype) { fails++; printf("selftest: a new project is not dry (%d after a note)\n", pk); }
+        if (pk || gcol.colour || gp.stype || sps.cur) { fails++; printf("selftest: a new project is not dry (%d after a note)\n", pk); }
+        for (k = 0; k < DMK_SYNTHS; k++) if (syn[k].rtype || syn[k].dtype || syn[k].ssend) { fails++; printf("selftest: a new project's synth %d has an effect\n", k + 1); }
+        dmk_init(46); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[1][PG_FX][3][0] = 100; ui.val[1][PG_FX][1][4] = choice_val(DT_GRAINS, DT_N); sp_sync();
+        sound_init(1);
+        if (syn[1].rtype || syn[1].dtype || syn[1].ssend || syn[1].motion) { fails++; printf("selftest: INIT leaves an effect or a send to the Space\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {   /* the audit's: FINE past the recording's own cents carries into the semitone (it stopped); a note far up reads at
-         * most four of the recording's samples a sample; the echo's longest time and the grains' longest size stay inside
-         * the line */
+         * most four of the recording's samples a sample; the tape echo's longest time and the grains' longest size stay
+         * inside the line */
         int f, smp = -1, k, last = 0;
         for (k = 0; k < DMK_SAMPLES_N && smp < 0; k++) if (DMK_SAMPLES[k].cents >= 20) smp = k;
         if (smp >= 0) {
@@ -1714,8 +1784,135 @@ static void selftest(void)
         ui.val[0][PG_SOUND][0][3] = 127; sp_sync();
         note_on_s(0, 127);
         for (k = 0; k < DMK_VOICES; k++) if (vc[k].stage && vc[k].m.inc0 > INC_MAX) { fails++; printf("selftest: a note far up reads %u a sample\n", vc[k].m.inc0); break; }
-        if (T_ETIME[127] + T_ETIME[127] / 16u + 2u >= EL_LEN) { fails++; printf("selftest: the echo's longest time is past its line\n"); }
-        if (2u * GR_MAXLEN + 128u >= EL_LEN) { fails++; printf("selftest: the grains' longest is past the line\n"); }
+        {   /* (0.4.18: each synth's delay holds the shared echo's times, its right a sixteenth later, the wow on them) */
+            uint32_t et = T_ETIME[127] / 2u;
+            if (et + et / 16u + 32u + 2u >= DL_LEN || T_ETIME[127] * 1000u / 22050u < 680u) { fails++; printf("selftest: the tape echo's longest time is past its line, or short of 0.69 s\n"); }
+        }
+        if (2u * GR_MAXLEN + 128u > DL_LEN || (441u + 127u * 62u) / 2u > GR_MAXLEN) { fails++; printf("selftest: the grains' longest is past the line\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* the Space (the owner, 2026-10-26): one for all three; each synth's send reaches it and it returns into the mix;
+         * a synth that sends nothing leaves nothing in it, though another sends */
+        static int16_t ob[512 * 2];
+        int s, q, i, v, k;
+        for (s = 0; s < DMK_SYNTHS; s++) {
+            int heard[2];
+            for (q = 0; q < 2; q++) {
+                dmk_init(50); now_ms = 0;
+                for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = ui.val[k][PG_FX][1][4] = ui.val[k][PG_FX][2][4] = 0; ui.val[k][PG_FX][3][0] = 0; }
+                ui.val[0][PG_GLOBAL][0][4] = ui.val[0][PG_GLOBAL][2][4] = 0;
+                ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_HALL, SP_N); ui.val[0][PG_GLOBAL][1][0] = 127;
+                ui.val[q ? s : (s + 1) % DMK_SYNTHS][PG_FX][3][0] = 127;   /* (sent: this synth, or another) */
+                sp_sync();
+                note_on_s(s, 57); note_on_s(s, 64);
+                for (i = 0; i < 40; i++) dmk_render(ob, 512);
+                for (v = 0; v < DMK_VOICES; v++) { vc[v].stage = 0; vc[v].on = 0; }
+                for (i = 0; i < 30; i++) dmk_render(ob, 512);   /* (0.35 s: the synth's own DC blocker settled) */
+                heard[q] = 0;
+                for (i = 0; i < 40; i++) { dmk_render(ob, 512); for (v = 0; v < 1024; v++) { int a = ob[v] < 0 ? -ob[v] : ob[v]; if (a > heard[q]) heard[q] = a; } }
+            }
+            if (heard[0] || heard[1] < 200) { fails++; printf("selftest: synth %d's send to the Space: unsent %d, sent %d\n", s + 1, heard[0], heard[1]); }
+        }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* every Space type at its knobs' ends: two seconds of a synth's chord at full into it never fill its lines; two
+         * more of all three at full and a noise (they may: held, never past what they hold, the sanitizers watching the
+         * sums), then it rings, and its tail decays to exact silence, lines and all (never asleep: every step run; no DC
+         * held, no tone held by the rounding) within ten minutes (FREEZE's whole HOLD the longest) */
+        static const uint8_t KN[4][4] = {{0, 0, 0, 0}, {127, 127, 127, 127}, {127, 0, 127, 127}, {127, 127, 127, 0}};
+        int t, c, i, k, worst = 0, worst_t = 0;
+        for (t = SP_HALL; t < SP_N; t++)
+            for (c = 0; c < 4; c++) {
+                uint32_t n, rng = 0x1234567u, ph[3] = {0, 0, 0}, sec = 0;
+                int full = 0, rang = 0, quiet = 0;
+                dmk_init(51);
+                ui.val[0][PG_GLOBAL][1][4] = choice_val(t, SP_N);
+                for (k = 0; k < 4; k++) ui.val[0][PG_GLOBAL][1][k] = KN[c][k];
+                if (!KN[c][0]) ui.val[0][PG_GLOBAL][1][0] = 127;   /* (a return of 0 says nothing: the others at 0) */
+                sp_sync();
+                sps.cur = gp.stype; sps.g = 32768; sp_clear(); sp_rest();
+                for (n = 0; n < 4u * 172u; n++) {       /* 2 s of a chord, 2 of everything, a run (256 samples) at a time */
+                    for (i = 0; i < VB_MAX; i++) {      /* (the chains' sides: half the mix's level) */
+                        int32_t ch_;
+                        ph[0] += 26000000u; ph[1] += 39000000u; ph[2] += 61000000u;
+                        ch_ = (sinp(ph[0]) + sinp(ph[1]) + sinp(ph[2])) / 6;
+                        for (k = 0; k < DMK_SYNTHS; k++)
+                            vbuf[0][k][i] = vbuf[1][k][i] = n < 2u * 172u ? (k ? 0 : ch_) : ch_ * 2 + (int32_t)(xs32(&rng) >> 19) - 4096;
+                    }
+                    for (k = 0; k < DMK_SYNTHS; k++) for (i = 0; i < VB_MAX / DMK_SUB; i++) sp_gb[k][i] = 32767;
+                    sps.quiet = 0; sp_host_run();
+                    if (n < 2u * 172u) for (i = 0; i < (int)SP_MEM; i++) full += sp_mem[i] >= 32767 || sp_mem[i] <= -32768;
+                }
+                for (k = 0; k < DMK_SYNTHS; k++) for (i = 0; i < VB_MAX; i++) vbuf[0][k][i] = vbuf[1][k][i] = 0;
+                for (n = 0; n < 600u * 172u && !quiet; n++) {   /* then nothing in, to ten minutes */
+                    int any = 0;
+                    sps.quiet = 0; sp_host_run();
+                    for (i = 0; i < VB_MAX / 2; i++) any |= spt_out[0][i] | spt_out[1][i];
+                    if (n < 172u && any) rang = 1;
+                    if (!any && n % 172u == 0u) {       /* the output silent: the lines too, a second on */
+                        int z = 1;
+                        for (i = 0; i < (int)SP_MEM && z; i++) z = !sp_mem[i];
+                        if (z) { quiet = 1; sec = n / 172u; }
+                    }
+                }
+                if (full) { fails++; printf("selftest: Space %s, knobs %d %d %d %d: its lines filled (%d)\n", SPACES[t], KN[c][0], KN[c][1], KN[c][2], KN[c][3], full); }
+                if (!rang) { fails++; printf("selftest: Space %s, knobs %d %d %d %d: no tail\n", SPACES[t], KN[c][0], KN[c][1], KN[c][2], KN[c][3]); }
+                if (!quiet) { fails++; printf("selftest: Space %s, knobs %d %d %d %d: no exact silence in ten minutes\n", SPACES[t], KN[c][0], KN[c][1], KN[c][2], KN[c][3]); }
+                if ((int)sec > worst) { worst = (int)sec; worst_t = t; }
+                if (getenv("DMK_SPACE_TIMES")) printf("  space %-8s knobs %3d %3d %3d %3d: silent after %u s\n", SPACES[t], KN[c][0], KN[c][1], KN[c][2], KN[c][3], (unsigned)sec);
+            }
+        (void)worst_t;
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* each synth's tape echo and grains (0.4.18): its own; a note on the second leaves nothing after it through the
+         * first's, the first's own note its repeats or its cloud */
+        static int16_t ob[512 * 2];
+        static const uint8_t DT[2] = {DT_TAPE, DT_GRAINS};
+        int d, q, i, v, k, tail[2];
+        for (d = 0; d < 2; d++) {
+            for (q = 0; q < 2; q++) {
+                dmk_init(52); now_ms = 0;
+                for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = ui.val[k][PG_FX][1][4] = ui.val[k][PG_FX][2][4] = 0; ui.val[k][PG_FX][3][0] = 0; }
+                ui.val[0][PG_GLOBAL][0][4] = ui.val[0][PG_GLOBAL][1][4] = ui.val[0][PG_GLOBAL][2][4] = 0;
+                ui.val[0][PG_FX][1][4] = choice_val(DT[d], DT_N);
+                ui.val[0][PG_FX][1][0] = 127; ui.val[0][PG_FX][1][1] = 64; ui.val[0][PG_FX][1][2] = d ? 127 : 40; ui.val[0][PG_FX][1][3] = d ? 0 : 90;
+                sp_sync();
+                note_on_s(q, 57); note_on_s(q, 64);
+                for (i = 0; i < 20; i++) dmk_render(ob, 512);
+                for (v = 0; v < DMK_VOICES; v++) { vc[v].stage = 0; vc[v].on = 0; }
+                for (i = 0; i < 30; i++) dmk_render(ob, 512);   /* (0.35 s: the synths' DC blockers settled) */
+                tail[q] = 0;
+                for (i = 0; i < 30; i++) { dmk_render(ob, 512); for (v = 0; v < 1024; v++) { int a = ob[v] < 0 ? -ob[v] : ob[v]; if (a > tail[q]) tail[q] = a; } }
+            }
+            if (tail[0] < 200 || tail[1]) { fails++; printf("selftest: the first synth's %s: its own note's tail %d, the second's %d\n", DELAYS[DT[d]], tail[0], tail[1]); }
+        }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* Home (the owner, 2026-10-26): three rows, ALGO round them, HOME again the next, PRESETS still the sound; Level's
+         * K4 the tempo, Space's K1-K3 the sends and its K4 the Space's return, Pan's the pans and the mix's width */
+        int smp;
+        dmk_init(53); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        if (ui.page != PG_HOME || ui.row[PG_HOME] || PAGE[PG_HOME].rows != 3) { fails++; printf("selftest: Home does not open on its Level row\n"); }
+        dmk_encoder(E_ALGO, 1); if (ui.row[PG_HOME] != 1) { fails++; printf("selftest: ALGO on Home is not its next row\n"); }
+        dmk_encoder(E_ALGO, 1); dmk_encoder(E_ALGO, 1); if (ui.row[PG_HOME]) { fails++; printf("selftest: ALGO on Home past Pan is not Level\n"); }
+        dmk_encoder(E_ALGO, -1); if (ui.row[PG_HOME] != 2) { fails++; printf("selftest: ALGO back on Home past Level is not Pan\n"); }
+        tap(B_HOME); if (ui.row[PG_HOME]) { fails++; printf("selftest: HOME again is not the next row\n"); }
+        dmk_encoder(E_K4, 8);
+        if (seq_bpm != 80 || ui.val[0][PG_HOME][0][4] != 80) { fails++; printf("selftest: Level's K4 is not the tempo (%d)\n", seq_bpm); }
+        { char t[16]; t[0] = 0; val_text(t, PG_HOME, 0, 3); if (strcmp(t, "80")) { fails++; printf("selftest: Level's K4 reads %s\n", t); } }
+        dmk_encoder(E_K2, -4);
+        if (ui.val[1][PG_AMP][0][4] != 92) { fails++; printf("selftest: Level's K2 is not synth 2's level\n"); }
+        dmk_encoder(E_ALGO, 1);
+        dmk_encoder(E_K1, 10); dmk_encoder(E_K3, 5);
+        if (ui.val[0][PG_FX][3][0] != 10 || syn[0].ssend != 10 * 258 || ui.val[2][PG_FX][3][0] != 5 || ui.val[1][PG_FX][3][0]) { fails++; printf("selftest: Home's Space row is not the synths' sends\n"); }
+        { int r0 = ui.val[0][PG_GLOBAL][1][0]; dmk_encoder(E_K4, -3);
+          if (ui.val[0][PG_GLOBAL][1][0] != r0 - 3 || gp.sret != (r0 - 3) * 258) { fails++; printf("selftest: Space's K4 on Home is not the Space's return\n"); } }
+        dmk_encoder(E_ALGO, 1);
+        { int w0 = ui.val[0][PG_HOME][3][3], p0 = ui.val[1][PG_FX][3][2]; dmk_encoder(E_K4, 4); dmk_encoder(E_K2, 6);
+          if (ui.val[0][PG_HOME][3][3] != w0 + 4 || gp.width != (w0 + 4) * 4 || ui.val[1][PG_FX][3][2] != p0 + 6) { fails++; printf("selftest: Home's Pan row is not the pans and the width\n"); } }
+        smp = ui.val[ui.synth][PG_SOUND][0][0];
+        dmk_encoder(E_PRESET, 1);
+        if (ui.val[ui.synth][PG_SOUND][0][0] == smp || ui.row[PG_HOME] != 2) { fails++; printf("selftest: PRESETS on Home is not the sound\n"); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     printf("selftest: %s\n", fails ? "FAILED" : "ok");
@@ -1750,7 +1947,7 @@ static void wav_write(const char *path, const int16_t *b, int n)
 }
 
 /* a phrase on one sound, for the owner to hear: Am(add9) held, then a line over it, then the tail. dry: no tape,
- * no sends; else the first synth's defaults (tape, room, echo) */
+ * no reverb, no delay; else the first synth's defaults (the mix's tape, its hall, its tape echo) */
 static void demo_one(const char *dir, int idx, int dry)
 {
     static const struct { float t, len; uint8_t n; } PH[] = {
@@ -1762,7 +1959,7 @@ static void demo_one(const char *dir, int idx, int dry)
     char path[512], name[16];
     dmk_init(1);
     ui.val[0][PG_SOUND][0][0] = (uint8_t)idx;
-    if (dry) { ui.val[0][PG_GLOBAL][2][4] = 0; ui.val[0][PG_FX][3][0] = 0; ui.val[0][PG_FX][3][1] = 0; }
+    if (dry) { ui.val[0][PG_GLOBAL][2][4] = 0; ui.val[0][PG_FX][0][4] = 0; ui.val[0][PG_FX][1][4] = 0; ui.val[0][PG_FX][3][0] = 0; }
     sp_sync();
     for (i = 0; i < n; i += DMK_SUB) {
         for (k = 0; k < np; k++) {
@@ -1792,17 +1989,17 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
     char path[512];
     dmk_init(1);
     ui.val[0][PG_SOUND][0][0] = (uint8_t)smp_named(sound);
-    ui.val[0][PG_GLOBAL][2][4] = 0;                     /* only the effect heard: no tape on the mix */
-    ui.val[0][PG_FX][3][0] = verb ? 100 : 20;           /* a little reverb, or a lot for the reverbs */
-    ui.val[0][PG_FX][3][1] = 0;
+    ui.val[0][PG_GLOBAL][2][4] = 0;                     /* only the effect heard: no tape on the mix, no delay, no Space */
+    ui.val[0][PG_FX][0][0] = verb ? 100 : 20;           /* a little reverb, or a lot for the reverbs */
+    ui.val[0][PG_FX][1][4] = 0; ui.val[0][PG_FX][3][0] = 0;
     ui.val[0][PG_FX][0][4] = choice_val(RV_HALL, FX_REVERBS);   /* the hall under the others */
     if (page >= 0) {
-        int nch = page == PG_GLOBAL ? (row == 2 ? FX_MEDIAS : row ? FX_ECHOS : FX_COLOURS) : page == PG_FILTER ? 8 : row == 0 ? FX_REVERBS : row == 1 ? 3 : FX_MOTIONS;
-        if (page == PG_GLOBAL && row == 1) type++;      /* (Off first) */
+        int nch = page == PG_GLOBAL ? (row == 2 ? FX_MEDIAS : row ? SP_N : FX_COLOURS) : page == PG_FILTER ? 8 : row == 0 ? FX_REVERBS : row == 1 ? DT_N : FX_MOTIONS;
         ui.val[0][page][row][4] = (uint8_t)(type * 128 / nch + 128 / nch / 2);
-        for (j = 0; j < 4; j++) if (k[j] != 255) *(page == PG_FX && row == 0 && !j ? &ui.val[0][PG_FX][3][0] : &ui.val[0][page][row][j]) = k[j];
+        for (j = 0; j < 4; j++) if (k[j] != 255) ui.val[0][page][row][j] = k[j];
     }
-    if (page == PG_GLOBAL && row == 1) { ui.val[0][PG_FX][3][1] = 110; ui.val[0][PG_FX][3][0] = 70; }   /* grains: a lot sent */
+    if (page == PG_GLOBAL && row == 1) { ui.val[0][PG_FX][3][0] = 110; ui.val[0][PG_FX][0][4] = 0; }   /* the Space: a lot sent, no
+                                                           reverb of its own */
     sp_sync();
     for (i = 0; i < n; i += DMK_SUB) {
         for (j = 0; j < np; j++) {
@@ -1852,11 +2049,18 @@ static void fx_demo(const char *dir)
     static const uint8_t CA[4] = {80, 60, 60, 80}, VH[4] = {90, 50, 50, 90}, CH[4] = {90, 100, 40, 100};
     static const uint8_t VI[4] = {60, 255, 70, 40}, DR[4] = {110, 90, 40, 255}, FI[4] = {255, 100, 64, 255};
     static const char *const VN[4] = {"reverb_1_room", "reverb_2_plate", "reverb_3_spring", "reverb_4_hall"};
-    static const uint8_t GR[4] = {110, 70, 70, 60};
+    static const uint8_t GR[4] = {110, 70, 70, 60}, TE[4] = {90, 52, 76, 70}, SPK[4] = {100, 56, 96, 64};
     static const char *const FN[3] = {"filter_notch", "filter_peak", "filter_vowel"};
     int t;
     for (t = 0; t < 4; t++) fx_one(dir, VN[t], "Nymphaea", PG_FX, 0, RV_ROOM + t, VB, 1, 0);   /* (VB: amount, tone, size, its own) */
-    fx_one(dir, "echo_grains", "Nymphaea", PG_GLOBAL, 1, ET_GRAINS, GR, 1, 0);
+    fx_one(dir, "delay_3_tape_echo", "Nymphaea", PG_FX, 1, DT_TAPE, TE, 0, 0);   /* the shared echo's two, a synth's own */
+    fx_one(dir, "delay_4_grains", "Nymphaea", PG_FX, 1, DT_GRAINS, GR, 0, 0);
+    for (t = SP_HALL; t < SP_N; t++) {                  /* the Space's, sent to, no reverb of the synth's own */
+        char nm[24];
+        snprintf(nm, sizeof nm, "space_%d_%s", t, SPACES[t]);
+        for (int i = 0; nm[i]; i++) nm[i] = (char)(nm[i] | (nm[i] >= 'A' && nm[i] <= 'Z' ? 0x20 : 0));
+        fx_one(dir, nm, "Nymphaea", PG_GLOBAL, 1, t, SPK, 0, 0);
+    }
     fx_one(dir, "colour_1_saturate", "Nymphaea", PG_GLOBAL, 0, FC_SAT, SAT, 0, 0);
     fx_one(dir, "colour_2_crush", "Nymphaea", PG_GLOBAL, 0, FC_CRUSH, CR, 0, 0);
     fx_one(dir, "colour_3_lossy", "Nymphaea", PG_GLOBAL, 0, FC_LOSSY, LO, 0, 0);
@@ -1962,29 +2166,39 @@ static void bench(void)
 
 #ifdef __APPLE__
 /* the engine's cost, counted as the FM-1's budget is (docs/plan.md, 1.1): build with -fno-builtin -fno-vectorize
- * -fno-slp-vectorize; 12 voices held across the three synths */
-static double cpu_case(int fx)
+ * -fno-slp-vectorize; 12 voices held across the three synths. fx 0: dry; 1: the first song's (the mix's tape, a room
+ * each, the tape echoes); 2: the heaviest (every row's heaviest on every synth, all sent to the heaviest Space, the
+ * heaviest colour and VHS on the mix); 3: a layer under every voice, the LFO on, over the first song's synths (as
+ * 0.4.17's), all sent to the heaviest Space, the heaviest colour and VHS. sp, dt (>= 0): a Space type, a delay type
+ * alone on the dry case, every synth sending to it */
+static void cpu_set(int fx, int sp, int dt)
+{
+    int s;
+    dmk_init(7);
+    ui.val[0][PG_GLOBAL][2][4] = fx && sp < 0 && dt < 0 ? choice_val(fx == 1 ? FM_TAPE : FM_VHS, FX_MEDIAS) : 0;   /* the mix's tape; or VHS */
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        if (!fx) { ui.val[s][PG_FX][0][4] = 0; ui.val[s][PG_FX][1][4] = 0; ui.val[s][PG_FX][3][0] = 0; }
+        if (fx == 2) { ui.val[s][PG_FX][0][4] = choice_val(RV_HEAVY, FX_REVERBS); ui.val[s][PG_FX][1][4] = choice_val(DT_HEAVY, DT_N);
+                       ui.val[s][PG_FX][2][4] = choice_val(FO_FLANGER, FX_MOTIONS); ui.val[s][PG_FX][0][0] = 100; }   /* each
+                                                           row's heaviest, every reverb sent to */
+        if (fx >= 2) ui.val[s][PG_FX][3][0] = 100;     /* and the Space */
+        if (fx == 1) ui.val[s][PG_FX][0][4] = choice_val(RV_ROOM, FX_REVERBS);   /* a room each */
+        if (fx == 3) { ui.val[s][PG_SOUND][1][0] = 90; ui.val[s][PG_LFO][0][1] = 60; ui.val[s][PG_LFO][0][4] = choice_val(LT_CUTOFF, 5); }
+        if (sp >= 0) ui.val[s][PG_FX][3][0] = 100;
+        if (dt >= 0) { ui.val[s][PG_FX][1][4] = choice_val(dt, DT_N); ui.val[s][PG_FX][1][0] = 90; }
+    }
+    ui.val[0][PG_GLOBAL][0][4] = fx >= 2 ? choice_val(FC_HEAVY, FX_COLOURS) : 0;   /* the heaviest colour on the mix */
+    ui.val[0][PG_GLOBAL][1][4] = sp >= 0 ? choice_val(sp, SP_N) : fx >= 2 ? choice_val(SP_HEAVY, SP_N) : fx ? choice_val(SP_HALL, SP_N) : 0;
+    ui.val[0][PG_GLOBAL][1][2] = 127;                   /* (the Space at its longest: none asleep) */
+    sp_sync();
+    for (s = 0; s < DMK_VOICES; s++) note_on_s(s % DMK_SYNTHS, 48 + s * 3);
+}
+static double cpu_case(int fx, int sp, int dt)
 {
     static int16_t b[128 * 2];
-    int frames = DMK_SR * 10, i, s;
+    int frames = DMK_SR * 10, i;
     uint64_t a, z;
-    dmk_init(7);
-    ui.val[0][PG_GLOBAL][2][4] = fx ? choice_val(fx == 1 ? FM_TAPE : FM_VHS, FX_MEDIAS) : 0;   /* the mix's tape; or VHS */
-    for (s = 0; s < DMK_SYNTHS; s++) {
-        if (!fx) { ui.val[s][PG_FX][3][0] = 0; ui.val[s][PG_FX][3][1] = 0; }
-        if (fx == 2) { ui.val[s][PG_FX][0][4] = choice_val(RV_HEAVY, FX_REVERBS); ui.val[s][PG_FX][1][4] = choice_val(2, 3);
-                       ui.val[s][PG_FX][2][4] = choice_val(FO_FLANGER, FX_MOTIONS); ui.val[s][PG_FX][3][0] = 100; }   /* each row's
-                                                           heaviest, every reverb sent to */
-    }
-    if (fx == 3) for (s = 0; s < DMK_SYNTHS; s++) {     /* and a layer under every voice, the LFO on the cutoff */
-        ui.val[s][PG_SOUND][1][0] = 90; ui.val[s][PG_LFO][0][1] = 60; ui.val[s][PG_LFO][0][4] = choice_val(LT_CUTOFF, 5);
-    }
-    if (fx == 3) fx = 2;
-    if (fx == 1) for (s = 0; s < DMK_SYNTHS; s++) ui.val[s][PG_FX][0][4] = choice_val(RV_ROOM, FX_REVERBS);   /* a room each */
-    ui.val[0][PG_GLOBAL][0][4] = fx == 2 ? choice_val(FC_HEAVY, FX_COLOURS) : 0;   /* the heaviest colour on the mix */
-    ui.val[0][PG_GLOBAL][1][4] = fx == 2 ? choice_val(2, FX_ECHOS) : choice_val(1, FX_ECHOS);   /* and the grains; else the tape */
-    sp_sync();
-    for (i = 0; i < DMK_VOICES; i++) note_on_s(i % DMK_SYNTHS, 48 + i * 3);
+    cpu_set(fx, sp, dt);
     for (i = 0; i < 100; i++) dmk_render(b, 128);
     a = instructions();
     for (i = 0; i < frames; i += 128) dmk_render(b, 128);
@@ -2032,20 +2246,31 @@ static void cpu(void)
     static int16_t b[128 * 2];
     int frames = DMK_SR * 10, i;
     uint64_t a, z;
+    double dry;
     dmk_init(7);
     for (i = 0; i < 100; i++) dmk_render(b, 128);
     a = instructions();
     for (i = 0; i < frames; i += 128) dmk_render(b, 128);
     z = instructions();
-    printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with the mix's tape, a room each and the echo %.0f instructions a sample\n",
-           (double)(z - a) / frames, cpu_case(0), cpu_case(1));
-    {   /* the heaviest: every synth its heaviest reverb, a ping-pong and a flanger (each row's heaviest), the heaviest
-         * colour, the grains and VHS on the mix; each core's share */
-        double all = cpu_case(2), c0, c1;
+    dry = cpu_case(0, -1, -1);
+    printf("cpu: idle %.0f, 12 voices dry %.0f, 12 voices with the mix's tape, a room and a tape echo each %.0f instructions a sample\n",
+           (double)(z - a) / frames, dry, cpu_case(1, -1, -1));
+    {   /* each Space type and each delay type over the dry case (every synth sending, every synth's delay) */
+        char t[512], *o = t;
+        int k;
+        o += snprintf(o, sizeof t, "cpu: over the dry: the Space's");
+        for (k = SP_HALL; k < SP_N; k++) o += snprintf(o, sizeof t - (size_t)(o - t), " %s %.0f", SPACES[k], cpu_case(0, k, -1) - dry);
+        o += snprintf(o, sizeof t - (size_t)(o - t), "; three delays'");
+        for (k = DT_DELAY; k < DT_N; k++) o += snprintf(o, sizeof t - (size_t)(o - t), " %s %.0f", DELAYS[k], cpu_case(0, -1, k) - dry);
+        printf("%s\n", t);
+    }
+    {   /* the heaviest: every synth its heaviest reverb, delay and motion, all sent to the heaviest Space, the heaviest
+         * colour and VHS on the mix; each core's share */
+        double all = cpu_case(2, -1, -1), c0, c1;
         cpu_cores(&c0, &c1);
-        printf("cpu: the heaviest (%s, ping-pong, flanger x3, %s, grains, VHS) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
-               REVERBS[RV_HEAVY], COLOURS[FC_HEAVY], all, c0, c1);
-        all = cpu_case(3);
+        printf("cpu: the heaviest (%s, %s, flanger x3, the %s Space, %s, VHS) %.0f; on the FM-1 CPU0 %.0f (its wait included), CPU1 %.0f\n",
+               REVERBS[RV_HEAVY], DELAYS[DT_HEAVY], SPACES[SP_HEAVY], COLOURS[FC_HEAVY], all, c0, c1);
+        all = cpu_case(3, -1, -1);
         cpu_cores(&c0, &c1);
         printf("cpu: and a layer under every voice, the LFO on: %.0f; CPU0 %.0f, CPU1 %.0f\n", all, c0, c1);
     }

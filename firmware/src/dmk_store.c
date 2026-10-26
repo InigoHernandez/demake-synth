@@ -16,7 +16,9 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 12u  /* 12: a reverb a track (FX's first row, where the colour was), the colour the mix's (GLO's first row,
+#define ST_VER 13u  /* 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
+                       echo was), each synth's send to it on FX's Space row (where its reverb's amount was: back on the
+                       reverb's row); 12: a reverb a track (FX's first row, where the colour was), the colour the mix's (GLO's first row,
                        where the shared verb was); 11: patterns to 256 steps, a note 5 bytes; 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
                        a row down; 6: more effects in each FX
                        row (their types' places moved); 5: the layer, the voice, the filter's drive, the LFO heard; 4: each synth's patterns, the scenes, a song
@@ -29,7 +31,9 @@ static uint8_t st_buf[ST_SECTOR];                       /* a sector as it is wri
 static uint8_t lib[ST_USER][ST_SOUND];                  /* the library, as the flash holds it: [used, its form, the values]:
                                                            form 0, 45 values (before 0.4); 1, 55; 2, 55 with the
                                                            FX rows' later types; 3, the delay for the media (0.5); 4,
-                                                           the reverb for the colour (0.4.17) */
+                                                           the reverb for the colour (0.4.17); 5, the delay's five
+                                                           types, the send to the Space (0.4.18) */
+#define SND_FORM 5
 static uint32_t st_gen;                                 /* the newest song's generation */
 static uint32_t song_gen[ST_SONGS];                     /* each slot's (0: empty) */
 static uint8_t song_prog[ST_SONGS];                     /* each slot's progression, for its name */
@@ -130,19 +134,27 @@ static void fx_types_moved(int s)
         *v = *v * OLD_N[r] / 128 ? choice_val(*v * OLD_N[r] / 128, NEW_N[r]) : 0;   /* (off stays 0) */
     }
 }
-static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of before 0.4, its new controls off */
+DMK_SMALL static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of before 0.4, its new controls off */
 {
     int r, k;
     for (r = 0; r < (form ? SND_ROWS_N : 9); r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = v[r * 5 + k];
     if (!form) snd_new_defaults(s);                     /* its layer, voice, drive and LFO did nothing then: off */
     if (form < 2) fx_types_moved(s);
     if (form < 3) delay_defaults(s);                    /* its media: the mix's now, so not the sound's */
-    if (form < 4) {                                     /* its colour: the mix's now (dropped); its verb's send its own
-                                                           reverb's AMOUNT, a hall (the shared verb's first, at its
-                                                           return of 84, its tone, size and sweep), none if it sent none */
-        uint8_t *rv = ui.val[s][PG_FX][0], snd = ui.val[s][PG_FX][3][0];
-        rv[0] = 64; rv[1] = 56; rv[2] = 96; rv[3] = 64; rv[4] = snd ? choice_val(RV_HALL, FX_REVERBS) : 0;
-        ui.val[s][PG_FX][3][0] = (uint8_t)(snd * 84 / 127);
+    if (form < 5) {                                     /* before 0.4.18: its delay's three types at their places of
+                                                           five; its echo's send its delay, a tape echo (the first
+                                                           song's: ~0.4 s, its send through a return of 64) when it had
+                                                           none of its own. Form 4: its reverb's amount (on Space's first
+                                                           knob) back on its row, nothing sent to the Space. Before: its
+                                                           colour the mix's now (dropped), its verb's send the Space's,
+                                                           where the shared verb now is, its own reverb off */
+        uint8_t *rv = ui.val[s][PG_FX][0], *dv = ui.val[s][PG_FX][1], *sv = ui.val[s][PG_FX][3];
+        int t = dv[4] * 3 / 128;
+        dv[4] = t ? choice_val(t, DT_N) : 0;
+        if (sv[1] && !t) { dv[0] = (uint8_t)(sv[1] * 64 / 127); dv[1] = 52; dv[2] = 76; dv[3] = 64; dv[4] = choice_val(DT_TAPE, DT_N); }
+        sv[1] = 0;
+        if (form == 4) { rv[0] = sv[0]; sv[0] = 0; }
+        else { rv[0] = 64; rv[1] = 56; rv[2] = 96; rv[3] = 64; rv[4] = 0; }
     }
     sp_sync();
 }
@@ -158,7 +170,7 @@ static int sound_save(int s)
     int i;
     for (i = 0; i < ST_USER && lib[i][0]; i++) {}
     if (i == ST_USER) return 0;
-    lib[i][0] = 1; lib[i][1] = 4;
+    lib[i][0] = 1; lib[i][1] = SND_FORM;
     sound_put(s, &lib[i][2]);
     if (lib_write()) { lib[i][0] = 0; return -1; }
     return i + 1;
@@ -170,7 +182,7 @@ static int sound_over(int s, int slot)
     int j;
     if (slot < 0 || slot >= ST_USER || !lib[slot][0]) return -1;
     for (j = 0; j < (int)ST_SOUND; j++) was[j] = lib[slot][j];
-    lib[slot][1] = 4;
+    lib[slot][1] = SND_FORM;
     sound_put(s, &lib[slot][2]);
     if (lib_write()) { for (j = 0; j < (int)ST_SOUND; j++) lib[slot][j] = was[j]; return -1; }
     return 0;
@@ -185,8 +197,8 @@ static int sound_del(int slot)
 static void lib_load(int s, int slot) { if (slot >= 0 && slot < ST_USER && lib[slot][0]) sound_get(s, &lib[slot][2], lib[slot][1]); }
 
 /* INIT: the synth's sound as the first song has it (its recording kept), with no effect at all (the owner): its
- * reverb, delay and motion off, nothing sent to the reverb or the echo, no layer, no LFO */
-static void sound_init(int s)
+ * reverb, delay and motion off, nothing sent to the Space, no layer, no LFO */
+DMK_SMALL static void sound_init(int s)
 {
     uint8_t keep = ui.val[s][PG_SOUND][0][0];
     int r, k;
@@ -195,7 +207,7 @@ static void sound_init(int s)
     ui.val[s][PG_SOUND][1][4] = keep;                   /* its layer starts as its own recording */
     ui.val[s][PG_SOUND][1][0] = 0;                      /* (the layer off) */
     for (r = 0; r < 3; r++) ui.val[s][PG_FX][r][4] = 0;
-    ui.val[s][PG_FX][3][0] = ui.val[s][PG_FX][3][1] = 0;   /* (its sends) */
+    ui.val[s][PG_FX][3][0] = ui.val[s][PG_FX][3][1] = 0;   /* (its send to the Space) */
     ui.val[s][PG_LFO][0][1] = 0;                        /* (the LFO's depth) */
     sp_sync();
 }
@@ -311,26 +323,51 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         for (k = 0; k < 5; k++) m[k] = ui.val[from][PG_FX][1][k];
         for (s = 0; s < DMK_SYNTHS; s++) { roll_vary_defaults(s); delay_defaults(s); }
     }
+    if (st_ver < 13u) {                                 /* before 0.4.18 (the owner's: the echo a track's, the huge
+                                                           reverbs the Space's): the shared echo (GLO's second row) each
+                                                           synth's delay that sent to it and had none on (its kind, tone,
+                                                           time, regen; its mix the send through the return), a delay
+                                                           of its own kept; the delays' three types at their places of
+                                                           five; the Space off (the shared hall's knobs). 12: the reverb's
+                                                           amount (on Space's first knob) back on its row, nothing sent
+                                                           to the Space */
+        uint8_t *ev = ui.val[0][PG_GLOBAL][1];
+        int et = ev[4] * 3 / 128;
+        for (s = 0; s < DMK_SYNTHS; s++) {
+            uint8_t *dv = ui.val[s][PG_FX][1], *sv = ui.val[s][PG_FX][3];
+            int t = dv[4] * 3 / 128;
+            dv[4] = t ? choice_val(t, DT_N) : 0;
+            if (et && sv[1] && !t) {
+                dv[0] = (uint8_t)(sv[1] * ev[0] / 127); dv[1] = ev[1]; dv[2] = ev[2]; dv[3] = ev[3];
+                dv[4] = choice_val(et == 1 ? DT_TAPE : DT_GRAINS, DT_N);
+            }
+            sv[1] = 0;
+            if (st_ver == 12u) { ui.val[s][PG_FX][0][0] = sv[0]; sv[0] = 0; }
+        }
+        ev[0] = 84; ev[1] = 56; ev[2] = 96; ev[3] = 64; ev[4] = 0;
+    }
     if (st_ver < 12u) {                                 /* before 0.4.17 (the owner's: the reverb per track, the colour
-                                                           the mix's): each synth its own reverb from the shared one (its
-                                                           type: a room, a plate, a spring as they were, every other a
-                                                           hall; its AMOUNT the synth's send through the return; its tone,
-                                                           size and sweep), none where it sent none; the mix's colour the
-                                                           first synth's that had one on (its knobs), the others' gone */
-        static const uint8_t TY[OLD_VERBS] = {RV_OFF, RV_ROOM, RV_HALL, RV_HALL, RV_HALL, RV_HALL, RV_HALL, RV_PLATE,
-                                               RV_SPRING, RV_HALL, RV_HALL, RV_HALL};
-        uint8_t *gv = ui.val[0][PG_GLOBAL][0], old[5], col[5] = {64, 64, 64, 64, 0};
-        int t;
+                                                           the mix's): a room, a plate or a spring shared, each synth's own
+                                                           (its AMOUNT the send through the return; the verb's tone, size
+                                                           and sweep), none where it sent none; the huge ones (0.4.18) the
+                                                           Space, as they were, the sends its; the mix's colour the first
+                                                           synth's that had one on (its knobs), the others' gone */
+        static const uint8_t TY[OLD_VERBS] = {RV_OFF, RV_ROOM, 0, 0, 0, 0, 0, RV_PLATE, RV_SPRING, 0, 0, 0};
+        static const uint8_t SPT[OLD_VERBS] = {SP_OFF, 0, SP_HALL, SP_SPACE, SP_HAZE, SP_BLOOM, SP_LOFI, 0, 0, SP_SHIMMER,
+                                               SP_REVERSE, SP_FREEZE};
+        uint8_t *gv = ui.val[0][PG_GLOBAL][0], *sv = ui.val[0][PG_GLOBAL][1], old[5], col[5] = {64, 64, 64, 64, 0};
+        int o, t;
         for (k = 0; k < 5; k++) old[k] = gv[k];
-        t = TY[old[4] * OLD_VERBS / 128 < OLD_VERBS ? old[4] * OLD_VERBS / 128 : OLD_VERBS - 1];
+        o = old[4] * OLD_VERBS / 128 < OLD_VERBS ? old[4] * OLD_VERBS / 128 : OLD_VERBS - 1;
+        t = TY[o];
         for (s = DMK_SYNTHS - 1; s >= 0; s--) if (choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[s][PG_FX][0][4]))
             for (k = 0; k < 5; k++) col[k] = ui.val[s][PG_FX][0][k];
         for (s = 0; s < DMK_SYNTHS; s++) {
             uint8_t *rv = ui.val[s][PG_FX][0], *snd = &ui.val[s][PG_FX][3][0];
-            rv[0] = 64; rv[1] = old[1]; rv[2] = old[2]; rv[3] = old[3];
-            rv[4] = t && *snd ? choice_val(t, FX_REVERBS) : 0;
-            *snd = (uint8_t)(*snd * old[0] / 127);
+            rv[0] = 64; rv[1] = old[1]; rv[2] = old[2]; rv[3] = old[3]; rv[4] = 0;
+            if (t) { rv[0] = (uint8_t)(*snd * old[0] / 127); if (*snd) rv[4] = choice_val(t, FX_REVERBS); *snd = 0; }
         }
+        if (SPT[o]) { for (k = 0; k < 4; k++) sv[k] = old[k]; sv[4] = choice_val(SPT[o], SP_N); }
         for (k = 0; k < 5; k++) gv[k] = col[k];
     }
     theme = *p++ % DMK_THEMES;
@@ -528,14 +565,14 @@ static void song_new(void)                              /* the first song: its r
     sp_sync();
 }
 /* PLAY twice on an empty slot (the owner): an empty project with no sequence and no effect, its sounds at INIT (no
- * reverb), nothing following the chords (so PLAY is silent until something is written), the mix's colour, echo and
+ * reverb), nothing following the chords (so PLAY is silent until something is written), the mix's colour, Space and
  * media off, no name until it is saved */
-static void project_empty(void)
+DMK_SMALL static void project_empty(void)
 {
     int s;
     song_new();
     for (s = 0; s < DMK_SYNTHS; s++) { sq[s].count = 0; ch.follow[s] = FW_FREE; sound_init(s); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
-    for (s = 0; s < 3; s++) ui.val[0][PG_GLOBAL][s][4] = 0;   /* (the colour, the echo, the media: Off) */
+    for (s = 0; s < 3; s++) ui.val[0][PG_GLOBAL][s][4] = 0;   /* (the colour, the Space, the media: Off) */
     ui.val[0][PG_DISCS][1][2] = 0;
     sp_sync();
     song_mark();
