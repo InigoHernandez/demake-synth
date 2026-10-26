@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.15.fwsc",
-  "version": "0.4.15",
-  "date": "2026-10-25",
+  "file": "demake-0.4.17.fwsc",
+  "version": "0.4.17",
+  "date": "2026-10-26",
   "product": "FM-1_969",
-  "sha256": "1882d379c58c50a9b48271b440c7f722a31bd9749531992cd38502f956587259",
-  "note": "SAVE as two pages: Projects (save into an empty slot or over the one open, open, a new empty project, rename, delete) and Sounds (a recording or a kept sound for each track, keep it, init)."
+  "sha256": "56ba5def6b85228f0315d7141b0b5754f803a2ad9316fa268e5b6de669e48765",
+  "note": "A reverb on each track (Room, Plate, Spring, Hall) and the colour on the mix; SELECT the synth, PRESETS the rows; kept sounds kept over and deleted; the audit's fixes (no notes left on, takes as played, safer saves, MIDI)."
 }
