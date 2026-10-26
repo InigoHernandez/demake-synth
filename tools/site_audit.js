@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The site's layout audit, run in the browser on a page of web/ (paste it into the console, or a preview tool's
 // script runner) at 24, 16 and 7 modules. It returns what breaks the rules (docs/plan.md, 6):
-//   text     two lines of text from different elements that overlap
+//   text     two lines of text from different elements that overlap, or sit less than 4 px apart on a line
 //   cell     a line of text past the bottom or the right of its grid cell
 //   box      a line of text over a box it does not belong to (a button, a pill, a card, a key)
 //   offgrid  a grid item whose corner is not on the 48 px module's lines
@@ -18,12 +18,15 @@
     for (const r of rg.getClientRects()) if (r.width > 0.5 && r.height > 0.5) lines.push({ el: n.parentElement, r, t: n.textContent.trim().slice(0, 30) });
   }
   const meet = (a, b, d) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > d;
+  // two texts on one line closer than 4 px (the owner: "How it works" ran into "Over USB", a pixel apart)
+  const near = (a, b) => Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2 && Math.max(a.left, b.left) - Math.min(a.right, b.right) < 4;
+  const block = (el) => { let e = el; while (e && getComputedStyle(e).display.startsWith("inline")) e = e.parentElement; return e; };   // (words of one sentence: a space apart)
   const cellOf = (el) => { let e = el; while (e && e.parentElement && getComputedStyle(e.parentElement).display !== "grid") e = e.parentElement; return e; };
   const boxes = [...cv.querySelectorAll(".page, .lit, .pill, .card, kbd, .tiles i, .emu, .eng .img")].filter(vis).map((b) => ({ b, r: b.getBoundingClientRect() }));
   const res = { width: innerWidth, scroll: document.documentElement.scrollWidth > innerWidth, text: [], cell: [], box: [] };
   for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) {
     const a = lines[i], b = lines[j];
-    if (a.el !== b.el && !a.el.matches(".big") && !b.el.matches(".big") && meet(a.r, b.r, 2)) res.text.push([a.t, b.t]);
+    if (a.el !== b.el && !a.el.matches(".big") && !b.el.matches(".big") && (meet(a.r, b.r, 2) || (near(a.r, b.r) && block(a.el) !== block(b.el)))) res.text.push([a.t, b.t]);
   }
   for (const L of lines) {
     const c = cellOf(L.el);                             // a statement's glyph box runs past its 48 px lines: not a fault
