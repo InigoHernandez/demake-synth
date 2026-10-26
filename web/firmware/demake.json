@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.17.fwsc",
-  "version": "0.4.17",
+  "file": "demake-0.4.18.fwsc",
+  "version": "0.4.18",
   "date": "2026-10-26",
   "product": "FM-1_969",
-  "sha256": "56ba5def6b85228f0315d7141b0b5754f803a2ad9316fa268e5b6de669e48765",
-  "note": "A reverb on each track (Room, Plate, Spring, Hall) and the colour on the mix; SELECT the synth, PRESETS the rows; kept sounds kept over and deleted; the audit's fixes (no notes left on, takes as played, safer saves, MIDI)."
+  "sha256": "f2f1de80d46e7d26f21d1f4297c394e5c12515f828baa58786a838501bb2b47d",
+  "note": "The huge reverbs back, shared on GLO's Space (Hall, Space, Haze, Bloom, Lofi, Shimmer, Reverse, Freeze); a tape echo and grains in each track's delay; each track's Sends; Home three rows (Level and Tempo, Space, Pan); Vary's Keep is Evolve."
 }
