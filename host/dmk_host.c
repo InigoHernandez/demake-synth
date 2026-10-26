@@ -1921,7 +1921,7 @@ static void selftest(void)
 static void wav(const char *path)
 {
     int n = DMK_SR * 3, i;
-    int16_t *b = malloc((size_t)n * 4);
+    int16_t *b = malloc(((size_t)n + 256u) * 4);   /* (its last render runs past n: a block, or 128, at a time) */
     FILE *f = fopen(path, "wb");
     dmk_init(3);
     dmk_key(4, 1); dmk_key(8, 1); dmk_key(11, 1);
@@ -1955,7 +1955,7 @@ static void demo_one(const char *dir, int idx, int dry)
         {3.4f, 0.5f, 64}, {3.9f, 0.5f, 67}, {4.4f, 0.5f, 69}, {4.9f, 0.9f, 72}, {5.8f, 0.5f, 71}, {6.3f, 0.5f, 69},
         {6.8f, 1.6f, 64}, {6.8f, 1.6f, 57}};
     int n = DMK_SR * 11, i, k, np = (int)(sizeof PH / sizeof PH[0]);
-    int16_t *b = malloc((size_t)n * 4);
+    int16_t *b = malloc(((size_t)n + 256u) * 4);   /* (its last render runs past n: a block, or 128, at a time) */
     char path[512], name[16];
     dmk_init(1);
     ui.val[0][PG_SOUND][0][0] = (uint8_t)idx;
@@ -1985,7 +1985,7 @@ static void fx_one(const char *dir, const char *name, const char *sound, int pag
         {3.4f, 0.5f, 64}, {3.9f, 0.5f, 67}, {4.4f, 0.5f, 69}, {4.9f, 0.9f, 72}, {5.8f, 0.5f, 71}, {6.3f, 0.5f, 69},
         {6.8f, 1.6f, 64}, {6.8f, 1.6f, 57}};
     int n = DMK_SR * 11, i, j, np = (int)(sizeof PH / sizeof PH[0]);
-    int16_t *b = malloc((size_t)n * 4);
+    int16_t *b = malloc(((size_t)n + 256u) * 4);   /* (its last render runs past n: a block, or 128, at a time) */
     char path[512];
     dmk_init(1);
     ui.val[0][PG_SOUND][0][0] = (uint8_t)smp_named(sound);
@@ -2022,7 +2022,7 @@ static void arp_demo(const char *dir)
                                          "played", "chord", "thumb", "pinky"};
     static const uint8_t CH[4] = {57, 67, 60, 64};      /* (played in this order: Played shows it) */
     int m, n = DMK_SR * 7, i, k;
-    int16_t *b = malloc((size_t)n * 4);
+    int16_t *b = malloc(((size_t)n + 256u) * 4);   /* (its last render runs past n: a block, or 128, at a time) */
     char path[512];
     for (m = 1; m < AR_N; m++) {
         dmk_init(1);
@@ -2105,7 +2105,7 @@ static void fx_demo(const char *dir)
 static void chord_demo(const char *dir)
 {
     int n = DMK_SR * 26, i, p;
-    int16_t *b = malloc((size_t)n * 4);
+    int16_t *b = malloc(((size_t)n + 256u) * 4);   /* (its last render runs past n: a block, or 128, at a time) */
     char path[512];
     for (p = 0; p < 16; p++) {
         dmk_init(1);
