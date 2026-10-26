@@ -47,8 +47,9 @@ colour, media, motion and space effects per synth, a store of songs and sounds. 
   section.
 - Checks: `sh tools/check.sh`: warnings, the soft-float symbol check on armv7m, ASan + UBSan over the self-test and
   the tour with its text audit, the browser build.
-- The FM-1: `.venv/bin/python tools/fm1/build.py [--diag] [--bench] [--release 0.Y]` makes `build/fm1/demake*.fwsc`
-  (identity FM-1_965; a release 0.Y is FM-1_965+Y) with JieLi's toolchain in a linux/amd64 container (see
+- The FM-1: `.venv/bin/python tools/fm1/build.py [--diag] [--bench] [--release X.Y.Z]` makes `build/fm1/demake*.fwsc`
+  (identity FM-1_969 for every build since 0.4.8; `--release` sets only the version shown at boot and the file's name)
+  with JieLi's toolchain in a linux/amd64 container (see
   `firmware/fm1/README.md`). The platform (`firmware/fm1/{hal,loader,src}`) is CS-1's as MONO2K carries it, GPL-3.0,
   its headers kept; `dmk_fm1.c` is the glue.
 
