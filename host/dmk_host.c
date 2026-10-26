@@ -1478,6 +1478,14 @@ static void selftest(void)
         tap(B_PLAY);
         for (k = 0; k < sq[s].count; k++) { moved += sq[s].n[k].note != was[k]; out += snap(sq[s].n[k].note) != sq[s].n[k].note; }
         if (!moved || out) { fails++; printf("selftest: Vary kept moved %d notes, %d out of the scale\n", moved, out); }
+        {   /* EVOLVE off (the owner asked it checked): what Mutate moves is heard, the roll stays as written */
+            int same = 1;
+            for (k = 0; k < sq[s].count; k++) was[k] = sq[s].n[k].note;
+            ui.val[s][PG_ROLL][1][3] = choice_val(0, 2); sp_sync();
+            tap(B_PLAY); for (k = 0; k < 120; k++) dmk_render(b, 256); tap(B_PLAY);
+            for (k = 0; k < sq[s].count; k++) same &= sq[s].n[k].note == was[k];
+            if (!same) { fails++; printf("selftest: Evolve off still writes into the roll\n"); }
+        }
         ui.val[0][PG_HOME][0][4] = 120; ui.val[2][PG_FX][1][4] = choice_val(1, 3);   /* synth 3's delay: a quarter at 120 */
         ui.val[2][PG_FX][1][2] = choice_val(6, DIV_N); sp_sync(); dmk_render(b, 256);
         if (syn[2].dtype != 1 || syn[2].dtime != 5512u) { fails++; printf("selftest: the delay's quarter at 120 is %u samples\n", (unsigned)syn[2].dtime); }

@@ -39,7 +39,7 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Level 1", "Level 2", "Level 3", "Echo"}, {"Verb 1", "Verb 2", "Verb 3", "Time"},
       {"Echo 1", "Echo 2", "Echo 3", "Regen"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
     {"Roll", 3, {"Roll", "Vary", "Arp"}, {"Zoom", "Zoom", "Hold"},
-     {{"Cursor", "View", "Follow", "Steps"}, {"Mutate", "Range", "Chance", "Keep"}, {"Mode", "Rate", "Octave", "Gate"}}},
+     {{"Cursor", "View", "Follow", "Steps"}, {"Mutate", "Range", "Chance", "Evolve"}, {"Mode", "Rate", "Octave", "Gate"}}},
     {"Sound", 3, {"Main", "Layer", "Voice"}, {"Fine", "Sound", ""},
      {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
@@ -132,7 +132,9 @@ static const char *const RVK4[FX_REVERBS] = {"Mod", "Diffuse", "Mod", "Drip", "M
 static const char *const ECHOS[] = {"Off", "Tape", "Grains"};   /* (the delays: each synth's, FX's second row) */
 #define FX_ECHOS 3
 static const char *const DELAYS[] = {"Off", "Delay", "Ping-pong"};
-static const char *const KEEPS[] = {"Off", "On"};      /* the roll's Vary: mutations heard, or written in */
+static const char *const KEEPS[] = {"Off", "On"};      /* the roll's Vary, EVOLVE (it was Keep: the owner found the name
+                                                           confusing): what Mutate moves only heard, or written into the
+                                                           roll, so it changes as it plays */
 static const char *const RANGES[] = {"1", "2", "3", "4", "5", "6", "7"};   /* its reach, scale steps (a click a step) */
 static const char *const SPREADS[] = {"0", "1", "2", "3"};   /* the chord's spread, octaves */
 /* the ARP's (dmk_seq.c AR_, ARP24): its ways, its rates, its octaves, HOLD */
