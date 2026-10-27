@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.18.fwsc",
-  "version": "0.4.18",
-  "date": "2026-10-26",
+  "file": "demake-0.4.19.fwsc",
+  "version": "0.4.19",
+  "date": "2026-10-27",
   "product": "FM-1_969",
-  "sha256": "f2f1de80d46e7d26f21d1f4297c394e5c12515f828baa58786a838501bb2b47d",
-  "note": "The huge reverbs back, shared on GLO's Space (Hall, Space, Haze, Bloom, Lofi, Shimmer, Reverse, Freeze); a tape echo and grains in each track's delay; each track's Sends; Home three rows (Level and Tempo, Space, Pan); Vary's Keep is Evolve."
+  "sha256": "2ec2f2536cdf358bb4c97b3240be5d55aa50e83370900ddd18e8aae505ae295e",
+  "note": "GLO's Space heard: each synth sends to it again (the first song as 0.4.17 did, INIT and a new project 48), a full send about as loud as the sound, Lofi's tail back."
 }
