@@ -965,6 +965,49 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* MIDI notes as chords (a player's ask, 2026-10-27): with the Keys row at All, a note in plays the chord the key
+         * would, at its velocity, and lets it go whole; at Keys: Chord, a single note; past the slots, single notes;
+         * into the arp when it is on, nothing left on; every note on every channel, on and off, safe */
+        int v, j, on, want, bad = 0, ch_;
+        uint8_t kc[7];
+        dmk_init(28); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); sp_sync();   /* Keys: All (ARP lit) */
+        want = chord_key(60, ui.octave, kc);            /* (the key on C4's chord) */
+        dmk_midi(0x90, 60, 90); wait_ms(200);
+        on = 0;
+        for (v = 0; v < DMK_VOICES; v++) if (vc[v].on && vc[v].sy == ui.synth) { on++; if (vc[v].src != SRC_MIDI || vc[v].vel != 90) bad = 1; }
+        for (j = 0; j < want; j++) { int f = 0; for (v = 0; v < DMK_VOICES; v++) f |= vc[v].on && vc[v].sy == ui.synth && vc[v].note == kc[j]; if (!f) bad = 1; }
+        if (want < 3 || on != want || bad) { fails++; printf("selftest: a MIDI note at Keys: All is not the key's chord (%d of %d voices%s)\n", on, want, bad ? ", wrong notes or velocity" : ""); }
+        dmk_midi(0x80, 60, 0); wait_ms(30);
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: a MIDI chord let go leaves %d on\n", on); }
+        dmk_midi(0x90, 60, 90); wait_ms(60); dmk_midi(0x90, 60, 70); wait_ms(60); dmk_midi(0x90, 60, 0); wait_ms(30);   /* (again while held; an on at 0 its off) */
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: a MIDI chord struck again leaves %d on\n", on); }
+        ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); sp_sync();   /* Keys: Chord: MIDI's a note */
+        dmk_midi(0x90, 62, 90); wait_ms(60);
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on != 1) { fails++; printf("selftest: a MIDI note at Keys: Chord is not one note (%d)\n", on); }
+        dmk_midi(0x80, 62, 0); wait_ms(30);
+        ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); sp_sync();
+        for (j = 0; j < MI_CHORDS + 2; j++) { dmk_midi(0x90, 40 + j * 3, 100); wait_ms(9); }   /* past the slots */
+        for (j = 0; j < MI_CHORDS + 2; j++) dmk_midi(0x80, 40 + j * 3, 0);
+        wait_ms(30);
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: MIDI chords past the slots leave %d on\n", on); }
+        ui.val[ui.synth][PG_ROLL][2][0] = choice_val(AR_UP, AR_N); sp_sync();   /* the arp on: the chord its pool */
+        dmk_midi(0x90, 57, 100); wait_ms(400); dmk_midi(0x80, 57, 0); wait_ms(400);
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: a MIDI chord through the arp leaves %d on\n", on); }
+        ui.val[ui.synth][PG_ROLL][2][0] = 0; sp_sync();
+        for (ch_ = 0; ch_ < 16; ch_++) for (j = 0; j < 128; j += 5) dmk_midi(0x90 | ch_, j, 1 + j);
+        wait_ms(60);
+        for (ch_ = 0; ch_ < 16; ch_++) for (j = 0; j < 128; j += 5) dmk_midi(0x80 | ch_, j, 0);
+        wait_ms(60);
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
+        if (on) { fails++; printf("selftest: MIDI chords on every channel leave %d on\n", on); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {
         int on = 0, v;
         dmk_init(27); now_ms = 0; wait_ms(60); ui.boot_done = 1;

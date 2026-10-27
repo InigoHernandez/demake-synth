@@ -76,16 +76,17 @@ static char ch_name[24];                                /* (F#maj7#11/C#: 19 byt
 
 /* ---- the strum's queue: notes to start a few ms from now, as the render runs */
 #define LATER_N 16
-/* own: who started it (a key + 1, or 0 the chord machine), so letting one key go never cancels another's note to come */
-static struct { int32_t at; uint8_t sy, note, src, own, used; } later[LATER_N];
-static void later_on(int sy, int note, int32_t samples, int src, int own)
+/* own: who started it (a key + 1, a MIDI chord MI_OWN + its slot, or 0 the chord machine), so letting one key go never
+ * cancels another's note to come; vel: its velocity (a MIDI note's own) */
+static struct { int32_t at; uint8_t sy, note, src, own, vel, used; } later[LATER_N];
+static void later_on(int sy, int note, int32_t samples, int src, int own, int vel)
 {
     int i;
-    if (samples <= 0) { note_on_src(sy, note, src); return; }
+    if (samples <= 0) { note_on_vel(sy, note, src, vel); return; }
     for (i = 0; i < LATER_N && later[i].used; i++) {}
-    if (i == LATER_N) { note_on_src(sy, note, src); return; }
+    if (i == LATER_N) { note_on_vel(sy, note, src, vel); return; }
     later[i].at = samples; later[i].sy = (uint8_t)sy; later[i].note = (uint8_t)note; later[i].src = (uint8_t)src;
-    later[i].own = (uint8_t)own; later[i].used = 1;
+    later[i].own = (uint8_t)own; later[i].vel = (uint8_t)vel; later[i].used = 1;
 }
 static void later_off(int sy, int note, int src, int own)   /* off, or never started if it was still to come (then no
                                                            off: it would end another's of that note) */
@@ -99,7 +100,7 @@ static void later_tick(int frames)
 {
     int i;
     for (i = 0; i < LATER_N; i++)
-        if (later[i].used && (later[i].at -= frames) <= 0) { later[i].used = 0; note_on_src(later[i].sy, later[i].note, later[i].src); }
+        if (later[i].used && (later[i].at -= frames) <= 0) { later[i].used = 0; note_on_vel(later[i].sy, later[i].note, later[i].src, later[i].vel); }
 }
 
 /* ---- pitch-class sets: the scale, the chord, the scale as the chord bends it (plan 4.6) */
@@ -349,16 +350,16 @@ static int diatonic(int n, int8_t *iv)
 }
 
 /* strike notes on a synth, strummed */
-static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms, int own)
+static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms, int own, int vel)
 {
     int i, ms = ch.strum < 0 ? -ch.strum : ch.strum;
     if (most_ms > 0 && n > 1 && ms * (n - 1) > most_ms) ms = most_ms / (n - 1);   /* all in before the next pulse */
     for (i = 0; i < n; i++) {
         int k = ch.strum < 0 ? n - 1 - i : i;
-        later_on(sy, notes[k], (int32_t)ms * i * (DMK_SR / 1000), src, own);
+        later_on(sy, notes[k], (int32_t)ms * i * (DMK_SR / 1000), src, own, vel);
     }
 }
-static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1); }   /* a key's */
+static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1, VEL_KEY); }   /* a key's */
 /* how late note k of n starts after the first as a key strums it: Q8 steps at the tempo (strike_src's order and
  * spacing) */
 static uint32_t strum_q8(int k, int n)
@@ -399,7 +400,7 @@ static void chord_strike(int s, const uint8_t *notes, int n, int most_ms)
         ch_sp[s][k++] = (uint8_t)m;
     }
     ch_sn[s] = (uint8_t)k;
-    strike_src(s, ch_sp[s], k, SRC_CHORD, most_ms, 0);
+    strike_src(s, ch_sp[s], k, SRC_CHORD, most_ms, 0, VEL_KEY);
 }
 /* a synth that comes to play the chords while they hold (set to Plays chords, unmuted): the chord sounding now, not
  * silence until the next */

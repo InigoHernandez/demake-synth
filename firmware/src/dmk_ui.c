@@ -3516,6 +3516,36 @@ static void mi_start(void)                              /* the outside start, on
     if (song_mode && song_n) song_start(0);
     seq_play(1);
 }
+/* MIDI notes as chords (a player's ask, 2026-10-27: "Can incoming MIDI trigger the ARP/CHORD engine if it is locked
+ * on?"): with the Keys row at All (ARP lit), a note in plays the chord a key there would (the key's octave, the one
+ * the keyboard is at when the note is on it), on its synth, strummed, at its velocity, into the arp if it is on; held
+ * in a few slots (more at once: single notes) and let go as it began */
+#define MI_CHORDS 6
+#define MI_OWN 32                                       /* (later's own: past the keys' 1-27) */
+static struct { uint8_t on, st, note, sy, n, ch[7]; } mi_chd[MI_CHORDS];
+static int mi_chord_off(int st, int d1)                 /* 1: it held a chord, let go */
+{
+    int i, j;
+    for (i = 0; i < MI_CHORDS; i++)
+        if (mi_chd[i].on && mi_chd[i].st == (st & 15) && mi_chd[i].note == d1) {
+            for (j = 0; j < mi_chd[i].n; j++) later_off(mi_chd[i].sy, mi_chd[i].ch[j], SRC_MIDI, MI_OWN + i);
+            mi_chd[i].on = 0;
+            return 1;
+        }
+    return 0;
+}
+static int mi_chord_on(int s, int st, int d1, int vel)  /* 1: played as a chord */
+{
+    int i, oct = ui.octave, lo = 53 + ui.octave * 12;
+    if (!ch.keys) return 0;
+    for (i = 0; i < MI_CHORDS && mi_chd[i].on; i++) {}
+    if (i == MI_CHORDS) return 0;
+    if (d1 < lo || d1 >= lo + DMK_KEYS) oct = clampi(d1 >= 53 ? (d1 - 53) / 12 : -((53 - d1 + 11) / 12), -2, 2);
+    mi_chd[i].n = (uint8_t)chord_key(d1, oct, mi_chd[i].ch);
+    mi_chd[i].on = 1; mi_chd[i].st = (uint8_t)(st & 15); mi_chd[i].note = (uint8_t)d1; mi_chd[i].sy = (uint8_t)s;
+    strike_src(s, mi_chd[i].ch, mi_chd[i].n, SRC_MIDI, 0, MI_OWN + i, vel);
+    return 1;
+}
 static void midi_in(int st, int d1, int d2)
 {
     int ty = st & 0xF0, s, f;
@@ -3540,6 +3570,7 @@ static void midi_in(int st, int d1, int d2)
     if (st == 0xFC) { mi_armed = 0; if (clock_ext) seq_play(0); return; }   /* stop */
     if ((ty != 0x80 && ty != 0x90) || d1 < 0 || d1 > 127) return;
     s = midi_chans && (st & 15) < DMK_SYNTHS ? st & 15 : ui.synth;
+    if (mi_chord_off(st, d1) && !(ty == 0x90 && d2)) return;   /* its chord let go (again: a new one, below) */
     if (mi_sy[st & 15][d1]) {                           /* on already: the synth it began on; ended first if again */
         int s0 = mi_sy[st & 15][d1] - 1;
         mi_sy[st & 15][d1] = 0;
@@ -3548,6 +3579,7 @@ static void midi_in(int st, int d1, int d2)
             for (f = 0; f < DMK_SYNTHS; f++) if (mi_hn[s0][d1][f]) { note_off_src(f, mi_hn[s0][d1][f] - 1, SRC_MIDI); mi_hn[s0][d1][f] = 0; }
         if (!(ty == 0x90 && d2)) return;
     } else if (!(ty == 0x90 && d2)) return;             /* an off for nothing on */
+    if (mi_chord_on(s, st, d1, d2)) return;
     {
         mi_sy[st & 15][d1] = (uint8_t)(s + 1);
         note_on_vel(s, d1, SRC_MIDI, d2);               /* its velocity heard (VOICE's Velocity); not sent back out */
