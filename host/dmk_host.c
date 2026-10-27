@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #ifndef DMK_TEXT_AUDIT
 #define DMK_TEXT_AUDIT 1
 #define DMK_VER "0.0"                                   /* (the FM-1's build: the release's; here, to see it placed) */
@@ -412,6 +413,9 @@ static void sp_host_run(void)
     }
 }
 
+/* the second core as the self-test takes it: the job at once, then the first core's share */
+static int sp_par_begin(void (*job)(void)) { job(); return 1; }
+static void sp_par_end(void) {}
 static void selftest(void)
 {
     int16_t b[512 * 2];
@@ -595,13 +599,14 @@ static void selftest(void)
             { fails++; printf("selftest: PLAY twice on an empty slot is not an empty project\n"); }
         {                                               /* and with no effect (the owner): none on the synths, none on the mix */
             int fx = 0;
-            for (int q = 0; q < DMK_SYNTHS; q++) fx += ui.val[q][PG_FX][0][4] + ui.val[q][PG_FX][1][4] + ui.val[q][PG_FX][2][4] + ui.val[q][PG_FX][3][0]
-                                                     + ui.val[q][PG_FX][3][1] + ui.val[q][PG_LFO][0][1] + ui.val[q][PG_SOUND][1][0];
+            for (int q = 0; q < DMK_SYNTHS; q++) fx += ui.val[q][PG_FX][0][4] + ui.val[q][PG_FX][1][4] + ui.val[q][PG_FX][2][4]
+                                                     + ui.val[q][PG_FX][3][1] + ui.val[q][PG_LFO][0][1] + ui.val[q][PG_SOUND][1][0]
+                                                     + (ui.val[q][PG_FX][3][0] != SP_SEND_INIT);   /* (its send: INIT's, the Space off) */
             fx += ui.val[0][PG_GLOBAL][0][4] + ui.val[0][PG_GLOBAL][1][4] + ui.val[0][PG_GLOBAL][2][4];
             if (fx) { fails++; printf("selftest: a new project has effects on\n"); }
             ui.val[2][PG_FX][2][4] = choice_val(FO_CHORUS, FX_MOTIONS); ui.val[2][PG_FX][3][0] = 90; sp_sync();
             sound_init(2);
-            if (ui.val[2][PG_FX][2][4] || ui.val[2][PG_FX][3][0]) { fails++; printf("selftest: INIT leaves an effect on\n"); }
+            if (ui.val[2][PG_FX][2][4] || ui.val[2][PG_FX][3][0] != SP_SEND_INIT) { fails++; printf("selftest: INIT leaves an effect on, or its send is not INIT's\n"); }
         }
         {                                               /* the list: still from 01 till the cursor passes 04, then by one */
             tap(B_SAVE); save_pick(0);
@@ -1410,14 +1415,14 @@ static void selftest(void)
         char t[16];
         dmk_init(38); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         tap(B_FX); for (int i = 0; i < 6 && ui.row[PG_FX] != 3; i++) tap(B_FX);
-        { int s = ui.synth, o = (s + 1) % DMK_SYNTHS, a0 = ui.val[s][PG_FX][0][0];
+        { int s = ui.synth, o = (s + 1) % DMK_SYNTHS, a0 = ui.val[s][PG_FX][0][0], s0 = ui.val[s][PG_FX][3][0], o0 = syn[o].ssend;
           static uint8_t before[sizeof ui.val];
           if (strcmp(PAGE[PG_FX].row[3], "Sends") || strcmp(PAGE[PG_FX].k[3][0], "Space") || PAGE[PG_FX].algo[3][0]) { fails++; printf("selftest: FX's last row is not Sends, its K1 not Space\n"); }
           memcpy(before, ui.val, sizeof before);
           dmk_encoder(E_ALGO, 1); dmk_encoder(E_K2, 7);
           if (memcmp(before, ui.val, sizeof before)) { fails++; printf("selftest: Sends' ALGO or K2 changes something\n"); }
           dmk_encoder(E_K1, 5);
-          if (ui.val[s][PG_FX][3][0] != 5 || syn[s].ssend != 5 * 258 || ui.val[s][PG_FX][0][0] != a0 || syn[o].ssend) { fails++; printf("selftest: Sends' K1 is not the synth's own send to the Space\n"); } }
+          if (ui.val[s][PG_FX][3][0] != s0 + 5 || syn[s].ssend != (s0 + 5) * 258 || ui.val[s][PG_FX][0][0] != a0 || syn[o].ssend != o0) { fails++; printf("selftest: Sends' K1 is not the synth's own send to the Space\n"); } }
         ui.val[ui.synth][PG_FX][3][0] = 0; t[0] = 0; val_text(t, PG_FX, 3, 0);
         if (strcmp(t, "Off")) { fails++; printf("selftest: a send at 0 reads %s\n", t); }
         ui.val[ui.synth][PG_FX][0][0] = 0; t[0] = 0; val_text(t, PG_FX, 0, 0);
@@ -1764,11 +1769,42 @@ static void selftest(void)
         for (i = 0; i < 40; i++) dmk_render(ob, 512);   /* (0.5 s: the synths' DC blockers settled) */
         for (v = 0; v < 1024; v++) { int a = ob[v] < 0 ? -ob[v] : ob[v]; if (a > pk) pk = a; }
         if (pk || gcol.colour || gp.stype || sps.cur) { fails++; printf("selftest: a new project is not dry (%d after a note)\n", pk); }
-        for (k = 0; k < DMK_SYNTHS; k++) if (syn[k].rtype || syn[k].dtype || syn[k].ssend) { fails++; printf("selftest: a new project's synth %d has an effect\n", k + 1); }
+        for (k = 0; k < DMK_SYNTHS; k++) if (syn[k].rtype || syn[k].dtype || syn[k].ssend != SP_SEND_INIT * 258) { fails++; printf("selftest: a new project's synth %d has an effect, or sends the Space nothing\n", k + 1); }
         dmk_init(46); now_ms = 0; wait_ms(60); ui.boot_done = 1;
         ui.val[1][PG_FX][3][0] = 100; ui.val[1][PG_FX][1][4] = choice_val(DT_GRAINS, DT_N); sp_sync();
         sound_init(1);
-        if (syn[1].rtype || syn[1].dtype || syn[1].ssend || syn[1].motion) { fails++; printf("selftest: INIT leaves an effect or a send to the Space\n"); }
+        if (syn[1].rtype || syn[1].dtype || syn[1].ssend != SP_SEND_INIT * 258 || syn[1].motion) { fails++; printf("selftest: INIT leaves an effect, or its send to the Space is not INIT's\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* GLO's Space heard (the owner: "not sounding"; 0.4.18 sent it nothing, and at a full send it sat 9 dB under the
+         * sound): in the first song and in a new project with a type turned on, each type through the render (both
+         * cores' jobs), a chord on the first synth: its wet (the render less the same with the Space off) in the chord
+         * within 20 dB of the sound at the synth's own send, its tail after it within 30 dB (0.4.18's: nothing at all) */
+        static int16_t a[2][DMK_SR * 4 * 2 + 256 * 2];   /* (the last render runs past 4 s: 4 s is no run's multiple) */
+        int t, pr, run, k, n;
+        for (pr = 0; pr < 4; pr++)                      /* (a new project or not; the jobs in place, or as the FM-1's
+                                                           second core takes them) */
+            for (t = SP_HALL; t < SP_N; t++) {
+                double dry = 0, wet = 0, tail = 0;
+                for (run = 0; run < 2; run++) {
+                    dmk_init(52); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+                    if (pr & 1) project_empty();
+                    dmk_par_begin = pr & 2 ? sp_par_begin : 0; dmk_par_end = pr & 2 ? sp_par_end : 0;
+                    for (k = 0; k < DMK_SYNTHS; k++) ui.val[k][PG_FX][0][4] = 0;   /* (the synth's own reverb off: the Space alone) */
+                    ui.val[0][PG_GLOBAL][1][4] = choice_val(run ? t : SP_OFF, SP_N);
+                    sp_sync();
+                    for (n = 0; n < DMK_SR * 4; n += 256) {
+                        if (!n) { note_on_s(0, 57); note_on_s(0, 64); }
+                        if (n == DMK_SR * 2 - (DMK_SR * 2) % 256) { note_off_s(0, 57); note_off_s(0, 64); }
+                        dmk_render(a[run] + n * 2, 256);
+                    }
+                }
+                for (n = DMK_SR / 2 * 2; n < DMK_SR * 2 * 2; n++) { double d = a[0][n], w = (double)a[1][n] - a[0][n]; dry += d * d; wet += w * w; }
+                for (n = (DMK_SR * 5 / 2) * 2; n < DMK_SR * 4 * 2; n++) { double w = (double)a[1][n] - a[0][n]; tail += w * w; }
+                dmk_par_begin = 0; dmk_par_end = 0;
+                if (!(dry > 0) || wet * 100 < dry || tail * 1000 < dry) { fails++; printf("selftest: %s%s, Space %s: not heard (wet %.1f dB, tail %.1f dB under the sound)\n", pr & 1 ? "a new project" : "the first song", pr & 2 ? " on two cores" : "", SPACES[t], dry > 0 && wet > 0 ? 10 * log10(dry / wet) : 99.0, dry > 0 && tail > 0 ? 10 * log10(dry / tail) : 99.0); }
+                if (getenv("DMK_SPACE_TIMES")) printf("  %s%s space %-8s wet %5.1f dB, tail %5.1f dB under\n", pr & 1 ? "new" : "first", pr & 2 ? " x2" : "", SPACES[t], 10 * log10(dry / wet), 10 * log10(dry / tail));
+            }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {   /* the audit's: FINE past the recording's own cents carries into the semitone (it stopped); a note far up reads at
@@ -1911,8 +1947,9 @@ static void selftest(void)
         dmk_encoder(E_K2, -4);
         if (ui.val[1][PG_AMP][0][4] != 92) { fails++; printf("selftest: Level's K2 is not synth 2's level\n"); }
         dmk_encoder(E_ALGO, 1);
-        dmk_encoder(E_K1, 10); dmk_encoder(E_K3, 5);
-        if (ui.val[0][PG_FX][3][0] != 10 || syn[0].ssend != 10 * 258 || ui.val[2][PG_FX][3][0] != 5 || ui.val[1][PG_FX][3][0]) { fails++; printf("selftest: Home's Space row is not the synths' sends\n"); }
+        { int v0 = ui.val[0][PG_FX][3][0], v1 = ui.val[1][PG_FX][3][0], v2 = ui.val[2][PG_FX][3][0];   /* (the first song's sends) */
+          dmk_encoder(E_K1, 10); dmk_encoder(E_K3, 5);
+          if (ui.val[0][PG_FX][3][0] != v0 + 10 || syn[0].ssend != (v0 + 10) * 258 || ui.val[2][PG_FX][3][0] != v2 + 5 || ui.val[1][PG_FX][3][0] != v1) { fails++; printf("selftest: Home's Space row is not the synths' sends\n"); } }
         { int r0 = ui.val[0][PG_GLOBAL][1][0]; dmk_encoder(E_K4, -3);
           if (ui.val[0][PG_GLOBAL][1][0] != r0 - 3 || gp.sret != (r0 - 3) * 258) { fails++; printf("selftest: Space's K4 on Home is not the Space's return\n"); } }
         dmk_encoder(E_ALGO, 1);

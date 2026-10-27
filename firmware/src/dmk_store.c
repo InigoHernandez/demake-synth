@@ -196,8 +196,10 @@ static int sound_del(int slot)
 }
 static void lib_load(int s, int slot) { if (slot >= 0 && slot < ST_USER && lib[slot][0]) sound_get(s, &lib[slot][2], lib[slot][1]); }
 
-/* INIT: the synth's sound as the first song has it (its recording kept), with no effect at all (the owner): its
- * reverb, delay and motion off, nothing sent to the Space, no layer, no LFO */
+/* INIT: the synth's sound as the first song has it (its recording kept), with no effect of its own (the owner): its
+ * reverb, delay and motion off, no layer, no LFO; its send to the Space at SP_SEND_INIT, as the mix's colour and media
+ * take it (the Space is the mix's: at 0, turning it on gave nothing, the owner) */
+#define SP_SEND_INIT 48
 DMK_SMALL static void sound_init(int s)
 {
     uint8_t keep = ui.val[s][PG_SOUND][0][0];
@@ -207,7 +209,7 @@ DMK_SMALL static void sound_init(int s)
     ui.val[s][PG_SOUND][1][4] = keep;                   /* its layer starts as its own recording */
     ui.val[s][PG_SOUND][1][0] = 0;                      /* (the layer off) */
     for (r = 0; r < 3; r++) ui.val[s][PG_FX][r][4] = 0;
-    ui.val[s][PG_FX][3][0] = ui.val[s][PG_FX][3][1] = 0;   /* (its send to the Space) */
+    ui.val[s][PG_FX][3][0] = SP_SEND_INIT; ui.val[s][PG_FX][3][1] = 0;   /* (its send to the Space; K2: none) */
     ui.val[s][PG_LFO][0][1] = 0;                        /* (the LFO's depth) */
     sp_sync();
 }

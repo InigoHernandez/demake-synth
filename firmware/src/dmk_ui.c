@@ -481,11 +481,12 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
          * octave fed back (under its runaway); REVERSE's SIZE is LENGTH (93 .. 370 ms), its tail a mid one's; FREEZE's
          * SIZE is HOLD, the new sound let in falling and the damping opening as it rises (the old one's let more than all
          * in, its damping past one at the bottom: a runaway). Each type's level about the hall's */
-        static const uint32_t DC[SP_N] = {0, 120600, 89714, 105094, 105094, 210188, 105094, 46957, 34484};
-        static const uint32_t DS[SP_N] = {0, 230718, 360170, 313760, 278629, 190806, 217706, 0, 355547};
+        static const uint32_t DC[SP_N] = {0, 120600, 89714, 105094, 105094, 120600, 105094, 46957, 34484};
+        static const uint32_t DS[SP_N] = {0, 230718, 360170, 313760, 278629, 230718, 217706, 0, 355547};
         static const uint16_t MD[SP_N] = {0, 2048, 4096, 6144, 1536, 8192, 2048, 2048, 3072};   /* the sweep at MOD's top */
         static const uint32_t RT[SP_N] = {0, 58435, 31165, 25322, 38957, 97392, 31165, 31165, 19478};
-        static const uint16_t GN[SP_N] = {256, 142, 129, 115, 141, 113, 110, 173, 123};   /* (as loud as the shared verbs were) */
+        static const uint16_t GN[SP_N] = {256, 374, 302, 334, 1136, 454, 274, 446, 738};   /* (a full send about as loud as
+                                                           the sound itself, measured: the owner heard nothing at the shared verbs' levels) */
         int t = choice_index(choice_of(PG_GLOBAL, 1, 4), VS(0, PG_GLOBAL, 1, 4)), sz = VS(0, PG_GLOBAL, 1, 2), md = VS(0, PG_GLOBAL, 1, 3), d;
         uint32_t q = exp2n((uint32_t)sz * DS[t] / 127u), x = (uint32_t)(((uint64_t)DC[t] * q) >> 16);
         gp.stype = (uint8_t)t;
@@ -603,7 +604,9 @@ DMK_SMALL static void ui_init(void)
         ui.val[s][PG_FX][1][3] = 64; ui.val[s][PG_FX][1][4] = choice_val(DT_TAPE, DT_N);
         roll_vary_defaults(s);
         arp_defaults(s);
-        ui.val[s][PG_FX][3][0] = 0; ui.val[s][PG_FX][3][1] = 0;   /* nothing sent to the Space; (K2: none) */
+        ui.val[s][PG_FX][3][0] = (uint8_t)(t[10] * 84 / 127);   /* to the Space what 0.4.17 sent its shared hall (0.4.18
+                                                           sent nothing: GLO's Space was silent, the owner) */
+        ui.val[s][PG_FX][3][1] = 0;                     /* (K2: none) */
         ui.val[s][PG_FX][3][2] = t[12];
         snd_new_defaults(s);
     }
@@ -614,7 +617,7 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
     ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* keys: chords on CHORD, sevenths */
     ui.val[0][PG_GLOBAL][0][4] = 0;                     /* the mix's colour: none */
-    ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_HALL, SP_N);   /* the Space: the shared hall of before, nothing sent yet */
+    ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_HALL, SP_N);   /* the Space: the shared hall of before */
     ui.val[0][PG_GLOBAL][1][0] = 84; ui.val[0][PG_GLOBAL][1][1] = 56; ui.val[0][PG_GLOBAL][1][2] = 96;
     ui.val[0][PG_GLOBAL][1][3] = 64;
     ui.val[0][PG_GLOBAL][2][4] = choice_val(FM_TAPE, FX_MEDIAS);   /* the mix's media: tape, a little wow */

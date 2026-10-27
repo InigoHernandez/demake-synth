@@ -1183,7 +1183,8 @@ static int rv_busy(int s) { return rvs[s].cur || syn[s].rtype; }
  * line, TONE's damping, an all-pass, a line, into the other half through the decay; the reverbs a track's PLATE is it
  * at a sixth), its SIZE the decay of the type's range, its MOD the sweep. HALL to 21 s, swept a little; SPACE to two
  * minutes, wider; HAZE deep and slow, darker; BLOOM the hall fed through a swell (a slow follower over a fast one: a
- * new sound rises into the space); LOFI held at 11 kHz into the tank, kept at fewer bits, out at 8, wowing deep;
+ * new sound rises into the space); LOFI held at 11 kHz into the tank, kept at fewer bits in it and out of it, the
+ * hall's decay, wowing deep;
  * SHIMMER its sound an octave up fed back in (a pitch shifter: two taps sliding through a short window, crossfaded);
  * REVERSE the sound read backwards in segments into a mid tail; FREEZE nearly lossless, only so much new sound let in
  * (HOLD: all of it held at the top, five minutes). The eight-line network of before cost twice this for the same
@@ -1282,7 +1283,7 @@ static inline int32_t sp_shimmer(int32_t x)
     return x + ((v * gp.sshine) >> 15);
 }
 #define TKM(k, d) m[(w + TK_B[k] + (uint32_t)(d)) & SP_MASK]
-#define TKQ(v) (lofi ? ((v) < 0 ? -(-(v) & ~31) : (v) & ~31) : (v))   /* (LOFI: fewer bits kept, towards zero) */
+#define TKQ(v) (lofi ? ((v) < 0 ? -(-(v) & ~7) : (v) & ~7) : (v))   /* (LOFI: fewer bits kept, towards zero) */
 /* a block (eight steps) of type t: its way in (in: the sends' sum a step, at the mix's level), the type's own, the
  * all-passes, the tank; out to ol, orr at the type's level, its return and its share glided from g0 to g1 */
 #define SP_IN 2                                         /* the way in down, the way out up (bits): the tank's headroom */
@@ -1302,7 +1303,7 @@ static void sp_block(int t, const int32_t *in, int32_t *ol, int32_t *orr, int32_
         if (bg > 32768) bg = 32768;
     }
     for (i = 0; i < RV_ST; i++, w--) {
-        int32_t x = clampi(in[i] >> (1 + SP_IN), -32767, 32767), e, a, b;   /* (halved, as the shared verb's was) */
+        int32_t x = clampi(in[i] >> (1 + SP_IN), -32767, 32767), e, a, b;   /* (halved: the lines' headroom at every knob's top) */
         e = (x - hp) * 470 + he; hp += e >> 15; he = e & 32767;   /* a low cut, ~50 Hz: no boom building up */
         x -= hp;
         any |= x;
@@ -1343,9 +1344,11 @@ static void sp_block(int t, const int32_t *in, int32_t *ol, int32_t *orr, int32_
         int32_t p, c;
         loud |= (uint32_t)(yl[i] + 3) > 6u || (uint32_t)(yr[i] + 3) > 6u;
         gs += gd;
+        if (lofi) { yl[i] = TKQ(yl[i]); yr[i] = TKQ(yr[i]); }   /* out at fewer bits too: the tank's, before the return
+                                                           (at the mix's 8 bits a quiet return was cut to nothing) */
         p = (int32_t)(((int64_t)yl[i] * gs) >> (16 - SP_IN)); c = (int32_t)(((int64_t)yr[i] * gs) >> (16 - SP_IN));
-        if (lofi) { p = p < 0 ? -(-p & ~255) : p & ~255; c = c < 0 ? -(-c & ~255) : c & ~255; }   /* out at 8 bits */
-        ol[i] = p; orr[i] = c;
+        ol[i] = clampi(p, -98304, 98304); orr[i] = clampi(c, -98304, 98304);   /* (three times full at most: the mix's
+                                                           media takes it unheld) */
     }
     if (!any && !loud) sps.quiet = (uint16_t)(sps.quiet + RV_ST > RV_SLEEP ? RV_SLEEP : sps.quiet + RV_ST);
     else sps.quiet = 0;
