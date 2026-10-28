@@ -58,11 +58,11 @@ static prog_t uprog[4] = {{"User 1", MO_AEOL, VO_WIDE, 0, {{0}}}, {"User 2", MO_
 /* the song's harmony, set from the CHORD page (sp_sync) */
 static struct {
     uint8_t prog, voicing, invert, spread, change, rhythm;   /* invert: 0 AUTO, then 1..4 the inversions 0..3 */
-    int16_t strum;                                       /* ms between voices, + up, - down */
+    int16_t strum[DMK_SYNTHS];                           /* ms between voices, + up, - down: each synth's (a player's ask) */
     uint8_t follow[DMK_SYNTHS];
     uint8_t keys, ktype;                                 /* the keys play chords: on CHORD (0) or everywhere (1); their type */
     int8_t hint[DMK_SYNTHS];                             /* HARMONY: the interval over the lead, in scale steps (-7..7) */
-} ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, 0, {FW_PLAYS, FW_KEY, FW_ROOT}, 0, 0, {2, 2, 2}};
+} ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, {0, 0, 0}, {FW_PLAYS, FW_KEY, FW_ROOT}, 0, 0, {2, 2, 2}};
 enum { KT_SEVENTH, KT_TRIAD, KT_NINTH, KT_ADD9, KT_SUS2, KT_SUS4, KT_69, KT_POWER, KT_COUNT };
 
 /* what sounds: the slot, its notes as voiced (the last ones too, for AUTO), its tones as a mask */
@@ -357,19 +357,19 @@ static int diatonic(int n, int8_t *iv)
 /* strike notes on a synth, strummed */
 static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms, int own, int vel)
 {
-    int i, ms = ch.strum < 0 ? -ch.strum : ch.strum;
+    int st = ch.strum[sy < DMK_SYNTHS ? sy : 0], i, ms = st < 0 ? -st : st;
     if (most_ms > 0 && n > 1 && ms * (n - 1) > most_ms) ms = most_ms / (n - 1);   /* all in before the next pulse */
     for (i = 0; i < n; i++) {
-        int k = ch.strum < 0 ? n - 1 - i : i;
+        int k = st < 0 ? n - 1 - i : i;
         later_on(sy, notes[k], (int32_t)ms * i * (DMK_SR / 1000), src, own, vel);
     }
 }
 static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1, VEL_KEY); }   /* a key's */
 /* how late note k of n starts after the first as a key strums it: Q8 steps at the tempo (strike_src's order and
  * spacing) */
-static uint32_t strum_q8(int k, int n)
+static uint32_t strum_q8(int s, int k, int n)
 {
-    int ms = ch.strum < 0 ? -ch.strum : ch.strum, i = ch.strum < 0 ? n - 1 - k : k;
+    int st = ch.strum[s], ms = st < 0 ? -st : st, i = st < 0 ? n - 1 - k : k;
     return (uint32_t)ms * (uint32_t)i * (DMK_SR / 1000) * 256u / (seq_per_q8() >> 8);
 }
 /* note k of a chord of n (one alone: 0 of 1) into synth s's roll as it strums, from a to e (Q8 steps on its roll,
@@ -378,7 +378,7 @@ static uint32_t strum_q8(int k, int n)
  * is. Its index, or -1: the roll full */
 static int roll_strum(int s, uint32_t a, uint32_t e, int note, int vel, int k, int n, int keep)
 {
-    uint32_t p = a + strum_q8(k, n);
+    uint32_t p = a + strum_q8(s, k, n);
     int st = (int)(p >> 8), len = e > p ? (int)((e - p + 128u) >> 8) : 1, i;
     len = len < 1 ? 1 : len > SEQ_LEN ? SEQ_LEN : len;
     st %= sq[s].steps;

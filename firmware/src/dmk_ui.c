@@ -350,10 +350,13 @@ static uint8_t ui_first[DMK_SYNTHS][SND_BYTES];         /* INIT: each synth's so
  * each synth's level (AMP), its send to the Space and its pan (FX's Sends row) */
 static int per_synth(int page) { return page == PG_SOUND || page == PG_FILTER || page == PG_AMP || page == PG_FX || page == PG_LFO; }
 static int dl_type(int s) { int t = ui.val[s][PG_FX][1][4] * DT_N / 128; return t < DT_N ? t : DT_N - 1; }   /* its delay's */
+/* a knob either side of its middle to +-n: -n at 0, +n at its top (127: (v - 64) n / 64 stopped a step short) */
+static int tune_of(int v, int n) { return v >= 127 ? n : (v - 64) * n / 64; }
 static uint8_t *vp(int page, int row, int k)
 {
     if (page == PG_CHORD && k == 4) return &ui.val[0][PG_CHORD][0][4];  /* the progression, on both rows */
-    if (page == PG_CHORD && row == 2 && k == 0) return &ui.val[ui.synth][PG_CHORD][2][0];   /* Keys: each synth's */
+    if (page == PG_CHORD && ((row == 2 && k == 0) || (row == 0 && k == 3))) return &ui.val[ui.synth][page][row][k];   /* Keys and
+                                                           Strum: each synth's */
     if (page == PG_LFO && k == 4) return &ui.val[ui.synth][PG_LFO][0][4];   /* the LFO's target, on both rows */
     if (page == PG_ROLL && row == 1 && k < 4) return &ui.val[ui.synth][PG_ROLL][1][k];   /* Vary: each synth's own (it
                                                            was the first synth's whichever was picked: the owner) */
@@ -386,8 +389,8 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
         p->la = (uint16_t)v;
         v += 1 + VS(s, PG_SOUND, 3, 1) * (sm->blocks - 1) / 127;
         p->lb = (uint16_t)(v > sm->blocks ? sm->blocks : v);
-        p->tune = (int16_t)((VS(s, PG_SOUND, 0, 3) - 64) * 24 / 64);
-        p->fine = (int8_t)((VS(s, PG_SOUND, 0, 4) - 64) * 50 / 64);
+        p->tune = (int16_t)tune_of(VS(s, PG_SOUND, 0, 3), 24);   /* (its top +24: it stopped at +23, a player) */
+        p->fine = (int8_t)tune_of(VS(s, PG_SOUND, 0, 4), 50);
         p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 8 / 128);
         p->cut = (int16_t)(VS(s, PG_FILTER, 0, 0) >= 127 ? 255 : VS(s, PG_FILTER, 0, 0) * 2);
         p->resq = T_RESQ[VS(s, PG_FILTER, 0, 1)];
@@ -521,7 +524,7 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
     ch.voicing = (uint8_t)(VS(0, PG_CHORD, 0, 0) * 5 / 128);
     ch.invert = (uint8_t)(VS(0, PG_CHORD, 0, 1) * 5 / 128);
     ch.spread = (uint8_t)(VS(0, PG_CHORD, 0, 2) * 4 / 128);
-    ch.strum = (int16_t)((VS(0, PG_CHORD, 0, 3) - 64) * 250 / 64);
+    for (s = 0; s < DMK_SYNTHS; s++) ch.strum[s] = (int16_t)((VS(s, PG_CHORD, 0, 3) - 64) * 250 / 64);   /* each synth's */
     ch.prog = (uint8_t)(VS(0, PG_CHORD, 0, 4) * 20 / 128);
     seq_key = (uint8_t)(VS(0, PG_CHORD, 1, 0) * 12 / 128);
     seq_mode = (uint8_t)(VS(0, PG_CHORD, 1, 1) * 6 / 128);
@@ -620,7 +623,8 @@ DMK_SMALL static void ui_init(void)
     }
     ui.val[0][PG_HOME][0][4] = 72;                      /* tempo 72 */
     ui.val[0][PG_CHORD][0][0] = 2 * 128 / 5 + 12; ui.val[0][PG_CHORD][0][1] = 12; ui.val[0][PG_CHORD][0][2] = 0;
-    ui.val[0][PG_CHORD][0][3] = 64; ui.val[0][PG_CHORD][0][4] = 4;            /* wide, auto, no spread or strum; First snow */
+    for (s = 0; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][0][3] = 64;   /* no strum (each synth's) */
+    ui.val[0][PG_CHORD][0][4] = 4;                     /* wide, auto, no spread; First snow */
     ui.val[0][PG_CHORD][1][0] = 9 * 128 / 12 + 5; ui.val[0][PG_CHORD][1][1] = 10;   /* A, Aeolian */
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
     for (s = 0; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][2][0] = choice_val(0, 2);   /* keys: chords on CHORD (each synth's) */
@@ -768,13 +772,13 @@ DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, n
         return;
     }
     if (page == PG_SOUND && row == 0 && k == 4) {       /* the fine tune, in cents */
-        int t = (v - 64) * 50 / 64;
+        int t = tune_of(v, 50);
         if (t > 0) *o++ = '+';
         fmt_int(o, t);
         return;
     }
     if (page == PG_SOUND && row == 0 && k == 3) {       /* the tune, in semitones */
-        int t = (v - 64) * 24 / 64;
+        int t = tune_of(v, 24);
         if (t > 0) *o++ = '+';
         fmt_int(o, t);
         return;
@@ -3427,7 +3431,7 @@ DMK_SMALL static void ui_key(int k, int down)
             later_off(s, ui.key_ch[k][j], SRC_KEY, k + 1);
             if (ui.key_roll[k] == 2 && seq_on) {        /* recorded: each of its notes into the synth's roll, where the
                                                            strum started it (one let go before it came never sounded) */
-                uint32_t held = seq_now() - ui.key_t0[k], d = strum_q8(j, ui.key_nch[k]);
+                uint32_t held = seq_now() - ui.key_t0[k], d = strum_q8(s, j, ui.key_nch[k]);
                 if (d && d >= held) continue;
                 if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_ch[k][j], 100, j, ui.key_nch[k], 0) < 0) roll_full();
                 else if (!j) roll_show(s, ui.key_ch[k][j]);

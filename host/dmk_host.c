@@ -971,6 +971,32 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* a player's two (0.4.23): TUNE's top +24 (it stopped at +23), FINE's +50, their bottoms -24 and -50, the middle
+         * 0, every other place as before (a song's tune unmoved); STRUM each synth's: synth 1's strum leaves synth 2's
+         * chord struck at once, synth 2 the row's own; a song of before (14): all three the first's */
+        int v, k, on[2], t1, t0;
+        static uint8_t sb[ST_SECTOR];
+        static int16_t rb[64 * 2];
+        dmk_init(36); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        if (tune_of(127, 24) != 24 || tune_of(0, 24) != -24 || tune_of(64, 24) || tune_of(126, 24) != 23 || tune_of(127, 50) != 50 || tune_of(106, 24) != 15)
+            { fails++; printf("selftest: TUNE's ends are not -24 and +24 (%d %d)\n", tune_of(0, 24), tune_of(127, 24)); }
+        ui.val[0][PG_SOUND][0][3] = 127; sp_sync();
+        if (syn[0].tune != 24) { fails++; printf("selftest: TUNE at its top is %d semitones\n", syn[0].tune); }
+        { char tx[16]; tx[0] = 0; ui.synth = 0; val_text(tx, PG_SOUND, 0, 3); if (strcmp(tx, "+24")) { fails++; printf("selftest: TUNE at its top reads %s\n", tx); } }
+        ui.val[0][PG_CHORD][0][3] = 127; ui.val[1][PG_CHORD][0][3] = 64; sp_sync();   /* synth 1 strummed, synth 2 not */
+        if (ch.strum[0] != 250 * 63 / 64 || ch.strum[1]) { fails++; printf("selftest: STRUM is not each synth's (%d %d)\n", ch.strum[0], ch.strum[1]); }
+        { uint8_t c3[3] = {60, 64, 67};
+          for (k = 0; k < 2; k++) { strike_src(k, c3, 3, SRC_KEY, 0, 1 + k, 100); dmk_render(rb, 64); on[k] = 0; for (v = 0; v < DMK_VOICES; v++) on[k] += vc[v].stage && vc[v].sy == k; }
+          if (on[0] != 1 || on[1] != 3) { fails++; printf("selftest: a strummed synth and one not: %d and %d notes at once (1, 3)\n", on[0], on[1]); } }
+        ui.synth = 1; if (vp(PG_CHORD, 0, 3) != &ui.val[1][PG_CHORD][0][3]) { fails++; printf("selftest: the Strum knob is not the synth selected's\n"); }
+        ui.synth = 0;
+        t0 = ui.val[0][PG_CHORD][0][3]; t1 = 64;
+        st_ver = 14u; ui.val[1][PG_CHORD][0][3] = ui.val[2][PG_CHORD][0][3] = (uint8_t)t1;
+        if (song_unpack(sb, (uint32_t)song_pack(sb)) || ui.val[1][PG_CHORD][0][3] != t0 || ui.val[2][PG_CHORD][0][3] != t0)
+            { fails++; printf("selftest: a song of 0.4.23 opens with its synths' strums apart\n"); }
+        st_ver = ST_VER;
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* the crash hunt's two (0.4.21): a MIDI note under the keys' range into the chord keys, the key leaving C out
          * (C# Aeolian), stopped: its chord named (a root under C-1 read before the names: on the FM-1 a null, the red
          * screen; ASan here); an inversion past a triad's notes (its third) the triad as built, not the stack's notes */
@@ -1868,8 +1894,8 @@ static void selftest(void)
         for (i = 0; i < DMK_SYNTHS; i++) sq[i].count = 0;
         ui.synth = 1;
         tap(B_ARP);
-        ui.val[0][PG_CHORD][0][3] = (uint8_t)(64 + 100 * 64 / 250); sp_sync();   /* a strum, up */
-        sp = ch.strum * (DMK_SR / 1000);
+        ui.val[1][PG_CHORD][0][3] = (uint8_t)(64 + 100 * 64 / 250); sp_sync();   /* a strum, up (synth 2's own) */
+        sp = ch.strum[1] * (DMK_SR / 1000);
         tap(B_REC); tap(B_PLAY); wait_ms(300);
         if (seq_on || !ui.rec_ready) { fails++; printf("selftest: REC and PLAY do not wait for a key\n"); }
         dmk_key(4, 1);
@@ -1877,7 +1903,7 @@ static void selftest(void)
         wait_ms(1500); dmk_key(4, 0); wait_ms(60);
         kc = n = sq[1].count;
         for (i = 0, j = 0; i < n; i++) if (sq[1].n[i].step * 32 + sq[1].n[i].off > j) j = sq[1].n[i].step * 32 + sq[1].n[i].off;
-        if (n < 3 || sq[1].n[0].step || sq[1].n[0].off || abs(j - (n - 1) * ch.strum * 32 * seq_bpm / 15000) > 1)
+        if (n < 3 || sq[1].n[0].step || sq[1].n[0].off || abs(j - (n - 1) * ch.strum[1] * 32 * seq_bpm / 15000) > 1)
             { fails++; printf("selftest: a strummed chord recorded loses its spacing (%d notes, the last at %d/32)\n", n, j); }
         tap(B_SEQ);                                     /* the roll: a key alone, played ~0.4 into a step */
         do dmk_render(b, 32); while ((seq_now() & 255u) < 96u || (seq_now() & 255u) > 112u);

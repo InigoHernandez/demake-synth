@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 14u  /* 14: the Keys row each synth's (the Chord page's K1), LOOP three ways and the Sound page's Loop row; 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
+#define ST_VER 15u  /* 15: STRUM each synth's (the Chord page's K4); 14: the Keys row each synth's (the Chord page's K1), LOOP three ways and the Sound page's Loop row; 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
                        echo was), each synth's send to it on FX's Space row (where its reverb's amount was: back on the
                        reverb's row); 12: a reverb a track (FX's first row, where the colour was), the colour the mix's (GLO's first row,
                        where the shared verb was); 11: patterns to 256 steps, a note 5 bytes; 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
@@ -334,6 +334,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         for (k = 0; k < 5; k++) m[k] = ui.val[from][PG_FX][1][k];
         for (s = 0; s < DMK_SYNTHS; s++) { roll_vary_defaults(s); delay_defaults(s); }
     }
+    if (st_ver < 15u) for (s = 1; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][0][3] = ui.val[0][PG_CHORD][0][3];   /* before
+                                                           0.4.24: one strum for all */
     if (st_ver < 14u) for (s = 0; s < DMK_SYNTHS; s++) loop_moved(s);   /* before 0.4.22: LOOP two ways, no Loop row */
     if (st_ver < 14u) for (s = 1; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][2][0] = ui.val[0][PG_CHORD][2][0];   /* before 0.4.22:
                                                            one Keys row for all (the others' a 64 never set: All) */
