@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.23.fwsc",
-  "version": "0.4.23",
-  "date": "2026-10-28",
+  "file": "demake-0.4.24.fwsc",
+  "version": "0.4.24",
+  "date": "2026-10-29",
   "product": "FM-1_969",
-  "sha256": "46313ed53f757d16ebc0a919a14847d1713b8bb64fde5dc58046fe59793e9c10",
-  "note": "The red screens fixed: no 64-bit multiply beside a load (the CPU's fault), MIDI note 0 into the chord keys. And 0.4.22's: Keys each synth's, a loop's region, fewer clicks, no distortion at full level."
+  "sha256": "b496d0efdfc403dba0d447a7987331cd7dbe2a5dbc8908cafbc2154f72f584da",
+  "note": "Tune reaches +24; Strum each synth's own. And 0.4.23's: the red screens fixed."
 }
