@@ -971,6 +971,25 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* the crash hunt's two (0.4.21): a MIDI note under the keys' range into the chord keys, the key leaving C out
+         * (C# Aeolian), stopped: its chord named (a root under C-1 read before the names: on the FM-1 a null, the red
+         * screen; ASan here); an inversion past a triad's notes (its third) the triad as built, not the stack's notes */
+        uint8_t t1[8], t2[8];
+        int k, n1, n2, same = 1;
+        dmk_init(35); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (k = 0; k < DMK_SYNTHS; k++) ui.val[k][PG_CHORD][2][0] = choice_val(1, 2);
+        ui.val[0][PG_CHORD][1][0] = (uint8_t)(1 * 128 / 12 + 5); ui.val[0][PG_CHORD][1][1] = choice_val(0, 6);   /* C#, Aeolian */
+        sp_sync();
+        for (k = 0; k < 24; k++) { dmk_midi(0x90, k, 100); wait_ms(3); dmk_midi(0x80, k, 0); }
+        for (k = 104; k < 128; k++) { dmk_midi(0x90, k, 100); wait_ms(3); dmk_midi(0x80, k, 0); }
+        wait_ms(60);
+        ui.val[0][PG_CHORD][2][1] = choice_val(KT_TRIAD, KT_COUNT); ui.val[0][PG_CHORD][0][0] = choice_val(0, 5);   /* triads, close */
+        ui.val[0][PG_CHORD][0][1] = choice_val(1, 5); sp_sync(); n1 = chord_key(60, 0, t1);   /* (as built) */
+        ui.val[0][PG_CHORD][0][1] = choice_val(4, 5); sp_sync(); n2 = chord_key(60, 0, t2);   /* its third inversion */
+        for (k = 0; k < n1 && k < n2; k++) same &= t1[k] == t2[k];
+        if (n1 != n2 || !same) { fails++; printf("selftest: a triad's third inversion is not the triad as built (%d %d)\n", n1 ? t2[0] : -1, n2); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* at a heavy load (the platform's CPU past 85%) eight voices at most sounding; under it, all twelve */
         int v, on, k;
         dmk_init(34); now_ms = 0; wait_ms(60); ui.boot_done = 1;

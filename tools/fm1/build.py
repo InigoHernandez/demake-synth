@@ -17,6 +17,7 @@ container (colima with Rosetta, or Docker). JIELI_TOOLCHAIN (default ~/.jieli/to
 exists) override the places.
 """
 import argparse
+import bisect
 import hashlib
 import os
 import platform
@@ -159,7 +160,8 @@ def build_loader():
 
 # the second core renders some synths of each block (the core's dmk_par_begin; DUAL=0 in the environment: one core)
 DUAL = 0 if os.environ.get("DUAL") == "0" else 1
-CORE = ["-DDMK_FW=1"]                      # all 64 sounds in the app slot (docs/plan.md, 2.5)
+CORE = ["-DDMK_FW=1", "-DDMK_MUL_OUT=1"]   # all 64 sounds in the app slot (docs/plan.md, 2.5); the 64-bit products out
+                                           # of line (dmk_dsp.c's helpers: the CPU's fault, mul64_check)
 
 
 def build_app():
@@ -209,8 +211,69 @@ def build_app():
     return bytes(img), syms, dis, rt
 
 
+# the CPU's fault (felucca-bsp docs/CPU.md, MONO2K's 79db193): a 32 x 32 -> 64-bit multiply beside a load now and then
+# leaves a register a bit off (a crash, or garbage: worst beside 16-bit loads). MONO2K's check, its rule as it is: a load
+# among the two instructions before the multiply (calls aside), or after it before its product is used (four at most),
+# or a call, a jump or a return first, fails the build; the core's products go through dmk_dsp.c's helpers (DMK_MUL_OUT)
+MUL64 = re.compile(r"(r\d+)_(r\d+) [+-]?= r\d+ \* r\d+")
+LOAD = re.compile(r"= [hbd]?\[")
+LEAVE = re.compile(r"\b(?:goto|call|rts|rti|tbb|tbh)\b")
+MUL64_EXEMPT = {}
+
+
+def mul64_check(dis, syms, window=4):
+    """the count of 64-bit multiplies in the app, and {function: how many} of those beside a load"""
+    fns = []
+    for ln in syms.splitlines():
+        p = ln.split()
+        if len(p) >= 6 and "F" in p[1:-3] and re.fullmatch(r"[0-9a-f]+", p[0]) and re.fullmatch(r"[0-9a-f]+", p[-2]):
+            fns.append((int(p[0], 16), int(p[0], 16) + int(p[-2], 16), p[-1]))
+    fns.sort()
+    starts = [f[0] for f in fns]
+    bodies = {}
+    for ln in dis.splitlines():
+        mm = LINE.match(ln)
+        if not mm:
+            continue
+        a = int(mm.group(1), 16)
+        k = bisect.bisect_right(starts, a) - 1
+        name = fns[k][2] if k >= 0 and a < fns[k][1] else f"{a:#x}"
+        bodies.setdefault(name, []).append(mm.group(3).strip())
+
+    def regs(ins):
+        return {t for t in re.split(r"[^A-Za-z0-9]+", ins) if re.fullmatch(r"r\d+", t)}
+    total, near = 0, {}
+    for name, body in bodies.items():
+        for i, ins in enumerate(body):
+            m = MUL64.match(ins)
+            if not m:
+                continue
+            total += 1
+            dst = {m.group(1), m.group(2)}
+            bad = any(LOAD.search(b) for b in body[max(0, i - 2):i] if not re.search(r"\bcall\b", b))
+            for b in body[i + 1:i + 1 + window] if not bad else ():
+                if regs(b) & dst:
+                    break                               # the product used: the multiply has finished
+                if LOAD.search(b) or LEAVE.search(b):
+                    bad = True
+                    break
+            else:
+                if not bad and i + 1 + window > len(body):
+                    bad = True                          # the function ends with the product unused
+            if bad and not name.startswith("__"):
+                near[name] = near.get(name, 0) + 1
+    return total, near
+
+
 def check(img, syms, dis, rt):
     errors, notes = [], []
+    n64, near = mul64_check(dis, syms)
+    bad = {f: c for f, c in near.items() if f not in MUL64_EXEMPT}
+    if bad:
+        errors.append("64-bit multiplies beside a load (felucca-bsp docs/CPU.md; dmk_dsp.c's helpers take them out of "
+                      "line): " + ", ".join(f"{f} {c}" for f, c in sorted(bad.items(), key=lambda x: -x[1])))
+    else:
+        notes.append(f"64-bit multiplies: {n64}, none beside a load")
 
     def sym(name):
         mm = re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M)

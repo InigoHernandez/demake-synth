@@ -494,7 +494,7 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
         static const uint16_t GN[SP_N] = {256, 374, 302, 334, 1136, 454, 274, 446, 738};   /* (a full send about as loud as
                                                            the sound itself, measured: the owner heard nothing at the shared verbs' levels) */
         int t = choice_index(choice_of(PG_GLOBAL, 1, 4), VS(0, PG_GLOBAL, 1, 4)), sz = VS(0, PG_GLOBAL, 1, 2), md = VS(0, PG_GLOBAL, 1, 3), d;
-        uint32_t q = exp2n((uint32_t)sz * DS[t] / 127u), x = (uint32_t)(((uint64_t)DC[t] * q) >> 16);
+        uint32_t q = exp2n((uint32_t)sz * DS[t] / 127u), x = mulu16(DC[t], q);
         gp.stype = (uint8_t)t;
         gp.sret = VS(0, PG_GLOBAL, 1, 0) * 258;
         gp.sga = (int32_t)(exp2n(x) >> 1); gp.sgb = (int32_t)(exp2n(x + x * 210u / 7451u) >> 1);   /* (the second half 210 longer) */
@@ -511,7 +511,7 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
         if (t == SP_HAZE) d = d * 3 / 4;                /* darker */
         else if (t == SP_LOFI) d /= 2;
         else if (t == SP_SHIMMER) d += (32767 - d) / 3; /* the octaves bright */
-        else if (t == SP_FREEZE) d += (int32_t)(((int64_t)(32767 - d) * (32768 - gp.sgin)) >> 15);
+        else if (t == SP_FREEZE) d += ((32767 - d) * (32768 - gp.sgin)) >> 15;   /* (under 2^30: 32 bits) */
         gp.sdamp = clampi(d, 1, 32767);
     }
     midi_chans = (uint8_t)(VS(0, PG_GLOBAL, 3, 0) * 2 / 128);   /* the setup */
@@ -1797,12 +1797,12 @@ static void stage_voice(void)
             uint32_t g = 65536, per = 65536;
             if (p->glide) {                             /* a pixel's share of the second: the factor per block, so many blocks */
                 int n = (DMK_SR / DMK_SUB) / (w - at), j;
-                for (j = 0; j < n; j++) per = (uint32_t)(((uint64_t)per * p->glide) >> 16);
+                for (j = 0; j < n; j++) per = mulu16(per, p->glide);
             } else per = 0;
             for (i = 0; i < w; i++) {
                 int x = i / st * st;
                 if (x < at) g = 65536;
-                else if (x == i) g = (uint32_t)(((uint64_t)g * per) >> 16);
+                else if (x == i) g = mulu16(g, per);
                 ys[i] = (int16_t)(top + (int)(((uint32_t)(base - top) * (g >> 4)) >> 12));
                 yb[i] = (int16_t)(base + 1);
             }
@@ -1904,7 +1904,7 @@ static void stage_filter(void)
     {                                                   /* a note playing: where its envelope has the cutoff now */
         int v = voice_newest(ui.synth);
         if (v >= 0 && type != FT_OFF && type != FT_VOWEL && syn[ui.synth].fenv) {
-            int idx = clampi(syn[ui.synth].cut + (int32_t)(((int64_t)syn[ui.synth].fenv * vc[v].env) >> 24), 0, 255), lx = x0 + idx * (w - 1) / 255;
+            int idx = clampi(syn[ui.synth].cut + mul24(syn[ui.synth].fenv, vc[v].env), 0, 255), lx = x0 + idx * (w - 1) / 255;
             spark(lx, ys[lx - x0] + 1);
         }
     }

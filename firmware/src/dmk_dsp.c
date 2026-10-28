@@ -20,6 +20,21 @@ static struct { int32_t pre_max, syn_max, voice_max; uint32_t knee, sat_line, sa
 #endif
 static inline int32_t sat16(int32_t v) { return v > 32767 ? 32767 : v < -32768 ? -32768 : v; }
 static inline int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+/* products past 32 bits. On the FM-1 a 32 x 32 -> 64-bit multiply beside a load now and then leaves a register a bit
+ * off (felucca-bsp docs/CPU.md; MONO2K's crashes, its 79db193; Demake's 0.4.21 had 81, a player's red screens):
+ * tools/fm1/build.py fails a build with one. A coefficient's product, (a v) >> sh with |a| < 2^(31 - sh), in two
+ * 32-bit halves, exact (v's high part by a, its low part by a, shifted: no 64-bit multiply); the rest out of line on
+ * the FM-1 (DMK_MUL_OUT), each its product used at once; inline elsewhere, the same results */
+static inline int32_t mulc(int32_t a, int32_t v, int sh) { return a * (v >> sh) + ((a * (v & ((1 << sh) - 1))) >> sh); }
+#ifdef DMK_MUL_OUT
+#define MUL_FN static __attribute__((noinline))
+#else
+#define MUL_FN static inline
+#endif
+MUL_FN int32_t mul14(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 14); }
+MUL_FN int32_t mul16(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 16); }
+MUL_FN int32_t mul24(int32_t a, int32_t b) { return (int32_t)(((int64_t)a * b) >> 24); }
+MUL_FN uint32_t mulu16(uint32_t a, uint32_t b) { return (uint32_t)(((uint64_t)a * b) >> 16); }
 /* a one-pole's step towards x, (x - s) c / 2^15 (c Q15), or (x - s) / 2^sh: at least one either way, so it reaches x
  * and stays there (a floored step stalls short of it, below zero: a tail held on that offset for ever, made louder by
  * whatever gain comes after) */
@@ -251,8 +266,8 @@ static void strm_start(strm_t *t, const dmk_sample_t *s, int n, int tune, int fi
     k = n - s->root + tune + (c > 50 ? 1 : c < -50 ? -1 : 0);
     c -= c > 50 ? 100 : c < -50 ? -100 : 0;
     k = clampi(k, -48, 48);
-    inc = (uint32_t)(((uint64_t)s->rate_q16 * T_SEMI[k + 48]) >> 16);
-    inc = (uint32_t)(((uint64_t)inc * T_CENT[50 + c]) >> 16);
+    inc = mulu16(s->rate_q16, T_SEMI[k + 48]);
+    inc = mulu16(inc, T_CENT[50 + c]);
     t->inc = t->inc0 = inc > INC_MAX ? INC_MAX : inc;
     t->s = s;
     t->loop = (uint8_t)(loops == 2 ? 2 : s->loops && loops);   /* LOOP OFF: a looped sample plays through once */
@@ -355,13 +370,14 @@ static void note_off_src(int sy, int n, int src)
 static void note_on_s(int sy, int n) { note_on_src(sy, n, SRC_KEY); }   /* the keys' */
 static void note_off_s(int sy, int n) { note_off_src(sy, n, SRC_KEY); }
 
-/* the filter: a Chamberlin state-variable, one stage or two; 64-bit products (resonance runs past 16 bits) */
+/* the filter: a Chamberlin state-variable, one stage or two; its products past 32 bits (resonance runs past 16 bits)
+ * in halves (f under 2^16, q 2^15 at most, the states held at 2^20) */
 static inline int32_t svf_step(int32_t *lp, int32_t *bp, int32_t x, int32_t f, int32_t q, int32_t *hp_out)
 {
     int32_t hp;
-    *lp += (int32_t)(((int64_t)f * *bp) >> 15);
-    hp = x - *lp - (int32_t)(((int64_t)q * *bp) >> 14);
-    *bp += (int32_t)(((int64_t)f * hp) >> 15);
+    *lp += mulc(f, *bp, 15);
+    hp = x - *lp - mulc(q, *bp, 14);
+    *bp += mulc(f, hp, 15);
     *lp = clampi(*lp, -(1 << 20), 1 << 20);
     *bp = clampi(*bp, -(1 << 20), 1 << 20);
     *hp_out = hp;
@@ -505,8 +521,8 @@ static void colour_block(int sy, const synth_t *p, int32_t *x, int type)   /* (s
             y -= fx[sy].wdc >> 8;
             y = ((((y * comp) >> 8) + v - fx[sy].wpre) * lin) >> 8;
             fx[sy].wtl = op_step(fx[sy].wtl, y, 3500);            /* ~800 Hz: the tilt's hinge */
-            y += (int32_t)(((int64_t)(2 * fx[sy].wtl - y) * tilt) >> 15);
-            x[i] += (int32_t)(((int64_t)(y - x[i]) * mix) >> 15);
+            y += mulc(tilt, 2 * fx[sy].wtl - y, 15);    /* (tilt and mix under 2^15) */
+            x[i] += mulc(mix, y - x[i], 15);
         }
     } else if (type == FC_DIST) {                       /* drive into a clip whose knee is soft; SHAPE turns it into a
                                                            fold (a sine of the drive: past full it folds back) */
@@ -521,13 +537,13 @@ static void colour_block(int sy, const synth_t *p, int32_t *x, int type)   /* (s
         for (i = 0; i < DMK_SUB; i++) {
             int32_t u, c, y;
             fx[sy].dpre = op_step(fx[sy].dpre, x[i], 18000);      /* ~5 kHz in: fewer of the fold's aliases */
-            u = (int32_t)(((int64_t)fx[sy].dpre * drive) >> 8);
+            u = mulc(drive, fx[sy].dpre, 8);              /* (drive under 8400) */
             c = curve(T_LIM, u);
             y = c + (((sinp((uint32_t)u << 15) - c) * fold) >> 15);
             sin_ += (x[i] < 0 ? -x[i] : x[i]) >> 4; sout += (y < 0 ? -y : y) >> 4;
             y = (y * (g0 + gst * (i + 1))) >> 8;
             fx[sy].clp = op_step(fx[sy].clp, y, tone);
-            x[i] += (int32_t)(((int64_t)(fx[sy].clp - x[i]) * mix) >> 15);
+            x[i] += mulc(mix, fx[sy].clp - x[i], 15);
         }
         fx[sy].dfi += (sin_ - fx[sy].dfi) >> 9;         /* a block's mean, in and out (~0.2 s) */
         fx[sy].dfo += (sout - fx[sy].dfo) >> 9;
@@ -559,14 +575,15 @@ static void media_block(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: t
             fx[sy].jit += ((int32_t)(xs32(&fx[sy].mrng) >> 20) - 2048 - fx[sy].jit) >> 6;
             m += fx[sy].jit / 8;
         }
-        d = (t == FM_CASS ? 300 : 400) * 256 + (int32_t)(((int64_t)m * (t == FM_TAPE ? p->tdepth : 100 + k0 * (t == FM_VHS ? 300 : 220))) >> 15);
+        d = (t == FM_CASS ? 300 : 400) * 256 + mulc(m, t == FM_TAPE ? p->tdepth : 100 + k0 * (t == FM_VHS ? 300 : 220), 15);   /* (m under
+                                                           25100: the depth to 101600) */
         /* tracking: the pitch dips, glided (a jump in the line's read would click) */
         if (fx[sy].track || fx[sy].tenv) {              /* tracking: its envelope, in over 150 ms, out over 400 */
             if (fx[sy].track) { fx[sy].track--; fx[sy].tenv += fx[sy].tenv < 32763 ? 5 : 32768 - fx[sy].tenv; }
             else fx[sy].tenv -= fx[sy].tenv > 2 ? 2 : fx[sy].tenv;
             d += (fx[sy].tenv * (k3 + 30)) >> 8;        /* read later by up to 80 samples: the pitch bends, gently */
         }
-        pos = (int32_t)(fx[sy].tw << 8) - d;
+        pos = (int32_t)((fx[sy].tw << 8) - (uint32_t)d);   /* (unsigned: it wraps, no overflow, ~6 minutes on) */
         j = (uint32_t)(pos >> 8); f = pos & 255;
         y = (tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8;
         fx[sy].tw++;
@@ -635,7 +652,7 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
             int32_t pos, f, y, n, g = g0 + gs * i;
             uint32_t j, r;
             tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i] / 2);   /* (the line at half level, as the tapes keep it) */
-            pos = (int32_t)(fx[sy].tw << 8) - (d += ds);
+            pos = (int32_t)((fx[sy].tw << 8) - (uint32_t)(d += ds));
             j = (uint32_t)(pos >> 8); f = pos & 255;
             y = ((tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8) * 2;
             fx[sy].tw++;
@@ -649,8 +666,8 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
                 fx[sy].mcrk = (int32_t)((a * (uint32_t)(24 + k2)) >> 9) * (q & 1u ? -1 : 1);
             }
             n += fx[sy].mcrk; fx[sy].mcrk = fx[sy].mcrk * 5 / 8;
-            fx[sy].vrm[0] += (int32_t)(((int64_t)((((int32_t)r >> 16) * 256) - fx[sy].vrm[0]) * 187) >> 15);   /* ~40 Hz */
-            fx[sy].vrm[1] += (int32_t)(((int64_t)(fx[sy].vrm[0] - fx[sy].vrm[1]) * 187) >> 15);
+            fx[sy].vrm[0] += mulc(187, (((int32_t)r >> 16) * 256) - fx[sy].vrm[0], 15);   /* ~40 Hz */
+            fx[sy].vrm[1] += mulc(187, fx[sy].vrm[0] - fx[sy].vrm[1], 15);
             n += ((fx[sy].vrm[1] >> 8) * rum) >> 9;     /* the rumble, ~-43 dB at full */
             x[i] = curve(T_LIM, fx[sy].vlp[1] + ((n * g) >> 15));
         }
@@ -676,7 +693,7 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
             n = ((int32_t)r >> 18) * sa >> 15;          /* hiss and, now and then, a crackle in it */
             if ((r >> 12) < (uint32_t)k2 * 3u) fx[sy].mcrk = ((int32_t)xs32(&fx[sy].mrng) >> 19) * k2 >> 7;
             n += fx[sy].mcrk; fx[sy].mcrk = fx[sy].mcrk * 3 / 4;
-            y = clampi((int32_t)(((int64_t)x[i] * lvl) >> 15) + ((n * g) >> 15), -49151, 49151);
+            y = clampi(mulc(lvl, x[i], 15) + ((n * g) >> 15), -49151, 49151);   /* (lvl 2^15 at most) */
             fx[sy].rhp[0] = op_step(fx[sy].rhp[0], y, chp); y -= fx[sy].rhp[0];
             fx[sy].rhp[1] = op_step(fx[sy].rhp[1], y, chp); y -= fx[sy].rhp[1];
             fx[sy].rlp[0] = op_step(fx[sy].rlp[0], y, c);   /* the top: four poles, as a receiver's is steep */
@@ -706,7 +723,7 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
             int32_t pos, f, y, n, g = g0 + gs * i, a;
             uint32_t j, r = xs32(&fx[sy].mrng);
             tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i] / 2);
-            pos = (int32_t)(fx[sy].tw << 8) - (d += ds);
+            pos = (int32_t)((fx[sy].tw << 8) - (uint32_t)(d += ds));
             j = (uint32_t)(pos >> 8); f = pos & 255;
             y = ((tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8) * 2;
             fx[sy].tw++;
@@ -719,7 +736,7 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
             y = fx[sy].rlp[1] * 5 / 4;                  /* (the band made up) */
             a = y < 0 ? -y : y;
             if (a > pk2) pk2 = a;
-            x[i] = curve(T_LIM, (int32_t)(((int64_t)y * (a0 + as * (i + 1))) >> 8));
+            x[i] = curve(T_LIM, mulc(a0 + as * (i + 1), y, 8));   /* (its gain 2034 at most, Q8) */
         }
         if (pk2 > fx[sy].agc) fx[sy].agc += (pk2 - fx[sy].agc) >> 1;
         else fx[sy].agc -= (fx[sy].agc >> 9) + (fx[sy].agc > 0);
@@ -771,13 +788,13 @@ static void ens_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
         int32_t t[3], c, sd;
         ch_buf[sy][fx[sy].cw & (CH_LEN - 1)] = (int16_t)sat16(x[i]);
         for (k = 0; k < 3; k++) {
-            int32_t pos = (int32_t)(fx[sy].cw << 8) - (d[k] += ds[k]), f = pos & 255;
+            int32_t pos = (int32_t)((fx[sy].cw << 8) - (uint32_t)(d[k] += ds[k])), f = pos & 255;
             uint32_t j = (uint32_t)(pos >> 8);
             t[k] = (ch_buf[sy][j & (CH_LEN - 1)] * (256 - f) + ch_buf[sy][(j + 1) & (CH_LEN - 1)] * f) >> 8;
         }
         fx[sy].cw++;
         c = (t[0] + t[1] + t[2]) * 11 >> 5;             /* (about a third of the three, a little over) */
-        sd = (int32_t)(((int64_t)(t[0] - t[1]) * w) >> 16);
+        sd = mulc(w, t[0] - t[1], 16);                   /* (w under 2^15) */
         fx[sy].chlp[0] = op_step(fx[sy].chlp[0], c + sd, tone);
         fx[sy].chlp[1] = op_step(fx[sy].chlp[1], c - sd, tone);
         l[i] = (((x[i] >> 1) + ((fx[sy].chlp[0] * 7) >> 3)) * 11) >> 3;   /* (x 1.4: as loud as it came in) */
@@ -800,7 +817,7 @@ static void phaser_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
     int32_t a, fbk = p->ok[3] * 180, cq = (8 * 2048) + p->ok[1] * 16 * 2048 / 127, dsp = p->ok[0] * 16 * 2048 / 127, q;
     int32_t *px = fx[sy].px[0], *py = fx[sy].py[0];
     uint32_t inc = T_LFO[p->ok[2] * 80 / 127];           /* 0.05 .. 2.2 Hz */
-    q = cq + (int32_t)(((int64_t)((int32_t)tri16(fx[sy].clfo + inc / 2u) - 32767) * dsp) >> 15);
+    q = cq + mulc(dsp, (int32_t)tri16(fx[sy].clfo + inc / 2u) - 32767, 15);   /* (dsp 2^15 at most) */
     q = clampi(q, 0, 32 * 2048 - 1);
     a = T_PHA[q >> 11] + (((T_PHA[(q >> 11) + 1] - T_PHA[q >> 11]) * (q & 2047)) >> 11);
     fx[sy].clfo += inc;
@@ -840,7 +857,7 @@ static void flanger_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
     for (i = 0; i < DMK_SUB; i++) {
         int32_t v[2], dc;
         for (c = 0; c < 2; c++) {
-            int32_t pos = (int32_t)(fx[sy].cw << 8) - (d[c] += ds[c]), f = pos & 255, y;
+            int32_t pos = (int32_t)((fx[sy].cw << 8) - (uint32_t)(d[c] += ds[c])), f = pos & 255, y;
             uint32_t j = (uint32_t)(pos >> 8);
             y = (ch_buf[sy][j & (CH_LEN - 1)] * (256 - f) + ch_buf[sy][(j + 1) & (CH_LEN - 1)] * f) >> 8;
             fx[sy].ftl[c] = op_step(fx[sy].ftl[c], y, tone);
@@ -871,16 +888,16 @@ static void trem_block(int sy, const int32_t *x, int32_t *l, int32_t *r)
     int32_t d = p->ok[0] * 258, sh = p->ok[1], pan = p->ok[3] * 258, s, m, g, gr, sl, sr;
     fx[sy].tph += fx[sy].tstep;
     s = sinp(fx[sy].tph);
-    if (sh) s = clampi((int32_t)(((int64_t)s * (256 + sh * sh / 4)) >> 8), -32767, 32767);
+    if (sh) s = clampi(mulc(256 + sh * sh / 4, s, 8), -32767, 32767);
     m = (s + 32767) >> 1;                               /* 0 .. 32767: 0 the trough */
     g = 32768 - (((32768 - m) * d) >> 15);
-    gr = g + (int32_t)(((int64_t)((32768 - ((m * d) >> 15)) - g) * pan) >> 15);   /* PAN: the right against the left */
+    gr = g + mulc(pan, (32768 - ((m * d) >> 15)) - g, 15);   /* PAN: the right against the left */
     sl = (g - fx[sy].tg[0]) / DMK_SUB; sr = (gr - fx[sy].tg[1]) / DMK_SUB;
     for (i = 0; i < DMK_SUB; i++) {
         int32_t a = fx[sy].tg[0] + sl * (i + 1), b = fx[sy].tg[1] + sr * (i + 1);
         ch_buf[sy][fx[sy].cw++ & (CH_LEN - 1)] = (int16_t)sat16(x[i]);
-        l[i] = (int32_t)(((int64_t)x[i] * a) >> 15);
-        r[i] = (int32_t)(((int64_t)x[i] * b) >> 15);
+        l[i] = mulc(a, x[i], 15);                       /* (the gains 2^15 at most) */
+        r[i] = mulc(b, x[i], 15);
     }
     fx[sy].tg[0] = g; fx[sy].tg[1] = gr;
 }
@@ -1035,7 +1052,7 @@ DMK_SMALL static void rv_gains(rvs_t *r, int t, int sz)
     int k;
     for (k = 0; k < 4; k++) {
         uint32_t len = t == RV_ROOM ? RM_L[k] : t == RV_HALL ? HL_L[k] : t == RV_PLATE ? PLH : SP_L;
-        g = exp2n((uint32_t)(((uint64_t)len * RV_K[t] * q) >> 16)) >> 1;
+        g = exp2n(mulu16(len * RV_K[t], q)) >> 1;
         r->lg[k] = (int16_t)(g > 32600u ? 32600u : g);
     }
     r->gty = (uint8_t)t; r->gsz = (uint8_t)(sz + 1);
@@ -1380,14 +1397,14 @@ static void sp_block(int t, const int32_t *in, int32_t *ol, int32_t *orr, int32_
     }
     sps.lp[0] = lpa; sps.le[0] = lea; sps.lp[1] = lpb; sps.le[1] = leb; sps.ge[0] = gea; sps.ge[1] = geb; sps.xb = xb;
     sps.hp = hp; sps.he = he; sps.w = w;
-    gs = (int32_t)(((int64_t)gq * g0) >> 15); gd = ((int32_t)(((int64_t)gq * g1) >> 15) - gs) / RV_ST;
+    gs = mulc(g0, gq, 15); gd = (mulc(g1, gq, 15) - gs) / RV_ST;   /* (g0, g1 2^15 at most) */
     for (i = 0; i < RV_ST; i++) {                       /* (in 64 bits: seven taps at full, the return up) */
         int32_t p, c;
         loud |= (uint32_t)(yl[i] + 3) > 6u || (uint32_t)(yr[i] + 3) > 6u;
         gs += gd;
         if (lofi) { yl[i] = TKQ(yl[i]); yr[i] = TKQ(yr[i]); }   /* out at fewer bits too: the tank's, before the return
                                                            (at the mix's 8 bits a quiet return was cut to nothing) */
-        p = (int32_t)(((int64_t)yl[i] * gs) >> (16 - SP_IN)); c = (int32_t)(((int64_t)yr[i] * gs) >> (16 - SP_IN));
+        p = mul14(yl[i], gs); c = mul14(yr[i], gs);    /* (>> 16 - SP_IN; both past 2^17: out of line) */
         ol[i] = clampi(p, -98304, 98304); orr[i] = clampi(c, -98304, 98304);   /* (three times full at most: the mix's
                                                            media takes it unheld) */
     }
@@ -1504,7 +1521,7 @@ static int xg_next(int sy, int row, int want)           /* the row's share at th
 static void xg_mix(int32_t *y, const int32_t *dry, int32_t g0, int32_t g1)
 {
     int i;
-    for (i = 0; i < DMK_SUB; i++) y[i] = dry[i] + (int32_t)(((int64_t)(y[i] - dry[i]) * (g0 + (g1 - g0) * i / DMK_SUB)) >> 15);
+    for (i = 0; i < DMK_SUB; i++) y[i] = dry[i] + mulc(g0 + (g1 - g0) * i / DMK_SUB, y[i] - dry[i], 15);
 }
 static void rows_run(int s, int32_t *x, int32_t *l, int32_t *r)
 {
@@ -1735,7 +1752,7 @@ static void gm_side(int c)
             want = pk > LIM_KNEE ? (LIM_KNEE << 15) / pk : 32768;
             g = want < g0 ? want : g0 + ((want - g0 + 255) >> 8);
             if (g < 32768 || g0 < 32768)
-                for (i = 0; i < DMK_SUB; i++) x[i] = (int32_t)(((int64_t)x[i] * (g0 + (((g - g0) * i) >> 4))) >> 15);
+                for (i = 0; i < DMK_SUB; i++) x[i] = mulc(g0 + (((g - g0) * i) >> 4), x[i], 15);
             if (g < 29205) gm_loud[c] += DMK_SUB;           /* (past a decibel down) */
             gm_lg[c] = g;
         }
@@ -1812,11 +1829,11 @@ static uint32_t inc_by(uint32_t inc0, int32_t c)
 {
     int32_t ct = c / 16, st, r;
     uint32_t inc;
-    if (ct >= -50 && ct <= 50) inc = (uint32_t)(((uint64_t)inc0 * T_CENT[50 + ct]) >> 16);
+    if (ct >= -50 && ct <= 50) inc = mulu16(inc0, T_CENT[50 + ct]);
     else {
         st = clampi((ct + 4850) / 100 - 48, -48, 48);   /* the nearest semitone (ct >= -4850 after the clamp) */
         r = clampi(ct - st * 100, -50, 50);
-        inc = (uint32_t)(((((uint64_t)inc0 * T_SEMI[st + 48]) >> 16) * T_CENT[50 + r]) >> 16);
+        inc = mulu16(mulu16(inc0, T_SEMI[st + 48]), T_CENT[50 + r]);   /* (the first under 2^23) */
     }
     return inc > INC_MAX ? INC_MAX : inc;
 }
@@ -1860,8 +1877,8 @@ static void voices_run(int half)
             int32_t e0 = o->env, e1, de, f, q, q1, open, idx, f2 = 0, c = 0, *out = &vbuf[half][o->sy][b * DMK_SUB];
             uint32_t inc, linc = 0;
             if (o->stage == 1) { e1 = e0 + (int32_t)p->atk; if (e1 >= FULL) { e1 = FULL; o->stage = 2; } }
-            else if (o->stage == 2) e1 = p->sus + (int32_t)(((int64_t)(e0 - p->sus) * p->dec) >> 16);
-            else { e1 = (int32_t)(((int64_t)e0 * p->rel) >> 16); if (e1 < 256) { e1 = 0; o->stage = 0; } }
+            else if (o->stage == 2) e1 = p->sus + mul16(e0 - p->sus, p->dec);
+            else { e1 = mul16(e0, p->rel); if (e1 < 256) { e1 = 0; o->stage = 0; } }
             de = (e1 - e0) / DMK_SUB;
             /* the pitch: MOTION's vibrato (faded in) or drift (a wandering goal, and the note's own detune) */
             if (p->motion == FO_VIB) {
@@ -1877,7 +1894,7 @@ static void voices_run(int half)
                 c += o->gl;
                 {                                       /* toward zero (a negative one floored would stall) */
                     int32_t a = o->gl < 0 ? -o->gl : o->gl;
-                    a = (int32_t)(((int64_t)a * p->glide) >> 16);
+                    a = mul16(a, p->glide);
                     o->gl = a < 16 ? 0 : o->gl < 0 ? -a : a;
                 }
             }
@@ -1887,7 +1904,7 @@ static void voices_run(int half)
             if (o->l.on) o->l.inc = c ? inc_by(o->l.inc0, c) : o->l.inc0;
             inc = o->m.inc << p->grit;
             if (o->l.on) linc = o->l.inc << p->grit;
-            idx = p->cut + (int32_t)(((int64_t)p->fenv * e0) >> 24) + o->kcut;
+            idx = p->cut + mul24(p->fenv, e0) + o->kcut;
             idx += lfo_cut[o->sy][b];                   /* and its cutoff */
             idx = clampi(idx, 0, 255);
             f = T_SVF[gi ? clampi(idx + gi, 0, 255) : idx]; q = p->resq;
@@ -1911,7 +1928,8 @@ static void voices_run(int half)
                     METER(dmeter.clamp_v += y > 65536 || y < -65536);
                     METER(dmeter.voice_max = (y < 0 ? -y : y) > dmeter.voice_max ? (y < 0 ? -y : y) : dmeter.voice_max);
                     if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;   /* a resonance past full: bent, not cut */
-                    o->lastv = (int32_t)(((int64_t)y * ((e0 + de * i) >> 9)) >> 15);
+                    o->lastv = (y * ((e0 + de * i) >> 9)) >> 15;   /* (|y| under 65535, the envelope 2^15 at most:
+                                                           32 bits) */
                     out[i] += o->lastv;
                     if (!o->stage) { o->lastv = 0; break; }
                 }
@@ -1940,7 +1958,7 @@ static void voices_run(int half)
                 if (open) y += ((x - y) * open) >> 4;
                 if (y > 49152 || y < -49152) y = curve(T_LIM, y / 2) * 2;
                 for (j = 0; j < gs; j++) {              /* (held, under GRIT) */
-                    o->lastv = (int32_t)(((int64_t)y * ((e0 + de * (i + j)) >> 9)) >> 15);
+                    o->lastv = (y * ((e0 + de * (i + j)) >> 9)) >> 15;
                     if (o->vg < 32768) o->lastv = (o->lastv * (o->vg >> 1)) >> 14;
                     out[i + j] += o->lastv;
                 }
@@ -2168,7 +2186,7 @@ static void dsp_render(int16_t *lr, int frames)
         if (!gm_lr) for (i = 0; i < n; i++) {
             int32_t ol = gm_x[0][i], orr = gm_x[1][i];
             if (gp.width != 256) {                      /* the whole mix's width (Home's Pan row) */
-                int32_t m = (ol + orr) / 2, d = (int32_t)(((int64_t)(ol - orr) * gp.width) >> 9);
+                int32_t m = (ol + orr) / 2, d = mulc(gp.width, ol - orr, 9);
                 ol = m + d; orr = m - d;
             }
             lr[(at + i) * 2] = (int16_t)curve(T_LIM, ol);

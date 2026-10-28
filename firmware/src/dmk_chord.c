@@ -124,8 +124,8 @@ static int snap_set(int p, uint16_t set, uint16_t pref)  /* the nearest pitch in
     int d;
     if (!set) return p;
     for (d = 0; d < 7; d++) {
-        int lo = p - d, hi = p + d, a = set >> ((lo % 12 + 12) % 12) & 1u, b = set >> (hi % 12) & 1u;
-        if (a && b) return pref >> (hi % 12) & 1u && !(pref >> ((lo % 12 + 12) % 12) & 1u) ? hi : lo;
+        int lo = p - d, hi = p + d, a = set >> ((lo % 12 + 12) % 12) & 1u, b = set >> ((hi % 12 + 12) % 12) & 1u;
+        if (a && b) return pref >> ((hi % 12 + 12) % 12) & 1u && !(pref >> ((lo % 12 + 12) % 12) & 1u) ? hi : lo;
         if (a) return lo;
         if (b) return hi;
     }
@@ -192,6 +192,8 @@ static int voice_x(int root, const int8_t *iv, int pedal, uint8_t *out, int lead
         if (ch.invert || ch_pn) {                       /* the inversion: as asked, or the one that moves least */
             uint8_t best[8], cand[8];
             int bm = 9999, from = ch.invert ? ch.invert - 1 : 0, to = ch.invert ? ch.invert - 1 : n - 1;
+            for (i = 0; i < n; i++) best[i] = t[i];     /* (an inversion past the chord's notes, a triad's third: as built;
+                                                           it was the stack's: a note or two at random) */
             for (k = from; k <= to && k < n; k++) {
                 int m;
                 for (i = 0; i < n; i++) cand[i] = (uint8_t)(t[i] + (i < k ? 12 : 0));
@@ -272,10 +274,13 @@ static const char *pc_name(int pc)
     static const char *const FL[12] = {"C", "D\xE2\x99\xAD", "D", "E\xE2\x99\xAD", "E", "F", "G\xE2\x99\xAD", "G",
                                        "A\xE2\x99\xAD", "A", "B\xE2\x99\xAD", "B"};
     static const uint8_t TO_MAJOR[MO_COUNT] = {3, 10, 8, 7, 5, 0};   /* the mode's tonic to its relative major's */
-    int major = (seq_key + TO_MAJOR[seq_mode % MO_COUNT]) % 12, in = pc_scale() >> (pc % 12) & 1u;
+    int major, in;
+    pc = (pc % 12 + 12) % 12;                           /* (a root under C-1, a MIDI note 0's chord: it read before the
+                                                           names, a null on the FM-1, its red screen) */
+    major = (seq_key + TO_MAJOR[seq_mode % MO_COUNT]) % 12; in = pc_scale() >> pc & 1u;
     int flats = major == 5 || major == 10 || major == 3 || major == 8 || major == 1;
     if (!in) flats = pc_scale() >> ((pc + 1) % 12) & 1u;   /* outside the key: lowered, a flat; raised, a sharp */
-    return (flats ? FL : SH)[pc % 12];
+    return (flats ? FL : SH)[pc];
 }
 static void chord_name_q(char *o, int root, int q, const char *const *names);
 static void chord_name(char *o, int root, int q) { chord_name_q(o, root, q, QN); }
