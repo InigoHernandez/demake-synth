@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.21.fwsc",
-  "version": "0.4.21",
+  "file": "demake-0.4.22.fwsc",
+  "version": "0.4.22",
   "date": "2026-10-28",
   "product": "FM-1_969",
-  "sha256": "ce47fc5a85417262d12001deb62ff678dac9b038124657fdd4bcbfa32c5984d2",
-  "note": "The LFO on Pan swings the sound (it stayed put); clouds no longer smear past Home's landscape. And 0.4.20's MIDI chords, 0.4.19's Space heard."
+  "sha256": "38a13a1298ab5b5212f7f6100a37cf8c0cd7c0eafea29960f37875ea028b7d67",
+  "note": "Keys each synth's own (chords on one, notes on the others); a loop's region on the Sound page; fewer clicks and no distortion at full level."
 }
