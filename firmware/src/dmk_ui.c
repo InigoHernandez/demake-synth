@@ -1507,6 +1507,8 @@ static void scene_frame(int sc, uint32_t tick)
     }
     if (tick != sc_tick) {                              /* a new frame of the scene: drawn, then held */
         sc_tick = tick;
+        clip_set(SX, SY, SC_W, SC_H);                   /* in its card (a cloud coming in from the left, or going out on
+                                                           the right, was drawn over the screen's margins: a player saw it) */
         for (y = 0; y < SC_H; y++) {                    /* the sky: a row is two bytes over and over (its dither's period) */
             uint8_t *b = &fb[((SY + y) * DMK_W + SX) >> 1];
             uint8_t p0 = (uint8_t)(sky_at(sc, 0, y, dk) << 4 | sky_at(sc, 1, y, dk)), p1 = (uint8_t)(sky_at(sc, 2, y, dk) << 4 | sky_at(sc, 3, y, dk));
@@ -1619,6 +1621,7 @@ static void scene_frame(int sc, uint32_t tick)
                 fill(SX + lx, SY + ly, 2, 3, on ? C_HOLO7 : C_A_INK2);
             }
         }
+        clip_all();
         for (y = 0; y < SC_H; y++)                      /* held for the frames between (square: the full screen's) */
             for (x = 0; x < SC_W; x += 2) sc_out[y * (SC_W / 2) + x / 2] = fb[((SY + y) * DMK_W + SX + x) >> 1];
     } else

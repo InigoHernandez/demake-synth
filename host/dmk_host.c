@@ -965,6 +965,46 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* a player's two (2026-10-28): the LFO on Pan swings the synth across (it stayed at its PAN: the held blocks took
+         * PAN's own gains, the LFO's only on the blocks it stepped); Home's landscape stays in its card (a cloud coming
+         * in from the left, or going out on the right, was drawn over the screen's margins) */
+        static int16_t a[DMK_SR * 3 * 2 + 512];
+        int n, w, k, sc, t, x, y, out = 0;
+        double lo = 99, hi = -99;
+        dmk_init(29); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = ui.val[k][PG_FX][1][4] = 0; ui.val[k][PG_FX][3][0] = 0; }
+        ui.val[0][PG_GLOBAL][2][4] = 0;
+        ui.val[0][PG_LFO][0][4] = choice_val(LT_PAN, 5); ui.val[0][PG_LFO][0][1] = 127; ui.val[0][PG_LFO][0][0] = 40;
+        sp_sync();
+        note_on_s(0, 57);
+        for (n = 0; n < DMK_SR * 3; n += 256) dmk_render(a + n * 2, 256);
+        note_off_s(0, 57);
+        for (w = 0; w < 12; w++) {                      /* a quarter second at a time: left over right, in dB */
+            double l = 1, r = 1; int i;
+            for (i = w * DMK_SR / 4; i < (w + 1) * DMK_SR / 4; i++) { l += (double)a[2 * i] * a[2 * i]; r += (double)a[2 * i + 1] * a[2 * i + 1]; }
+            l = 10 * log10(l / r); if (l < lo) lo = l; if (l > hi) hi = l;
+        }
+        if (hi - lo < 20) { fails++; printf("selftest: the LFO on Pan does not swing the synth (%.1f to %.1f dB)\n", lo, hi); }
+        for (sc = 0; sc < DMK_SCENES; sc++) {
+            int smp = -1;
+            for (k = 0; k < DMK_SAMPLES_N && smp < 0; k++) if (DMK_SAMPLES[k].scene == sc) smp = k;
+            if (smp < 0 || !CLOUDS[sc]) continue;
+            dmk_init(29); ui.boot_done = 1;
+            ui.val[ui.synth][PG_SOUND][0][0] = (uint8_t)smp; sp_sync();   /* (the synth shown: the store's song may
+                                                           open on another) */
+            if (scene_of(ui.synth) != sc || ui.page != PG_HOME) { fails++; printf("selftest: Home does not show scene %d\n", sc); }
+            for (t = 0; t < 700; t += 3) {              /* the clouds' whole way across, a frame of the scene each */
+                const uint8_t *f = dmk_frame(5000u + (uint32_t)t * 140u);
+                for (y = SY + R_CARD; y < SY + SC_H - R_CARD; y++)
+                    for (x = 0; x < DMK_W; x++) {
+                        int i = y * DMK_W + x, c = i & 1 ? f[i >> 1] & 15 : f[i >> 1] >> 4;
+                        if ((x < SX || x >= SX + SC_W) && c != C_PAPER) out++;
+                    }
+            }
+        }
+        if (out) { fails++; printf("selftest: Home's landscape draws outside its card (%d px)\n", out); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* MIDI notes as chords (a player's ask, 2026-10-27): with the Keys row at All, a note in plays the chord the key
          * would, at its velocity, and lets it go whole; at Keys: Chord, a single note; past the slots, single notes;
          * into the arp when it is on, nothing left on; every note on every channel, on and off, safe */

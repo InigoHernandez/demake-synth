@@ -2064,11 +2064,12 @@ static void dsp_render(int16_t *lr, int frames)
                     L[i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
                     R[i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
-                } else for (i = 0; i < DMK_SUB; i++) {
+                } else for (i = 0; i < DMK_SUB; i++) {      /* (held: the pan where it is, the LFO's too: PAN's own here
+                                                           left the LFO's swing heard only on the blocks it stepped) */
                     int32_t xl = clampi((clampi(sl[i], -65535, 65535) * lvl) >> 14, -65535, 65535);
                     int32_t xr = clampi((clampi(sr[i], -65535, 65535) * lvl) >> 14, -65535, 65535), x = (xl + xr) / 2;   /* back up */
-                    L[i] += (xl * p->gl) >> 15;
-                    R[i] += (xr * p->gr) >> 15;
+                    L[i] += (xl * gl1) >> 15;
+                    R[i] += (xr * gr1) >> 15;
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 }
                 syn_peak[s] = pk > syn_peak[s] ? pk : syn_peak[s] - (syn_peak[s] >> 6);
