@@ -16,7 +16,7 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 13u  /* 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
+#define ST_VER 14u  /* 14: the Keys row each synth's (the Chord page's K1), LOOP three ways and the Sound page's Loop row; 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
                        echo was), each synth's send to it on FX's Space row (where its reverb's amount was: back on the
                        reverb's row); 12: a reverb a track (FX's first row, where the colour was), the colour the mix's (GLO's first row,
                        where the shared verb was); 11: patterns to 256 steps, a note 5 bytes; 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
@@ -33,7 +33,7 @@ static uint8_t lib[ST_USER][ST_SOUND];                  /* the library, as the f
                                                            FX rows' later types; 3, the delay for the media (0.5); 4,
                                                            the reverb for the colour (0.4.17); 5, the delay's five
                                                            types, the send to the Space (0.4.18) */
-#define SND_FORM 5
+#define SND_FORM 6
 static uint32_t st_gen;                                 /* the newest song's generation */
 static uint32_t song_gen[ST_SONGS];                     /* each slot's (0: empty) */
 static uint8_t song_prog[ST_SONGS];                     /* each slot's progression, for its name */
@@ -60,9 +60,10 @@ static void nm_roll(uint8_t *v, uint32_t salt)          /* a name made up: two w
 
 /* a sound: the rows a synth owns (SOUND, LAYER, FILTER, AMP, the four FX rows (REVERB, DELAY, MOTION, SPACE), LFO;
  * then VOICE and the LFO's sync, after the first nine so a sound of before 0.4 is these nine), five values each */
-#define SND_ROWS_N 11
+#define SND_ROWS_N 12
 static const uint8_t SND_ROWS[SND_ROWS_N][2] = {{PG_SOUND, 0}, {PG_SOUND, 1}, {PG_FILTER, 0}, {PG_AMP, 0}, {PG_FX, 0},
-                                                {PG_FX, 1}, {PG_FX, 2}, {PG_FX, 3}, {PG_LFO, 0}, {PG_SOUND, 2}, {PG_LFO, 1}};
+                                                {PG_FX, 1}, {PG_FX, 2}, {PG_FX, 3}, {PG_LFO, 0}, {PG_SOUND, 2}, {PG_LFO, 1},
+                                                {PG_SOUND, 3}};   /* (form 6: the Loop row) */
 
 static int store_on(void) { return dmk_store_read && dmk_store_write; }
 
@@ -134,10 +135,18 @@ static void fx_types_moved(int s)
         *v = *v * OLD_N[r] / 128 ? choice_val(*v * OLD_N[r] / 128, NEW_N[r]) : 0;   /* (off stays 0) */
     }
 }
+/* a sound or song of before 0.4.22: LOOP two ways (on: the recording's), at its place of three; the Loop row all of it */
+static void loop_moved(int s)
+{
+    uint8_t *m = ui.val[s][PG_SOUND][0], *l = ui.val[s][PG_SOUND][3];
+    m[2] = choice_val(m[2] >= 64, 3);
+    l[0] = 0; l[1] = 127; l[2] = l[3] = l[4] = 0;
+}
 DMK_SMALL static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of before 0.4, its new controls off */
 {
     int r, k;
-    for (r = 0; r < (form ? SND_ROWS_N : 9); r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = v[r * 5 + k];
+    for (r = 0; r < (!form ? 9 : form < 6 ? 11 : SND_ROWS_N); r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = v[r * 5 + k];
+    if (form < 6) loop_moved(s);                        /* before 0.4.22: the loop on or off; no Loop row */
     if (!form) snd_new_defaults(s);                     /* its layer, voice, drive and LFO did nothing then: off */
     if (form < 2) fx_types_moved(s);
     if (form < 3) delay_defaults(s);                    /* its media: the mix's now, so not the sound's */
@@ -325,6 +334,9 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         for (k = 0; k < 5; k++) m[k] = ui.val[from][PG_FX][1][k];
         for (s = 0; s < DMK_SYNTHS; s++) { roll_vary_defaults(s); delay_defaults(s); }
     }
+    if (st_ver < 14u) for (s = 0; s < DMK_SYNTHS; s++) loop_moved(s);   /* before 0.4.22: LOOP two ways, no Loop row */
+    if (st_ver < 14u) for (s = 1; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][2][0] = ui.val[0][PG_CHORD][2][0];   /* before 0.4.22:
+                                                           one Keys row for all (the others' a 64 never set: All) */
     if (st_ver < 13u) {                                 /* before 0.4.18 (the owner's: the echo a track's, the huge
                                                            reverbs the Space's): the shared echo (GLO's second row) each
                                                            synth's delay that sent to it and had none on (its kind, tone,

@@ -40,8 +40,9 @@ static const page_t PAGE[PG_COUNT] = {
      {{"Level 1", "Level 2", "Level 3", "Tempo"}, {"Space 1", "Space 2", "Space 3", "Return"}, {"Pan 1", "Pan 2", "Pan 3", "Width"}}},
     {"Roll", 3, {"Roll", "Vary", "Arp"}, {"Zoom", "Zoom", "Hold"},
      {{"Cursor", "View", "Follow", "Steps"}, {"Mutate", "Range", "Chance", "Evolve"}, {"Mode", "Rate", "Octave", "Gate"}}},
-    {"Sound", 3, {"Main", "Layer", "Voice"}, {"Fine", "Sound", ""},
-     {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"}}},
+    {"Sound", 4, {"Main", "Layer", "Voice", "Loop"}, {"Fine", "Sound", "", ""},   /* (Loop: a player's ask, the loop's region) */
+     {{"Sound", "Start", "Loop", "Tune"}, {"Blend", "Tune", "Loop", "Tone"}, {"Glide", "Velocity", "Track", "Grit"},
+      {"From", "Length", "", ""}}},
     {"Filter", 1, {"Filter"}, {"Type"}, {{"Cutoff", "Reso", "Env", "Drive"}}},
     {"Amp", 1, {"Amp"}, {"Level"}, {{"Attack", "Decay", "Sustain", "Release"}}},
     {"FX", 4, {"Reverb", "Delay", "Motion", "Sends"}, {"Type", "Type", "Effect", ""},   /* (the owner's, 0.4.17: a reverb a
@@ -124,7 +125,7 @@ static const char *const RESTARTS[] = {"Free", "A note"};   /* the LFO from its 
 static const char *const LTUNES[] = {"\xE2\x88\x92" "2 oct", "\xE2\x88\x92" "1 oct", "\xE2\x88\x92" "5th", "Unison", "+5th", "+1 oct", "+2 oct"};
 static const int8_t LTUNE[7] = {-24, -12, -7, 0, 7, 12, 24};
 static const char *const GRITS[] = {"Off", "22 kHz", "11 kHz"};
-static const char *const LOOPS[] = {"Off", "Full"};
+static const char *const LOOPS[] = {"Off", "Full", "Set"};   /* Set: the Loop row's region (the layer's: the first two) */
 /* each track's REVERB (dmk_dsp's RV_; the owner's, 0.4.17: the shared verbs' twelve gone), its knobs by type: AMOUNT
  * (Space's first, its send), TONE, SIZE and the type's own */
 static const char *const REVERBS[] = {"Off", "Room", "Plate", "Spring", "Hall"};
@@ -148,7 +149,7 @@ static const char *const HOLDS[] = {"Off", "On"};
 static const char *const DIVS[] = {"1/16", "1/8T", "1/16D", "1/8", "1/4T", "1/8D", "1/4", "1/4D", "1/2"};   /* the delay's (dmk_seq: DIV24) */
 #define DIV_N 9
 static const choice_t CHOICE[] = {
-    {PG_SOUND, 0, 2, 2, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
+    {PG_SOUND, 0, 2, 3, LOOPS}, {PG_FILTER, 0, 4, 8, FILTERS}, {PG_ROLL, 0, 4, 3, ZOOMS},
     {PG_FX, 0, 4, FX_REVERBS, REVERBS}, {PG_FX, 1, 4, DT_N, DELAYS}, {PG_FX, 1, 2, DIV_N, DIVS}, {PG_FX, 2, 4, FX_MOTIONS, MOTIONS},
     {PG_GLOBAL, 3, 3, DMK_THEMES, THEME_NAME}, {PG_GLOBAL, 0, 4, FX_COLOURS, COLOURS}, {PG_GLOBAL, 1, 4, SP_N, SPACES},
     {PG_GLOBAL, 2, 4, FX_MEDIAS, MEDIAS}, {PG_ROLL, 1, 3, 2, KEEPS}, {PG_ROLL, 1, 1, 7, RANGES}, {PG_CHORD, 0, 2, 4, SPREADS},
@@ -220,7 +221,7 @@ static void notice(const char *s)
 
 /* the keys play chords here: on CHORD, or anywhere but Arrange (whose keys write its steps) when the Keys row says
  * All; there they light and play as on CHORD, and on the roll they write the chord (the owner's ask) */
-static int chords_here(void) { return ui.page == PG_CHORD || (ch.keys && ui.page != PG_ARR); }
+static int chords_here(void) { return ui.page == PG_CHORD || (ch.keys >> ui.synth & 1u && ui.page != PG_ARR); }
 /* a roll written to: a synth that plays the chords, or harmonizes another, leaves its roll, so what was written
  * would not be heard; it plays its roll from now (SEQ held + ALGORITHM puts it back) */
 static void roll_heard(int s)
@@ -342,7 +343,7 @@ static void sound_put(int s, uint8_t *o);
 static int lib_count(void);
 static int lib_nth(int n);
 static void lib_load(int s, int slot);
-#define SND_BYTES 55                                    /* a sound's values (dmk_store.c: SND_ROWS) */
+#define SND_BYTES 60                                    /* a sound's values (dmk_store.c: SND_ROWS) */
 static uint8_t ui_first[DMK_SYNTHS][SND_BYTES];         /* INIT: each synth's sound as the first song has it */
 
 /* a control's value: a synth's own on its pages, the song's on Home's last column and Global; Home's rows are views of
@@ -352,6 +353,7 @@ static int dl_type(int s) { int t = ui.val[s][PG_FX][1][4] * DT_N / 128; return 
 static uint8_t *vp(int page, int row, int k)
 {
     if (page == PG_CHORD && k == 4) return &ui.val[0][PG_CHORD][0][4];  /* the progression, on both rows */
+    if (page == PG_CHORD && row == 2 && k == 0) return &ui.val[ui.synth][PG_CHORD][2][0];   /* Keys: each synth's */
     if (page == PG_LFO && k == 4) return &ui.val[ui.synth][PG_LFO][0][4];   /* the LFO's target, on both rows */
     if (page == PG_ROLL && row == 1 && k < 4) return &ui.val[ui.synth][PG_ROLL][1][k];   /* Vary: each synth's own (it
                                                            was the first synth's whichever was picked: the owner) */
@@ -379,7 +381,11 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
         p->smp = (uint8_t)(VS(s, PG_SOUND, 0, 0) < DMK_SAMPLES_N ? VS(s, PG_SOUND, 0, 0) : 0);
         sm = &DMK_SAMPLES[p->smp];
         p->start = (uint16_t)(VS(s, PG_SOUND, 0, 1) * ((sm->loops ? sm->loop0 : sm->blocks) / 2) / 127);
-        p->loops = (uint8_t)(VS(s, PG_SOUND, 0, 2) >= 64);
+        p->loops = (uint8_t)choice_index(choice_of(PG_SOUND, 0, 2), VS(s, PG_SOUND, 0, 2));   /* off, the recording's, set */
+        v = VS(s, PG_SOUND, 3, 0) * (sm->blocks - 1) / 127;   /* Set's: from where, how long, in the recording's blocks */
+        p->la = (uint16_t)v;
+        v += 1 + VS(s, PG_SOUND, 3, 1) * (sm->blocks - 1) / 127;
+        p->lb = (uint16_t)(v > sm->blocks ? sm->blocks : v);
         p->tune = (int16_t)((VS(s, PG_SOUND, 0, 3) - 64) * 24 / 64);
         p->fine = (int8_t)((VS(s, PG_SOUND, 0, 4) - 64) * 50 / 64);
         p->ftype = (uint8_t)(VS(s, PG_FILTER, 0, 4) * 8 / 128);
@@ -521,7 +527,8 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
     seq_mode = (uint8_t)(VS(0, PG_CHORD, 1, 1) * 6 / 128);
     ch.change = (uint8_t)(VS(0, PG_CHORD, 1, 2) * 4 / 128);
     ch.rhythm = (uint8_t)(VS(0, PG_CHORD, 1, 3) * 5 / 128);
-    ch.keys = (uint8_t)(VS(0, PG_CHORD, 2, 0) * 2 / 128);
+    for (ch.keys = 0, s = 0; s < DMK_SYNTHS; s++)     /* each synth's own (a player's ask: chords on one, notes on the others) */
+        if (VS(s, PG_CHORD, 2, 0) * 2 / 128) ch.keys |= (uint8_t)(1u << s);
     ch.ktype = (uint8_t)(VS(0, PG_CHORD, 2, 1) * KT_COUNT / 128);
     cur_synth = ui.synth;
 }
@@ -589,7 +596,8 @@ DMK_SMALL static void ui_init(void)
         const uint8_t *t = SET[s];
         ui.val[s][PG_SOUND][0][0] = FIRST[s] < DMK_SAMPLES_N ? FIRST[s] : 0;
         ui.val[s][PG_SOUND][0][1] = 0;
-        ui.val[s][PG_SOUND][0][2] = 127;                /* the loop on */
+        ui.val[s][PG_SOUND][0][2] = choice_val(1, 3);   /* the loop on: the recording's */
+        ui.val[s][PG_SOUND][3][0] = 0; ui.val[s][PG_SOUND][3][1] = 127;   /* Set's: all of it, till turned */
         ui.val[s][PG_SOUND][0][4] = 64;                 /* in tune */
         ui.val[s][PG_AMP][0][0] = t[0]; ui.val[s][PG_AMP][0][1] = t[1]; ui.val[s][PG_AMP][0][2] = t[2];
         ui.val[s][PG_AMP][0][3] = t[3]; ui.val[s][PG_AMP][0][4] = t[7];
@@ -615,7 +623,8 @@ DMK_SMALL static void ui_init(void)
     ui.val[0][PG_CHORD][0][3] = 64; ui.val[0][PG_CHORD][0][4] = 4;            /* wide, auto, no spread or strum; First snow */
     ui.val[0][PG_CHORD][1][0] = 9 * 128 / 12 + 5; ui.val[0][PG_CHORD][1][1] = 10;   /* A, Aeolian */
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
-    ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* keys: chords on CHORD, sevenths */
+    for (s = 0; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][2][0] = choice_val(0, 2);   /* keys: chords on CHORD (each synth's) */
+    ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* sevenths */
     ui.val[0][PG_GLOBAL][0][4] = 0;                     /* the mix's colour: none */
     ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_HALL, SP_N);   /* the Space: the shared hall of before */
     ui.val[0][PG_GLOBAL][1][0] = 84; ui.val[0][PG_GLOBAL][1][1] = 56; ui.val[0][PG_GLOBAL][1][2] = 96;
@@ -706,6 +715,8 @@ DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, n
         str_cat(o, MODEFIELD[choice_index(c, v) % 6]);
         return;
     }
+    if (page == PG_SOUND && row == 3 && k < 2) { str_cat(fmt_int(o, v * 100 / 127), "%"); return; }   /* the loop's
+                                                           region: a share of the recording */
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
@@ -1811,12 +1822,13 @@ static void stage_sound(void)
     int16_t ya[DMK_W], yb[DMK_W];
     int row = ui.row[PG_SOUND], lay = row == 1;
     const dmk_sample_t *sm;
-    int i, mid = SY + 76, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, n, loops, on;
+    int i, mid = SY + 76, x0 = SX + PAD + 1, w = SW - 2 * PAD - 2, n, loops, on, la, lb;
     if (row == 2) { stage_voice(); return; }
     i = *vp(PG_SOUND, lay, lay ? 4 : 0);
     sm = &DMK_SAMPLES[i < DMK_SAMPLES_N ? i : 0];
     n = sm->blocks;
-    loops = sm->loops && *vp(PG_SOUND, lay, 2) >= 64;
+    loops = lay ? sm->loops && *vp(PG_SOUND, 1, 2) >= 64 : syn[ui.synth].loops == 2 ? 2 : sm->loops && syn[ui.synth].loops;
+    la = loops == 2 ? syn[ui.synth].la : sm->loop0; lb = loops == 2 ? syn[ui.synth].lb : sm->loop1;   /* (the ends drawn) */
     on = !lay || *vp(PG_SOUND, 1, 0);                   /* the layer: off until it is blended in */
     card(SX, SY, SW, SH, C_LINE, 1);
     if (lay) {
@@ -1825,7 +1837,7 @@ static void stage_sound(void)
         if (on) str_cat(fmt_int(str_cat(t, "Layer, "), *vp(PG_SOUND, 1, 0) * 100 / 127), "%");
         else str_cat(t, "Layer off");
         card_title(SX, SY, SW, sm->name, t, !on);
-    } else card_title(SX, SY, SW, sm->name, loops ? "Looped" : "One-shot", 0);
+    } else card_title(SX, SY, SW, sm->name, loops == 2 ? "Loop set" : loops ? "Looped" : "One-shot", 0);
     for (i = 0; i < w; i++) {                           /* the sound's own shape: its body lit, its edge in ink */
         int h = sm->env[i * 48 / w] * 34 / 255;
         if (h < 1) h = 1;
@@ -1846,7 +1858,7 @@ static void stage_sound(void)
     }
     if (loops && on)                                    /* the loop's ends, as tall as the sample is there */
         for (i = 0; i < 2; i++) {
-            int lx = (i ? sm->loop1 : sm->loop0) * (w - 1) / n, lh = mid - ya[lx] + 5;
+            int lx = (i ? lb - (lb >= n) : la) * (w - 1) / n, lh = mid - ya[lx] + 5;
             round_fill(x0 + lx - 2, mid - lh, 4, 2 * lh, 2, C_INK);
         }
     if (!lay && syn[ui.synth].start) {                  /* where it starts */
@@ -3287,6 +3299,8 @@ DMK_SMALL static void ui_encoder(int e, int d)
         return;
     }
     v = vp(ui.page, r, k);
+    if (ui.page == PG_SOUND && r == 3 && k < 2)         /* the loop's region turned: the loop set, heard at once */
+        ui.val[ui.synth][PG_SOUND][0][2] = choice_val(2, 3);
     if (ui.page == PG_SOUND && ((r == 0 && k == 0) || (r == 1 && k == 4))) {   /* a recording: a step a detent */
         *v = (uint8_t)wrap(*v + (d > 0 ? 1 : -1), DMK_SAMPLES_N);
         sp_sync();
@@ -3493,7 +3507,7 @@ static const uint8_t *ui_leds(void)
     if (ui.page == PG_ARR) leds[DMK_KEYS + B_SEQ] = 255;
     leds[DMK_KEYS + B_PLAY] = seq_on || (ui.rec_ready && seq_rec && (ui.now / 250u) & 1u) ? 255 : 0;   /* ready: blinking */
     leds[DMK_KEYS + B_REC] = seq_rec ? 255 : 0;         /* REC armed: lit (it never was) */
-    if (ch.keys) leds[DMK_KEYS + B_ARP] = 255;          /* the keys play chords everywhere: ARP lit */
+    if (ch.keys >> ui.synth & 1u) leds[DMK_KEYS + B_ARP] = 255;   /* this synth's keys play chords everywhere: ARP lit */
     if (song_mode) leds[DMK_KEYS + B_HOME] = !seq_on || seq_ticks % 16u < 2u || ui.page == PG_HOME ? 255 : 0;   /* the bar */
     if (ui.page == PG_ARR && !(ui.btn_held >> B_HOME & 1u)) {   /* the Scene row: the synth's patterns; the Song row: the step's scene */
         for (i = 0; i < DMK_KEYS; i++) leds[i] = ui.keys_down[i] ? 255 : 0;
@@ -3542,7 +3556,7 @@ static int mi_chord_off(int st, int d1)                 /* 1: it held a chord, l
 static int mi_chord_on(int s, int st, int d1, int vel)  /* 1: played as a chord */
 {
     int i, oct = ui.octave, lo = 53 + ui.octave * 12;
-    if (!ch.keys) return 0;
+    if (!(ch.keys >> s & 1u)) return 0;           /* (its synth's Keys at All) */
     for (i = 0; i < MI_CHORDS && mi_chd[i].on; i++) {}
     if (i == MI_CHORDS) return 0;
     if (d1 < lo || d1 >= lo + DMK_KEYS) oct = clampi(d1 >= 53 ? (d1 - 53) / 12 : -((53 - d1 + 11) / 12), -2, 2);

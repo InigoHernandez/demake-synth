@@ -62,6 +62,7 @@ typedef struct {
     int16_t tune, cut, fenv;       /* semitones; the cutoff's index 0..255 (255: open); the envelope's reach in indexes */
     int8_t fine;                   /* cents, -50..50 */
     uint16_t start, resq, dec, rel;   /* blocks; damping Q14; decay and release factors Q16 a block */
+    uint16_t la, lb;               /* LOOP Set's blocks: from, to (the Loop row) */
     uint32_t atk;                  /* the attack's step a block, Q24 */
     int32_t sus, level, gl, gr, ssend;   /* Q24; Q15 ... (ssend: to the SPACE) */
     int32_t pan;                   /* 0..127 as turned (the LFO swings it) */
@@ -112,9 +113,10 @@ static struct { int32_t sret, sdamp, sga, sgb, smod, sgin, sshine, srlen, srinv,
 typedef struct {
     const dmk_sample_t *s;
     uint32_t ph, inc, inc0;
-    int32_t a, b, s1, s2;
-    uint16_t blk, end;
-    uint8_t bi, loop, on;
+    int32_t a, b, s1, s2, dc;    /* dc: the step at the last wrap, fading (a loop set anywhere jumps there) */
+    uint16_t blk, end, la;       /* la: where it loops back to */
+    int16_t q1, q2;              /* the decoder's state there (a set loop's: taken as it first passes) */
+    uint8_t bi, loop, on;        /* loop: 0 none, 1 the recording's, 2 set */
     int16_t buf[28];
 } strm_t;
 typedef struct {
@@ -178,17 +180,34 @@ static void blk_decode(strm_t *o)
     o->s1 = s1; o->s2 = s2;
 }
 
+/* a block after the last: back to the loop's start (its state too), the step there to fade; or, passing a set loop's
+ * start, its state taken */
+static void strm_wrap(strm_t *o)
+{
+    int32_t last = o->buf[27];
+    o->blk = o->la; o->s1 = o->q1; o->s2 = o->q2;
+    blk_decode(o);
+    o->dc += last - o->buf[0];
+}
+static int32_t strm_out(strm_t *o)
+{
+    int32_t v = o->buf[o->bi++];
+    if (o->dc) { v += o->dc; o->dc = o->dc * 31 / 32; }   /* (~1 ms: no click where a set loop jumps) */
+    return v;
+}
 static int32_t smp_next(strm_t *o)
 {
     if (o->bi >= 28) {
         if (++o->blk >= o->end) {
             if (!o->loop) { o->on = 0; return 0; }
-            o->blk = o->s->loop0; o->s1 = o->s->ls1; o->s2 = o->s->ls2;
+            strm_wrap(o);
+        } else {
+            if (o->blk == o->la && o->loop == 2) { o->q1 = (int16_t)o->s1; o->q2 = (int16_t)o->s2; }
+            blk_decode(o);
         }
-        blk_decode(o);
         o->bi = 0;
     }
-    return o->buf[o->bi++];
+    return strm_out(o);
 }
 /* the sound's own recording: as smp_next, and its end (a one-shot's) ends the voice */
 static int32_t smp_next_m(voice_t *v)
@@ -201,20 +220,23 @@ static int32_t smp_next_m(voice_t *v)
                 if (!(v->lay && v->l.on)) { v->stage = 0; v->env = 0; }
                 return 0;
             }
-            o->blk = o->s->loop0; o->s1 = o->s->ls1; o->s2 = o->s->ls2;
-        } else o->blk++;
-        blk_decode(o);
+            strm_wrap(o);
+        } else {
+            if (++o->blk == o->la && o->loop == 2) { o->q1 = (int16_t)o->s1; o->q2 = (int16_t)o->s2; }
+            blk_decode(o);
+        }
         o->bi = 0;
     }
-    return o->buf[o->bi++];
+    return strm_out(o);
 }
 
 /* a voice's step: at most four of the recording's samples an output sample. Two octaves up from where it was recorded
  * is as high as a note reads (past it the recording aliases into noise, and each step decodes more: CPU grew with the
  * transposition, 16 x at the top) */
 #define INC_MAX (4u << 16)
-/* a stream at the start of recording s, for note n moved by tune semitones and fine cents, from block start */
-static void strm_start(strm_t *t, const dmk_sample_t *s, int n, int tune, int fine, int loops, int start)
+/* a stream at the start of recording s, for note n moved by tune semitones and fine cents, from block start; loops 0
+ * once, 1 the recording's own loop (if it has one), 2 the blocks la to lb (LOOP: Set, the Loop row's) */
+static void strm_start(strm_t *t, const dmk_sample_t *s, int n, int tune, int fine, int loops, int start, int la, int lb)
 {
     int c = fine - s->cents, k;                         /* the cents to move it, -100..100: past half a semitone, the
                                                            semitone carried (clamped, FINE stopped at the recording's
@@ -227,8 +249,11 @@ static void strm_start(strm_t *t, const dmk_sample_t *s, int n, int tune, int fi
     inc = (uint32_t)(((uint64_t)inc * T_CENT[50 + c]) >> 16);
     t->inc = t->inc0 = inc > INC_MAX ? INC_MAX : inc;
     t->s = s;
-    t->loop = (uint8_t)(s->loops && loops);             /* LOOP OFF: a looped sample plays through once */
-    t->end = t->loop ? s->loop1 : s->blocks;
+    t->loop = (uint8_t)(loops == 2 ? 2 : s->loops && loops);   /* LOOP OFF: a looped sample plays through once */
+    t->end = (uint16_t)(loops == 2 ? lb : t->loop ? s->loop1 : s->blocks);
+    t->la = (uint16_t)(loops == 2 ? la : s->loop0);
+    t->q1 = loops == 2 ? 0 : s->ls1; t->q2 = loops == 2 ? 0 : s->ls2;
+    t->dc = 0;
     t->blk = (uint16_t)(start < t->end - 1 ? start : 0);
     t->s1 = t->s2 = 0;
     t->on = 1;
@@ -275,13 +300,13 @@ static void note_on_vel(int sy, int n, int src, int vel)
     st = p->start;
     if (p->ltarget == LT_START && p->ldepth) {          /* the LFO moves where each note starts, around START, faded */
         const dmk_sample_t *sm = &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0];
-        int32_t v = (lfo[sy].sm * lfo[sy].gs) >> 15, end = sm->loops && p->loops ? sm->loop1 : sm->blocks;
+        int32_t v = (lfo[sy].sm * lfo[sy].gs) >> 15, end = p->loops == 2 ? p->lb : sm->loops && p->loops ? sm->loop1 : sm->blocks;
         st = clampi(st + ((v * ((sm->loops ? sm->loop0 : sm->blocks) / 2)) >> 15), 0, end - 2);
     }
-    strm_start(&o->m, &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0], n, p->tune, p->fine, p->loops, st);
+    strm_start(&o->m, &DMK_SAMPLES[p->smp < DMK_SAMPLES_N ? p->smp : 0], n, p->tune, p->fine, p->loops, st, p->la, p->lb);
     o->l.on = 0;
     o->lay = (uint8_t)(p->lblend != 0);
-    if (o->lay) strm_start(&o->l, &DMK_SAMPLES[p->lsmp < DMK_SAMPLES_N ? p->lsmp : 0], n, p->tune + p->ltune, p->fine, p->lloops, 0);
+    if (o->lay) strm_start(&o->l, &DMK_SAMPLES[p->lsmp < DMK_SAMPLES_N ? p->lsmp : 0], n, p->tune + p->ltune, p->fine, p->lloops, 0, 0, 0);
     o->ltp = 0;
     o->rng = o->rng * 1664525u + 1013904223u + (uint32_t)n;
     o->det = p->motion == FO_DRIFT ? (int16_t)((int32_t)((o->rng >> 16) % 801u) - 400) * p->ok[1] / 127 : 0;

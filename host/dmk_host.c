@@ -275,6 +275,11 @@ static void tour(const char *dir)
     for (int i = 0; i < 64; i++) dmk_encoder(E_K3, 1);
     dmk_encoder(E_K4, 1);
     dmk_key(9, 1); wait_ms(300); shot(dir, "sound_voice"); dmk_key(9, 0);
+    tap(B_EDIT);                                        /* the Loop row: a region turned (the loop set), a note in it */
+    for (int i = 0; i < 40; i++) dmk_encoder(E_K1, 1);
+    for (int i = 0; i < 90; i++) dmk_encoder(E_K2, -1);
+    dmk_key(9, 1); wait_ms(1200); shot(dir, "sound_loop"); dmk_key(9, 0);
+    ui.val[ui.synth][PG_SOUND][0][2] = choice_val(1, 3); sp_sync();   /* (the loop the recording's again) */
     tap(B_EDIT);                                        /* back to the first row */
     tap(B_LFO);                                         /* the LFO: deep on the cutoff, a fade */
     for (int i = 0; i < 80; i++) dmk_encoder(E_K2, 1);
@@ -367,7 +372,7 @@ static void tour(const char *dir)
     {   /* recorded as played: a strummed chord, late in its steps; a held note's NUDGE; REC and PLAY: ready */
         static const uint8_t CH[4] = {57, 60, 64, 67};
         if (seq_on) tap(B_PLAY);
-        ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); sp_sync();   /* the keys: notes on the roll */
+        for (int q_ = 0; q_ < DMK_SYNTHS; q_++) ui.val[q_][PG_CHORD][2][0] = choice_val(0, 2); sp_sync();   /* the keys: notes on the roll */
         ui.synth = 1; sq[1].count = 0; ui.roll_cur[1] = 0;
         for (int i = 0; i < 4; i++) { int j = seq_add(1, i * 15 / 32, i < 3 ? 6 : 5, CH[i], 100); sq[1].n[j].off = (uint8_t)(i * 15 % 32); }
         roll_show(1, 67); roll_show(1, 57); wait_ms(60); shot(dir, "roll_strum");
@@ -413,6 +418,7 @@ static void sp_host_run(void)
     }
 }
 
+static int vc_any(int sy) { for (int v = 0; v < DMK_VOICES; v++) if (vc[v].stage && vc[v].sy == sy) return 1; return 0; }
 /* the second core as the self-test takes it: the job at once, then the first core's share */
 static int sp_par_begin(void (*job)(void)) { job(); return 1; }
 static void sp_par_end(void) {}
@@ -872,7 +878,7 @@ static void selftest(void)
     {
         int on;
         dmk_init(14); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_TRIAD, KT_COUNT); sp_sync();
+        for (int q_ = 0; q_ < DMK_SYNTHS; q_++) ui.val[q_][PG_CHORD][2][0] = choice_val(1, 2); ui.val[0][PG_CHORD][2][1] = choice_val(KT_TRIAD, KT_COUNT); sp_sync();
         tap(B_HOME); ui.synth = 1;
         dmk_key(4, 1); wait_ms(30);
         on = 0; for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 1;
@@ -965,6 +971,64 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* the loop's region (a player's ask): LOOP Set loops the Loop row's blocks, a one-shot recording too, its
+         * playhead kept inside them; Full the recording's own; Off a one-shot ends; the step at each wrap faded */
+        static int16_t ob[512 * 2];
+        int k, i, v, one = -1, bad = 0, wraps = 0;
+        for (k = 0; k < DMK_SAMPLES_N && one < 0; k++) if (!DMK_SAMPLES[k].loops && DMK_SAMPLES[k].blocks > 200) one = k;
+        dmk_init(32); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (k = 0; k < DMK_SYNTHS; k++) { ui.val[k][PG_FX][0][4] = ui.val[k][PG_FX][1][4] = ui.val[k][PG_FX][2][4] = 0; ui.val[k][PG_FX][3][0] = 0; }
+        ui.val[0][PG_GLOBAL][2][4] = 0; ui.val[0][PG_GLOBAL][1][4] = 0;
+        ui.val[0][PG_SOUND][0][0] = (uint8_t)(one < 0 ? 0 : one); ui.val[0][PG_SOUND][0][1] = 0; ui.val[0][PG_SOUND][1][0] = 0;
+        ui.val[0][PG_AMP][0][2] = 127; ui.val[0][PG_AMP][0][1] = 127;   /* (held at full: the loop heard as long as the key is) */
+        ui.val[0][PG_SOUND][0][2] = choice_val(2, 3); ui.val[0][PG_SOUND][3][0] = 40; ui.val[0][PG_SOUND][3][1] = 12;
+        sp_sync();
+        note_on_s(0, 60);
+        for (i = 0; i < 400; i++) {                     /* ~4.6 s: many times round the region */
+            uint16_t b0;
+            dmk_render(ob, 512);
+            for (v = 0; v < DMK_VOICES && !(vc[v].stage && vc[v].sy == 0); v++) {}
+            if (v == DMK_VOICES) { bad |= 1; break; }
+            b0 = vc[v].m.blk;
+            if (i > 40 && (b0 < syn[0].la || b0 >= syn[0].lb)) bad |= 2;
+            wraps += vc[v].m.dc != 0;
+        }
+        if (one < 0 || bad || !wraps) { fails++; printf("selftest: LOOP Set on a one-shot does not loop its region (%d, %d wraps)\n", bad, wraps); }
+        for (k = 0; k < DMK_SAMPLES_N; k++) {          /* each recording looped a short way in its middle, read as a voice
+                                                           reads it: a wrap's step under the recording's own biggest (no fade:
+                                                           ten times it, a click) */
+            const dmk_sample_t *sm = &DMK_SAMPLES[k];
+            strm_t t;
+            int la = sm->blocks * 40 / 128, lb = la + 1 + sm->blocks * 12 / 128, p0, dn = 0, dw = 0;
+            if (lb > sm->blocks) lb = sm->blocks;
+            strm_start(&t, sm, sm->root, 0, sm->cents, 2, 0, la, lb);
+            p0 = t.a;
+            for (i = 0; i < 28 * 3000; i++) {
+                uint16_t b0 = t.blk; uint8_t bi0 = t.bi;
+                int x = smp_next(&t), d = x - p0 < 0 ? p0 - x : x - p0;
+                if (bi0 >= 28 && t.blk == t.la && b0 != t.la) { if (d > dw) dw = d; } else if (d > dn) dn = d;
+                p0 = x;
+            }
+            if (dw > dn) { fails++; printf("selftest: LOOP Set on %s jumps at its wrap (%d, its own most %d)\n", sm->name, dw, dn); break; }
+        }
+        {   /* a sound kept before (form 5): its loop on (127) the recording's, its Loop row all of it; one now: as kept */
+            uint8_t snd[ST_SOUND];
+            ui.val[1][PG_SOUND][0][2] = 127; ui.val[1][PG_SOUND][3][0] = 55; ui.val[1][PG_SOUND][3][1] = 9;
+            sound_put(1, snd);
+            sound_get(2, snd, 5);
+            if (choice_index(choice_of(PG_SOUND, 0, 2), ui.val[2][PG_SOUND][0][2]) != 1 || ui.val[2][PG_SOUND][3][0] || ui.val[2][PG_SOUND][3][1] != 127)
+                { fails++; printf("selftest: a sound kept before 0.4.22 opens with its loop changed\n"); }
+            ui.val[1][PG_SOUND][0][2] = choice_val(2, 3); sound_put(1, snd); sound_get(2, snd, SND_FORM);
+            if (ui.val[2][PG_SOUND][0][2] != choice_val(2, 3) || ui.val[2][PG_SOUND][3][0] != 55 || ui.val[2][PG_SOUND][3][1] != 9)
+                { fails++; printf("selftest: a sound's loop region does not come back as kept\n"); }
+        }
+        note_off_s(0, 60);
+        ui.val[0][PG_SOUND][0][2] = choice_val(0, 3); sp_sync();   /* Off: a one-shot ends on its own */
+        note_on_s(0, 60);
+        for (i = 0; i < 2000 && vc_any(0); i++) dmk_render(ob, 512);
+        if (vc_any(0)) { fails++; printf("selftest: LOOP Off: a one-shot plays on\n"); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* a player's two (2026-10-28): the LFO on Pan swings the synth across (it stayed at its PAN: the held blocks took
          * PAN's own gains, the LFO's only on the blocks it stepped); Home's landscape stays in its card (a cloud coming
          * in from the left, or going out on the right, was drawn over the screen's margins) */
@@ -1011,7 +1075,7 @@ static void selftest(void)
         int v, j, on, want, bad = 0, ch_;
         uint8_t kc[7];
         dmk_init(28); now_ms = 0; wait_ms(60); ui.boot_done = 1;
-        ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); sp_sync();   /* Keys: All (ARP lit) */
+        for (int q_ = 0; q_ < DMK_SYNTHS; q_++) ui.val[q_][PG_CHORD][2][0] = choice_val(1, 2); sp_sync();   /* Keys: All (ARP lit) */
         want = chord_key(60, ui.octave, kc);            /* (the key on C4's chord) */
         dmk_midi(0x90, 60, 90); wait_ms(200);
         on = 0;
@@ -1024,12 +1088,12 @@ static void selftest(void)
         dmk_midi(0x90, 60, 90); wait_ms(60); dmk_midi(0x90, 60, 70); wait_ms(60); dmk_midi(0x90, 60, 0); wait_ms(30);   /* (again while held; an on at 0 its off) */
         on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
         if (on) { fails++; printf("selftest: a MIDI chord struck again leaves %d on\n", on); }
-        ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); sp_sync();   /* Keys: Chord: MIDI's a note */
+        for (int q_ = 0; q_ < DMK_SYNTHS; q_++) ui.val[q_][PG_CHORD][2][0] = choice_val(0, 2); sp_sync();   /* Keys: Chord: MIDI's a note */
         dmk_midi(0x90, 62, 90); wait_ms(60);
         on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
         if (on != 1) { fails++; printf("selftest: a MIDI note at Keys: Chord is not one note (%d)\n", on); }
         dmk_midi(0x80, 62, 0); wait_ms(30);
-        ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); sp_sync();
+        for (int q_ = 0; q_ < DMK_SYNTHS; q_++) ui.val[q_][PG_CHORD][2][0] = choice_val(1, 2); sp_sync();
         for (j = 0; j < MI_CHORDS + 2; j++) { dmk_midi(0x90, 40 + j * 3, 100); wait_ms(9); }   /* past the slots */
         for (j = 0; j < MI_CHORDS + 2; j++) dmk_midi(0x80, 40 + j * 3, 0);
         wait_ms(30);
@@ -1046,6 +1110,42 @@ static void selftest(void)
         wait_ms(60);
         on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].on;
         if (on) { fails++; printf("selftest: MIDI chords on every channel leave %d on\n", on); }
+        {   /* each synth's own Keys row (a player's ask: chords on one instrument, single notes on the others): synth 1
+             * at All, 2 and 3 at Chord; MIDI on channel 1 plays synth 1's chords, on channel 2 synth 2's single notes;
+             * the panel's keys on synth 2, off the Chord page, single notes; ARP lit on synth 1 only; the row shows
+             * the synth selected's */
+            int n1 = 0, n2 = 0;
+            dmk_init(31); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+            for (j = 0; j < DMK_SYNTHS; j++) ui.val[j][PG_CHORD][2][0] = choice_val(j == 0, 2);
+            ui.val[0][PG_GLOBAL][3][0] = choice_val(1, 2); sp_sync();   /* MIDI in: Ch 1-3 */
+            dmk_midi(0x90, 60, 100); dmk_midi(0x91, 64, 100); wait_ms(100);
+            for (v = 0; v < DMK_VOICES; v++) { n1 += vc[v].on && vc[v].sy == 0; n2 += vc[v].on && vc[v].sy == 1; }
+            if (n1 < 3 || n2 != 1) { fails++; printf("selftest: Keys each synth's: MIDI on channel 1 %d notes, on 2 %d (a chord, a note)\n", n1, n2); }
+            dmk_midi(0x80, 60, 0); dmk_midi(0x81, 64, 0); wait_ms(30);
+            ui.synth = 1; cur_synth = 1; sp_sync(); wait_ms(30);
+            if (dmk_frame(now_ms) && ui_leds()[DMK_KEYS + B_ARP]) { fails++; printf("selftest: ARP lit on a synth whose Keys are Chord\n"); }
+            dmk_key(7, 1); wait_ms(30);
+            n2 = 0; for (v = 0; v < DMK_VOICES; v++) n2 += vc[v].on && vc[v].sy == 1;
+            if (n2 != 1) { fails++; printf("selftest: a key on synth 2 (Keys: Chord, on Home) plays %d notes\n", n2); }
+            dmk_key(7, 0); wait_ms(30);
+            ui.synth = 0; cur_synth = 0; sp_sync(); wait_ms(30);
+            if (!ui_leds()[DMK_KEYS + B_ARP]) { fails++; printf("selftest: ARP not lit on the synth whose Keys are All\n"); }
+            if (vp(PG_CHORD, 2, 0) != &ui.val[0][PG_CHORD][2][0]) { fails++; printf("selftest: the Keys row is not the synth selected's\n"); }
+            {   /* a song of before (13): one Keys row, the others' a 64 never set; opened: all three the first's */
+                static uint8_t sb[ST_SECTOR];
+                ui.val[0][PG_CHORD][2][0] = choice_val(1, 2); ui.val[1][PG_CHORD][2][0] = ui.val[2][PG_CHORD][2][0] = 64;
+                st_ver = 13u;
+                if (song_unpack(sb, (uint32_t)song_pack(sb)) || ui.val[1][PG_CHORD][2][0] != choice_val(1, 2) || ui.val[2][PG_CHORD][2][0] != choice_val(1, 2))
+                    { fails++; printf("selftest: a song of 0.4.21 opens with its synths' Keys rows apart\n"); }
+                ui.val[0][PG_CHORD][2][0] = choice_val(0, 2); ui.val[2][PG_CHORD][2][0] = 64;
+                if (song_unpack(sb, (uint32_t)song_pack(sb)) || ui.val[2][PG_CHORD][2][0] != choice_val(0, 2))
+                    { fails++; printf("selftest: a song of 0.4.21 at Keys: Chord opens with a synth at All\n"); }
+                st_ver = ST_VER;
+                ui.val[2][PG_CHORD][2][0] = choice_val(1, 2);
+                if (song_unpack(sb, (uint32_t)song_pack(sb)) || ui.val[2][PG_CHORD][2][0] != choice_val(1, 2) || ui.val[0][PG_CHORD][2][0] != choice_val(0, 2))
+                    { fails++; printf("selftest: a song's Keys rows each synth's do not come back as saved\n"); }
+            }
+        }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }
     {
