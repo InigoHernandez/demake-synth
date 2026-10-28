@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.20.fwsc",
-  "version": "0.4.20",
-  "date": "2026-10-27",
+  "file": "demake-0.4.21.fwsc",
+  "version": "0.4.21",
+  "date": "2026-10-28",
   "product": "FM-1_969",
-  "sha256": "22bfa8008a9a7b4f3288cce90c7dcf3d70e49896f99b1b7f0305cbde616df3b4",
-  "note": "MIDI notes play chords with the Chord page's Keys row at All (ARP lit): the key's chord, strummed, at the note's velocity, into the arp when it is on. And 0.4.19's: GLO's Space heard."
+  "sha256": "ce47fc5a85417262d12001deb62ff678dac9b038124657fdd4bcbfa32c5984d2",
+  "note": "The LFO on Pan swings the sound (it stayed put); clouds no longer smear past Home's landscape. And 0.4.20's MIDI chords, 0.4.19's Space heard."
 }
