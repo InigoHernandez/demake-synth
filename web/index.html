@@ -7,7 +7,7 @@
   <title>Demake</title>
   <meta name="description" content="Demake: an ambient lofi machine for the M-VAVE FM-1. Three synths on its own recordings, scenes and songs, a chord machine, tape, lossy, a reverb each and one huge Space.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=31">
+  <link rel="stylesheet" href="style.css?v=35">
   <script>
     /* the splash, once a visit and never for less motion; if anything fails, the page shows after 4 s regardless */
     try {
@@ -65,8 +65,17 @@
     </ul>
   </section>
 
-  <!-- 02 inside: what a sound goes through, each in its light -->
-  <section class="g strip" id="engines"><span class="no">02</span><span class="lb">Inside</span></section>
+  <!-- 02 how to play: the panel in outline; a control pointed at lights, says what it does and shows its page -->
+  <section class="g strip" id="how"><span class="no">02</span><span class="lb">How to play</span></section>
+  <section class="g how">
+    <div class="howdev card"><svg id="hsvg" viewBox="14 14 876 538" role="img" aria-label="The FM-1's panel: point at a control"></svg></div>
+    <p class="howsay" id="hsay" aria-live="polite"><b>Point at a control</b> <span>Its page comes up on the screen</span></p>
+    <p class="howkey" id="hkey">In the emulator: the computer's keys, or drag a knob</p>
+    <div class="howlist" id="hlist" aria-label="The controls"></div>
+  </section>
+
+  <!-- 03 inside: what a sound goes through, each in its light -->
+  <section class="g strip" id="engines"><span class="no">03</span><span class="lb">Inside</span></section>
   <section class="g art">
     <figure class="eng e1"><div class="img"><canvas class="heat" data-heat="img/art/flow.png"></canvas></div><figcaption><b>Sample</b><span>Its own recordings, looped, one layered under another.</span></figcaption></figure>
     <figure class="eng e2"><div class="img"><canvas class="heat" data-heat="img/art/pool.png"></canvas></div><figcaption><b>Filter</b><span>Seven shapes and a drive, low-pass to vowel.</span></figcaption></figure>
@@ -76,8 +85,8 @@
     <figure class="eng e6"><div class="img"><canvas class="heat" data-heat="img/art/wave.png"></canvas></div><figcaption><b>Space</b><span>A reverb and a delay or echo a synth; one huge Space.</span></figcaption></figure>
   </section>
 
-  <!-- 03 the screens: its pages, one press each -->
-  <section class="g strip" id="screens"><span class="no">03</span><span class="lb">Screens</span></section>
+  <!-- 04 the screens: its pages, one press each -->
+  <section class="g strip" id="screens"><span class="no">04</span><span class="lb">Screens</span></section>
   <section class="g screens">
     <figure class="main home">
       <div class="frame f432 bits" style="--src: url(img/frame432.png)" aria-hidden="true"></div>
@@ -121,5 +130,6 @@
   </footer>
 </main>
 <script src="app.js?v=41"></script>
+<script src="guide.js?v=3"></script>
 </body>
 </html>
