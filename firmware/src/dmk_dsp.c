@@ -296,10 +296,16 @@ static void note_on_vel(int sy, int n, int src, int vel)
         lfo[sy].fade = 0;
         if (p->lretrig) { lfo[sy].ph = 0; lfo[sy].rst = 1; }
     }
-    for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage == 0) { best = i; break; }   /* a silent voice */
+    {   /* a silent voice; at a heavy load (the platform's CPU past 85%), eight at most sounding: a note more takes one
+         * (a dense jam ran the first core dry: a player's clicks) */
+        int on = 0;
+        for (i = 0; i < DMK_VOICES; i++) on += vc[i].stage != 0;
+        if (sys.cpu < 85 || on < 8) for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage == 0) { best = i; break; }
+    }
     if (best < 0) {                                     /* else the quietest released one, else the oldest held */
-        for (i = 0; i < DMK_VOICES; i++) if (!vc[i].on && vc[i].env < quiet) { quiet = vc[i].env; best = i; }
-        if (best < 0) for (i = 0; i < DMK_VOICES; i++) if (vc[i].age < oldest) { oldest = vc[i].age; best = i; }
+        for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage && !vc[i].on && vc[i].env < quiet) { quiet = vc[i].env; best = i; }
+        if (best < 0) for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].age < oldest) { oldest = vc[i].age; best = i; }
+        if (best < 0) best = 0;                         /* (none sounding: the cap at none) */
         vc_tail[vc[best].sy] += vc[best].lastv;         /* what it was sounding fades out, not cut */
     }
     o = &vc[best];

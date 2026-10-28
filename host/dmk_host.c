@@ -971,6 +971,22 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* at a heavy load (the platform's CPU past 85%) eight voices at most sounding; under it, all twelve */
+        int v, on, k;
+        dmk_init(34); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        sys.cpu = 90;
+        for (k = 0; k < 12; k++) { note_on_s(k % 3, 48 + k * 2); wait_ms(10); }
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].stage != 0;
+        if (on > 8) { fails++; printf("selftest: at a heavy load %d voices sound\n", on); }
+        for (k = 0; k < 12; k++) note_off_s(k % 3, 48 + k * 2);
+        sys.cpu = 0; wait_ms(60);
+        dmk_init(34); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (k = 0; k < 12; k++) { note_on_s(k % 3, 48 + k * 2); wait_ms(10); }
+        on = 0; for (v = 0; v < DMK_VOICES; v++) on += vc[v].stage != 0;
+        if (on != 12) { fails++; printf("selftest: at a light load %d of twelve voices sound\n", on); }
+        for (k = 0; k < 12; k++) note_off_s(k % 3, 48 + k * 2);
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* the rider (a player heard distortion): three dense pads at full level, every send and the Space's return at
          * the top (Bloom): nothing flat-topped (18% of it was, the curve's), GLO's Loud counting; the first song
          * playing: never ridden */
