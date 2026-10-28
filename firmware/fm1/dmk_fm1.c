@@ -369,7 +369,9 @@ static void app_loop(void)
     render_ahead();
     take_panel();
     render_ahead();
-    if (!pending && fm1_ms - frame_ms >= 33u) {   /* 30 frames a second at most, as the browser draws them */
+    if (!pending && fm1_ms - frame_ms >= 33u && (ring_w - ring_r >= RING || fm1_ms - frame_ms >= 250u)) {
+        /* 30 frames a second at most, as the browser draws them; and only with the ring full (a player heard clicks:
+         * at a heavy load each frame drained it faster than its yields refilled it), at least four a second */
         lights();
         screen_frame();
     }

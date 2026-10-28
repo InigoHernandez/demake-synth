@@ -971,6 +971,77 @@ static void selftest(void)
     /* from the review: a low MIDI note with a synth in harmony (the scale's place walked off its table); a MIDI note
      * ends on its own synth after SELECT; letting one chord go keeps the other's shared notes; the outside clock
      * stops at the song's end */
+    {   /* the rider (a player heard distortion): three dense pads at full level, every send and the Space's return at
+         * the top (Bloom): nothing flat-topped (18% of it was, the curve's), GLO's Loud counting; the first song
+         * playing: never ridden */
+        static int16_t lb[DMK_SR * 6 * 2 + 512];
+        static const char *const P[3] = {"Hesperis", "Juncus", "Cestrum"};
+        static const int CH[3][4] = {{45, 52, 57, 60}, {57, 64, 67, 71}, {69, 72, 76, 79}};
+        int sy, n, i, flat = 0;
+        uint32_t l0;
+        dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        for (sy = 0; sy < 3; sy++) {
+            for (i = 0; i < DMK_SAMPLES_N && strcmp(DMK_SAMPLES[i].name, P[sy]); i++) {}
+            ui.val[sy][PG_SOUND][0][0] = (uint8_t)(i < DMK_SAMPLES_N ? i : 0);
+            ui.val[sy][PG_AMP][0][4] = ui.val[sy][PG_AMP][0][2] = ui.val[sy][PG_FX][3][0] = 127;
+        }
+        ui.val[0][PG_GLOBAL][0][4] = ui.val[0][PG_GLOBAL][2][4] = 0;
+        ui.val[0][PG_GLOBAL][1][4] = choice_val(SP_BLOOM, SP_N); ui.val[0][PG_GLOBAL][1][0] = 127;
+        sp_sync();
+        l0 = sys.loud;
+        for (sy = 0; sy < 3; sy++) for (i = 0; i < 4; i++) note_on_s(sy, CH[sy][i]);
+        for (n = 0; n < DMK_SR * 6; n += 256) dmk_render(lb + n * 2, 256);
+        for (i = DMK_SR * 2 * 2; i < DMK_SR * 6 * 2; i++) flat += lb[i] >= 32700 || lb[i] <= -32700;
+        if (flat || sys.loud == l0) { fails++; printf("selftest: a mix past full is flat-topped (%d samples) or not counted Loud\n", flat); }
+        host_store_on(1, 1);                            /* (an empty store: the first song itself, not a saved one) */
+        dmk_init(33); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+        seq_play(1); l0 = sys.loud;
+        for (n = 0; n < DMK_SR * 6; n += 256) dmk_render(lb, 256);
+        seq_play(0);
+        if (gm_lg[0] != 32768 || gm_lg[1] != 32768 || sys.loud != l0) { fails++; printf("selftest: the first song is ridden down (%d %d)\n", (int)gm_lg[0], (int)gm_lg[1]); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
+    {   /* a type changed mid-sound clicks no more (a player heard clicks; measured): the Space's every pair (the new
+         * type's level took the old one's tail, up to 69 times the sound's own sharpest bend), the delay's (Ping-pong
+         * halved the time of the delay fading out: a zip), the tapes' (their lines at two levels): the sharpest bend in
+         * the 40 ms after the change within a few times the sharpest in the 400 ms before (crackle and hiss coming in
+         * are the media's own: not tested) */
+        static int16_t cb[DMK_SR * 3 * 2 + 1024];
+        int what, a, c, n, k, at = DMK_SR * 3 / 2 - (DMK_SR * 3 / 2) % 256;
+        double worst[3] = {0, 0, 0};
+        for (what = 0; what < 3; what++)
+            for (a = 0; a < (what == 0 ? SP_N : what == 1 ? DT_N : 4); a++)
+                for (c = 0; c < (what == 0 ? SP_N : what == 1 ? DT_N : 4); c++) {
+                    double hi = 1, lo = 0;
+                    int i;
+                    if (a == c || (what < 2 && !a)) continue;
+                    dmk_init(5);
+                    for (k = 0; k < DMK_SYNTHS; k++) ui.val[k][PG_FX][0][4] = ui.val[k][PG_FX][1][4] = ui.val[k][PG_FX][2][4] = 0;
+                    ui.val[0][PG_GLOBAL][2][4] = ui.val[0][PG_GLOBAL][1][4] = 0;
+                    if (what == 0) { ui.val[0][PG_FX][3][0] = 127; ui.val[0][PG_GLOBAL][1][0] = 127; ui.val[0][PG_GLOBAL][1][4] = choice_val(a, SP_N); }
+                    if (what == 1) { ui.val[0][PG_FX][1][4] = choice_val(a, DT_N); ui.val[0][PG_FX][1][0] = 100; }
+                    if (what == 2) ui.val[0][PG_GLOBAL][2][4] = choice_val(a, FX_MEDIAS);
+                    sp_sync();
+                    note_on_s(0, 57); note_on_s(0, 64);
+                    for (n = 0; n < DMK_SR * 3; n += 256) {
+                        if (n == at) {
+                            if (what == 0) ui.val[0][PG_GLOBAL][1][4] = choice_val(c, SP_N);
+                            if (what == 1) ui.val[0][PG_FX][1][4] = choice_val(c, DT_N);
+                            if (what == 2) ui.val[0][PG_GLOBAL][2][4] = choice_val(c, FX_MEDIAS);
+                            sp_sync();
+                        }
+                        dmk_render(cb + n * 2, 256);
+                    }
+                    for (i = at - DMK_SR * 2 / 5; i < at + DMK_SR / 25; i++) {
+                        int d = cb[2 * i] - 2 * cb[2 * i - 2] + cb[2 * i - 4];
+                        d = d < 0 ? -d : d;
+                        if (i < at) { if (d > hi) hi = d; } else if (d > lo) lo = d;
+                    }
+                    if (lo / hi > worst[what]) worst[what] = lo / hi;
+                }
+        if (worst[0] > 6 || worst[1] > 3 || worst[2] > 3) { fails++; printf("selftest: a type changed clicks (Space %.1f, delay %.1f, tape %.1f times the sound's own bend)\n", worst[0], worst[1], worst[2]); }
+        dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
+    }
     {   /* the loop's region (a player's ask): LOOP Set loops the Loop row's blocks, a one-shot recording too, its
          * playhead kept inside them; Full the recording's own; Off a one-shot ends; the step at each wrap faded */
         static int16_t ob[512 * 2];
@@ -1705,7 +1776,8 @@ static void selftest(void)
         ui.val[0][PG_HOME][0][4] = 120; ui.val[2][PG_FX][1][4] = choice_val(DT_DELAY, DT_N);   /* synth 3's delay: a quarter at 120 */
         ui.val[2][PG_FX][1][2] = choice_val(6, DIV_N); sp_sync(); dmk_render(b, 256);
         if (syn[2].dtype != DT_DELAY || syn[2].dtime != 5512u) { fails++; printf("selftest: the delay's quarter at 120 is %u samples\n", (unsigned)syn[2].dtime); }
-        ui.val[2][PG_FX][1][4] = choice_val(DT_PING, DT_N); ui.val[2][PG_FX][1][2] = choice_val(8, DIV_N); ui.val[0][PG_HOME][0][4] = 30; sp_sync(); dmk_render(b, 256);
+        ui.val[2][PG_FX][1][4] = choice_val(DT_PING, DT_N); ui.val[2][PG_FX][1][2] = choice_val(8, DIV_N); ui.val[0][PG_HOME][0][4] = 30; sp_sync();
+        for (k = 0; k < 8; k++) dmk_render(b, 256);    /* (the ping-pong's time once it runs: the delay fading out keeps its own) */
         if (syn[2].dtype != DT_PING || syn[2].dtime > DL_LEN / 2u - 2u || syn[2].dtime < 1000u) { fails++; printf("selftest: the ping-pong's half at 30 is %u samples\n", (unsigned)syn[2].dtime); }
         dmk_init(7); now_ms = 0; wait_ms(60); ui.boot_done = 1;
     }

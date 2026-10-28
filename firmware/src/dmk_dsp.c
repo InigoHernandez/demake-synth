@@ -158,7 +158,7 @@ static void mq_put(int st, int d1, int d2)
 /* the song's fades (dmk_seq.c sets them): the synths' share of the mix, Q15, and its step a block; the spaces' tails
  * are left to ring */
 static int32_t mix_g = 32768, mix_dg, mix_next;          /* mix_next: the fade after this one ends (0: none) */
-/* the machine's state for GLO: the platform's load (dmk_status) and the times the mix went past full (the limiter
+/* the machine's state for GLO: the platform's load (dmk_status) and the samples the rider turned down (the limiter
  * bending it: what sounds like overload) */
 static struct { uint8_t cpu, core2, screen, on; uint32_t shorts, loud; } sys;
 
@@ -213,6 +213,12 @@ static int32_t smp_next(strm_t *o)
 static int32_t smp_next_m(voice_t *v)
 {
     strm_t *o = &v->m;
+    if (!o->loop && o->blk + 1u >= o->end && o->bi < 28) {   /* a one-shot's last block faded out (LOOP off on a
+                                                           looped recording cut it at up to -12 dBFS: a click) */
+        int32_t r = o->buf[o->bi] * (28 - o->bi) / 28;
+        o->bi++;
+        return r;
+    }
     if (o->bi >= 28) {
         if (o->blk + 1u >= o->end) {
             if (!o->loop) {                             /* a one-shot's end: the voice's, unless its layer still sounds */
@@ -622,10 +628,10 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
         for (i = 0; i < DMK_SUB; i++) {
             int32_t pos, f, y, n, g = g0 + gs * i;
             uint32_t j, r;
-            tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
+            tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i] / 2);   /* (the line at half level, as the tapes keep it) */
             pos = (int32_t)(fx[sy].tw << 8) - (d += ds);
             j = (uint32_t)(pos >> 8); f = pos & 255;
-            y = (tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8;
+            y = ((tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8) * 2;
             fx[sy].tw++;
             fx[sy].vlp[0] = op_step(fx[sy].vlp[0], y, tone);
             fx[sy].vlp[1] = op_step(fx[sy].vlp[1], fx[sy].vlp[0], tone);
@@ -660,7 +666,7 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
         for (i = 0; i < DMK_SUB; i++) {
             int32_t y, n, g = g0 + gs * i;
             uint32_t r = xs32(&fx[sy].mrng);
-            tp_buf[sy][fx[sy].tw++ & (TP_LEN - 1)] = (int16_t)sat16(x[i]);   /* (the line kept, for a type after) */
+            tp_buf[sy][fx[sy].tw++ & (TP_LEN - 1)] = (int16_t)sat16(x[i] / 2);   /* (the line kept, for a type after, at half level) */
             n = ((int32_t)r >> 18) * sa >> 15;          /* hiss and, now and then, a crackle in it */
             if ((r >> 12) < (uint32_t)k2 * 3u) fx[sy].mcrk = ((int32_t)xs32(&fx[sy].mrng) >> 19) * k2 >> 7;
             n += fx[sy].mcrk; fx[sy].mcrk = fx[sy].mcrk * 3 / 4;
@@ -693,10 +699,10 @@ static void media_new(int sy, const synth_t *p, int32_t *x, int t)   /* (sy: the
         for (i = 0; i < DMK_SUB; i++) {
             int32_t pos, f, y, n, g = g0 + gs * i, a;
             uint32_t j, r = xs32(&fx[sy].mrng);
-            tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i]);
+            tp_buf[sy][fx[sy].tw & (TP_LEN - 1)] = (int16_t)sat16(x[i] / 2);
             pos = (int32_t)(fx[sy].tw << 8) - (d += ds);
             j = (uint32_t)(pos >> 8); f = pos & 255;
-            y = (tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8;
+            y = ((tp_buf[sy][j & (TP_LEN - 1)] * (256 - f) + tp_buf[sy][(j + 1) & (TP_LEN - 1)] * f) >> 8) * 2;
             fx[sy].tw++;
             fx[sy].mph += mi;
             n = ((((int32_t)r >> 22) * hiss) >> 9) + (sinp(fx[sy].mph) >> 10);
@@ -1248,6 +1254,10 @@ static int32_t sp_gb[DMK_SYNTHS][VB_MAX / DMK_SUB];     /* each synth's way in a
 static int32_t spq_in[SP_Q][RV_ST] POOL, spq_out[SP_Q][2][RV_ST] POOL;
 static uint32_t spq_i0, spq_i1, spq_o0, spq_o1;          /* in: read, written; out: read, written (counts, mod SP_Q) */
 static uint8_t sp_live;                                 /* the queues running: the Space on, or fading out */
+static int32_t sp_gcur = 256;                           /* the running type's level (Q8): the new type's took the old's
+                                                           fading tail up to 3x (a step: a click) */
+static uint8_t sp_tail_left;                            /* runs its queue is still read out after it stops (its last
+                                                           run's half of the fade was dropped: a step to silence) */
 static int sp_nb;
 
 /* a tank half's decay, a * g / 2^15: the remainder kept (in *e), so a tail decays as it should; at the last few
@@ -1318,7 +1328,7 @@ static void sp_block(int t, const int32_t *in, int32_t *ol, int32_t *orr, int32_
     uint32_t w = sps.w;
     int32_t yl[RV_ST], yr[RV_ST], damp = gp.sdamp, ga = gp.sga, gb = gp.sgb, hp = sps.hp, he = sps.he, bg = 32768;
     int32_t lpa = sps.lp[0], lea = sps.le[0], lpb = sps.lp[1], leb = sps.le[1], gea = sps.ge[0], geb = sps.ge[1], xb = sps.xb;
-    int32_t any = 0, loud = 0, gq = (gp.sgain * gp.sret) >> 8, gs, gd, sw0, sw1;
+    int32_t any = 0, loud = 0, gq = (sp_gcur * gp.sret) >> 8, gs, gd, sw0, sw1;
     int i, k, lofi = t == SP_LOFI;
     sps.ph[0] += gp.srate * RV_ST; sps.ph[1] += (gp.srate + (gp.srate >> 2)) * RV_ST;   /* the sweeps, a block at a time */
     sw0 = (sinp(sps.ph[0]) * gp.smod) >> 15; sw1 = (sinp(sps.ph[1]) * gp.smod) >> 15;
@@ -1427,6 +1437,7 @@ static void sp_work(uint32_t n)
         int t;
         spq_o1++;
         if (want != sps.cur && !sps.cur) { sps.cur = (uint8_t)want; sps.g = 0; sp_clear(); }
+        if (want == sps.cur) sp_gcur = gp.sgain;
         g0 = sps.g; g1 = clampi(g0 + (want != sps.cur ? -XG_STEP : XG_STEP), 0, 32768);
         sps.g = g1;
         t = sps.cur;
@@ -1676,6 +1687,9 @@ static void mrow_plan(mrow_t *m, int want, int nb)
     m->pend = (uint8_t)enter;
 }
 static int mrow_busy(const mrow_t *m) { return m->cur || m->ty[0] || m->pend; }
+#define LIM_KNEE 24575                                  /* where T_LIM begins to bend */
+static int32_t gm_lg[2] = {32768, 32768};               /* each side's gain, the rider's (Q15) */
+static uint32_t gm_loud[2];                             /* each side's samples ridden down */
 static void gm_side(int c)
 {
     int b, i;
@@ -1707,19 +1721,28 @@ static void gm_side(int c)
         } else
             for (i = 0; i < DMK_SUB; i++) tp_buf[c][fx[c].tw++ & (TP_LEN - 1)] = (int16_t)sat16(x[i] / 2);   /* (kept fresh) */
         if (half) for (i = 0; i < DMK_SUB; i++) x[i] *= 2;
+        {   /* the rider: the side turned down to the limiter's knee by its block's peak at once, back up over ~100 ms,
+             * glided across the block (a player heard distortion: a loud mix was the curve's, flat-topped, 3.6% of it at
+             * +10 dBFS); the time it rides counted as GLO's Loud */
+            int32_t pk = 0, want, g0 = gm_lg[c], g;
+            for (i = 0; i < DMK_SUB; i++) { int32_t a = x[i] < 0 ? -x[i] : x[i]; if (a > pk) pk = a; }
+            want = pk > LIM_KNEE ? (LIM_KNEE << 15) / pk : 32768;
+            g = want < g0 ? want : g0 + ((want - g0 + 255) >> 8);
+            if (g < 32768 || g0 < 32768)
+                for (i = 0; i < DMK_SUB; i++) x[i] = (int32_t)(((int64_t)x[i] * (g0 + (((g - g0) * i) >> 4))) >> 15);
+            if (g < 29205) gm_loud[c] += DMK_SUB;           /* (past a decibel down) */
+            gm_lg[c] = g;
+        }
     }
 }
 /* a side out through the limiter, with the colour and media's own core, when the mix's width is as it is (else the
  * first core does both, the width first) */
 static int16_t *gm_lr;                                  /* the run's out, its two sides interleaved (0: not here) */
-static uint32_t gm_loud[2];                             /* each side's samples past full */
 static void gm_out(int c)
 {
     int i;
     for (i = 0; i < gm_nb * DMK_SUB; i++) {
-        int32_t v = gm_x[c][i];
-        gm_loud[c] += v > 32767 || v < -32767;
-        gm_lr[i * 2 + c] = (int16_t)curve(T_LIM, v);
+        gm_lr[i * 2 + c] = (int16_t)curve(T_LIM, gm_x[c][i]);
     }
 }
 static void gm_job(void) { gm_side(1); if (gm_lr) gm_out(1); }
@@ -1732,6 +1755,7 @@ static int32_t syn_dc[DMK_SYNTHS];                      /* each synth's DC block
 DMK_SMALL static void dsp_reset(void)
 {
     uint32_t i;
+    gm_lg[0] = gm_lg[1] = 32768;                        /* (the rider at rest: a loud song's riding left a new one quiet) */
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) {                  /* the delays: off (as set, they come in from silence), their
                                                            lines, their grains' dice (renders repeat) */
@@ -2050,6 +2074,7 @@ static void dsp_render(int16_t *lr, int frames)
         }
         rv_nb = nb;
         sp_on = sp_busy();                              /* the Space's queues: from rest as it comes on */
+        if (sp_on) sp_tail_left = 1; else if (sp_tail_left) { sp_tail_left--; sp_on = 1; }   /* (and read out as it ends) */
         if (sp_on && !sp_live) sp_rest();
         sp_live = (uint8_t)sp_on;
         /* the chains (and the last synth's reverb, a third of the Space) there, the rest here */
@@ -2133,14 +2158,13 @@ static void dsp_render(int16_t *lr, int frames)
         gm_side(0);
         if (gm_lr) gm_out(0);
         if (par) dmk_par_end(); else gm_job();
-        if (gm_lr) { sys.loud += gm_loud[0] + gm_loud[1]; gm_loud[0] = gm_loud[1] = 0; }   /* (past full: bent) */
-        else for (i = 0; i < n; i++) {
+        sys.loud += gm_loud[0] + gm_loud[1]; gm_loud[0] = gm_loud[1] = 0;   /* (ridden down) */
+        if (!gm_lr) for (i = 0; i < n; i++) {
             int32_t ol = gm_x[0][i], orr = gm_x[1][i];
             if (gp.width != 256) {                      /* the whole mix's width (Home's Pan row) */
                 int32_t m = (ol + orr) / 2, d = (int32_t)(((int64_t)(ol - orr) * gp.width) >> 9);
                 ol = m + d; orr = m - d;
             }
-            if (ol > 32767 || ol < -32767 || orr > 32767 || orr < -32767) sys.loud++;   /* past full: bent */
             lr[(at + i) * 2] = (int16_t)curve(T_LIM, ol);
             lr[(at + i) * 2 + 1] = (int16_t)curve(T_LIM, orr);
         }

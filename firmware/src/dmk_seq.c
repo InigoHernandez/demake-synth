@@ -441,7 +441,9 @@ static void lfo_sync(void)
                                                            till its line holds it (so still in time) */
         static const uint8_t DIV24[9] = {6, 8, 9, 12, 16, 18, 24, 36, 48};   /* in 24ths of a beat (the screen's DIVS) */
         uint32_t t = 55125u * DIV24[syn[s].ddiv < 9 ? syn[s].ddiv : 6] / (2u * (uint32_t)(seq_bpm > 0 ? seq_bpm : 120));   /* 11025 * 60 / 24 */
-        uint32_t most = syn[s].dtype == 2 ? DL_LEN / 2u - 2u : DL_LEN - 2u - DL_LEN / 64u;   /* (its right a hair, or twice, later) */
+        uint32_t most = (dls[s].cur ? dls[s].cur : syn[s].dtype) == DT_PING ? DL_LEN / 2u - 2u : DL_LEN - 2u - DL_LEN / 64u;   /* (its right a
+                                                           hair, or twice, later; the running type's: the one fading out
+                                                           read at the new one's time, a zip) */
         while (t > most) t /= 2u;
         syn[s].dtime = t;
     }
