@@ -85,3 +85,5 @@ recordings are the author's own.
 
 By Sequencist ([GitHub](https://github.com/InigoHernandez), [Bandcamp](https://sequencist.bandcamp.com),
 [Ko-fi](https://ko-fi.com/sequencist)).
+
+You can also try Demake synth in the browser, no flashing needed, in the free community [FM-1 Emulator](https://fm1-emulator.atst.tools/).
