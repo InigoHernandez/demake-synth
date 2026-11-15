@@ -308,7 +308,9 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
     for (i = 0; i < OTA_AREA_LEN; i += 0x1000u) {
         if (ota_erase(OTA_AREA + i))
             return -8;
-        ota_idle();                                         /* (the watchdog: a slow chip's erases add up) */
+        ota_idle();                                         /* a slow chip's five erases add up: the watchdog fed, */
+        if (ota_read(ota_off, b, 32))                       /* and a read keeps the host serving (fm1ota.js gives up */
+            return -6;                                      /* after 8 s without one) */
     }
     {
         uint32_t crc = 0;

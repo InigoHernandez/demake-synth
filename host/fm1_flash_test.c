@@ -179,11 +179,14 @@ static int ota_frame_get(const uint8_t **p, uint32_t *n) { if (!in_ready) return
 static void ota_frame_done(void) { in_ready = 0; }
 static uint32_t ota_pack7(const uint8_t *in, uint32_t n, uint8_t *out);
 static uint32_t ota_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_t max);
+static uint64_t req_last, req_gap_max;                         /* the longest the host waited for a request */
 static int ota_wire_send(const uint8_t *p, uint32_t n)
 {
     uint8_t m[64], r[16 + 512];
     uint32_t d = ota_unpack7(p + 1, n - 2, m, sizeof m), i, s = 0;
     if (d < 15u || m[1] != 0x59 || m[2] != 0x30) return 0;           /* (a handshake: nothing to serve) */
+    if (req_last && chip.now - req_last > req_gap_max) req_gap_max = chip.now - req_last;
+    req_last = chip.now;
     if (req_last && chip.now - req_last > req_gap_max) req_gap_max = chip.now - req_last;
     req_last = chip.now;
     uint32_t addr = (uint32_t)m[7] | (uint32_t)m[8] << 8 | (uint32_t)m[9] << 16 | (uint32_t)m[10] << 24;
@@ -434,10 +437,14 @@ static void update_test(const model_t *m, const uint8_t *old, uint32_t old_n, co
     chip.fed = chip.now;
     chip.wdt_armed = 1;
     int wdt = 0, st = -99, lr = -99;
+    uint64_t gap_stage = 0;
     committed = 0;
+    req_last = req_gap_max = 0;
     if (setjmp(chip.wdt)) wdt = 1;
     else {
         if (flash_ok) st = ota_session();                    /* (platform.c and recovery.c: only on a chip it knows) */
+        gap_stage = req_gap_max;
+        req_last = req_gap_max = 0;
         ota_deadline = 0;                                    /* the loader the SPL would start: its own RAM, so not */
         lr = ldr_session();                                  /* the app's 2 min for its staging (ota.c, ldr_cstart) */
         flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());      /* then the new app's boot (platform.c) */
@@ -456,6 +463,9 @@ static void update_test(const model_t *m, const uint8_t *old, uint32_t old_n, co
         snprintf(what, sizeof what, "%s: staged (%d), installed (%d): the new app area, the head untouched, the record gone, "
                  "the songs kept and loaded", m->name, st, lr);
         check(!wdt && st == 0 && committed && lr == 0 && app && head && rec && kept && back && clean(), what);
+        printf("     the host waited %.1f s at most while the loader was staged (web/fm1/fm1ota.js gives up after 8 s), "
+               "%.1f s while it installed (180 s)\n", (double)gap_stage / 24e6, (double)req_gap_max / 24e6);
+        check(gap_stage < US(8000000) && req_gap_max < US(180000000), "  the host never left waiting past its limits");
     } else {
         snprintf(what, sizeof what, "%s (id %06X): no staging, the loader refuses (%d): the old firmware stays, nothing written",
                  m->name, m->id, lr);
@@ -483,6 +493,7 @@ int main(int argc, char **argv)
         once.name = "UC25HQ80, an erase in 37 and a page in 301 overrunning";
         update_test(&PUYA, o, on, n, nn);
         update_test(&UC25, o, on, n, nn);
+        update_test(&UC25_EDGE, o, on, n, nn);
         update_test(&once, o, on, n, nn);
         update_test(&unknown, o, on, n, nn);
     } else printf("     (no packages given: the update is not run)\n");
