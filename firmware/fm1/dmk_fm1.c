@@ -65,26 +65,7 @@ static void render_ahead(void)
     }
 }
 
-/* ---- the store: the core's records in Demake's 64 KiB, a 4 KiB sector a write, the record's header written last
- * so a cut save never reads as a record. Called from the panel (the loop), never inside a render: the second core
- * is idle and reads no flash; the erase stops the sound ~50 ms, so the core saves only while stopped */
-static int store_read(uint32_t at, void *p, uint32_t n)
-{
-    if (at > BANK_LEN || n > BANK_LEN - at) return -1;
-    return st_read(BANK_AT + at, p, n);
-}
-static int store_write(uint32_t at, const void *p, uint32_t n)
-{
-    const uint8_t *b = p;
-    uint32_t took;
-    int rc;
-    if (!flash_ok || (at & 0xFFFu) || n > 0x1000u || at + 0x1000u > BANK_LEN) return -1;
-    { uint32_t i; for (i = 0; i < 2u * HALF_WORDS; i++) abuf[i] = 0; }   /* the DMA loops its two halves while the
-                                                   erase holds the interrupts: silence, not the last 11 ms buzzing */
-    if ((rc = fl_erase4k(BANK_AT + at, &took)) != 0) return rc;
-    if (n > 16u && (rc = fl_write(BANK_AT + at + 16u, b + 16, n - 16u)) != 0) return rc;
-    return fl_write(BANK_AT + at, b, n < 16u ? n : 16u);
-}
+#include "dmk_flash_store.c"                    /* the store (its own file: host/fm1_flash_test.c runs it) */
 
 /* ---- the second core: the core hands it some synths of each block (dmk_par_begin), CS-1's audio worker runs them */
 #if DINGHY_DUAL_CORE
@@ -121,7 +102,8 @@ static void take_panel(void)
 
 /* ---- a test build's meter (DMK_FM1_DIAG): over the top 16 lines, in red, shares of real time in %: CPU the first
  * core rendering the sound (waiting for the second included: what must stay under 100), W the second core's work,
- * F drawing the screen; B the bench's level on a bench build; a block at the top right while the sound ran short */
+ * F drawing the screen; L the flash's operations late, past the Puya's maxima, and R its resets (fm1_flash.h's fl_stat); B
+ * the bench's level on a bench build; a block at the top right while the sound ran short */
 #ifndef DMK_FM1_DIAG
 #define DMK_FM1_DIAG 0
 #endif
@@ -182,6 +164,10 @@ static void diag_tick(void)
         diag_num(o, w / (span / 100u)); while (*o) o++;
         *o++ = ' '; *o++ = ' '; *o++ = 'F'; *o++ = ' ';
         diag_num(o, frame_ticks / (span / 100u)); while (*o) o++;
+        *o++ = ' '; *o++ = 'L';                             /* the flash: operations late (past the Puya's maxima) */
+        diag_num(o, fl_stat.late_erase + fl_stat.late_prog); while (*o) o++;
+        *o++ = ' '; *o++ = 'R';                             /* and resets (fm1_flash.h's fl_stat; the meter is 28 wide) */
+        diag_num(o, fl_stat.resets); while (*o) o++;
 #ifdef DMK_BENCH
         *o++ = ' '; *o++ = ' '; *o++ = 'B'; *o++ = ' ';
         diag_num(o, (uint32_t)dmk_bench_level()); while (*o) o++;
@@ -199,11 +185,11 @@ static const uint16_t *diag_glyph(char c)
     static const uint16_t D[10][5] = {{7,5,5,5,7},{2,6,2,2,7},{7,1,7,4,7},{7,1,7,1,7},{5,5,7,1,1},{7,4,7,1,7},{7,4,7,5,7},
                                       {7,1,1,1,1},{7,5,7,5,7},{7,5,7,1,7}};
     static const uint16_t A[][5] = {{7,4,4,4,7} /* C */, {7,5,7,4,4} /* P */, {5,5,5,5,7} /* U */, {6,5,6,5,6} /* B */,
-                                    {7,4,6,4,4} /* F */, {5,5,7,7,5} /* W */};
+                                    {7,4,6,4,4} /* F */, {5,5,7,7,5} /* W */, {4,4,4,4,7} /* L */, {6,5,6,5,5} /* R */};
     static const uint16_t SP[5] = {0, 0, 0, 0, 0};
     if (c >= '0' && c <= '9') return D[c - '0'];
     switch (c) { case 'C': return A[0]; case 'P': return A[1]; case 'U': return A[2]; case 'B': return A[3];
-                 case 'F': return A[4]; case 'W': return A[5]; }
+                 case 'F': return A[4]; case 'W': return A[5]; case 'L': return A[6]; case 'R': return A[7]; }
     return SP;
 }
 

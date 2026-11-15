@@ -6,7 +6,10 @@
 #     division; its section sizes are printed
 #  3. sanitizers: the self-test and every screen of the tour with the text audit (no two texts touch, none is cut),
 #     under ASan + UBSan; any report fails the run
-#  4. the browser build compiles
+#  4. the FM-1's flash driver on a simulated chip (tools/fm1/flash_test.sh under ASan + UBSan): both chips, unknown
+#     ones, slow, overrunning and stuck ones, a song saved and loaded across a power cut; with a package built
+#     (build/fm1/demake-*.fwsc), the update from the installer's release to it on each chip
+#  5. the browser build compiles
 set -u
 B=build/check
 mkdir -p "$B"
@@ -56,6 +59,11 @@ rm -rf "$B/screens"; mkdir -p "$B/screens"
 } > "$B/san.log" 2>&1
 rep=$(grep -E "runtime error|ERROR: AddressSanitizer|selftest: FAILED|text audit FAILED|text audit: " "$B/san.log" | sort | uniq -c)
 if [ -n "$rep" ]; then echo "$rep"; FAIL=1; else echo "  self-test, $(ls "$B/screens" | wc -l | tr -d ' ') screens and their text: clean"; fi
+
+echo "== the FM-1's flash, simulated"
+if CC="clang $SAN" sh tools/fm1/flash_test.sh > "$B/flash.log" 2>&1 && ! grep -q -E "runtime error|ERROR: AddressSanitizer" "$B/flash.log"; then
+    echo "  $(grep -c '^ok' "$B/flash.log") checks ok$(sed -n 's/^the update: /, the update /p' "$B/flash.log")"
+else grep -E "FAIL|runtime error|ERROR:|error:" "$B/flash.log" | head -10; FAIL=1; fi
 
 echo "== the browser build"
 if command -v emcc >/dev/null; then sh web/build.sh > "$B/web.log" 2>&1 && echo "  web/dmk.wasm built" || { tail -5 "$B/web.log"; FAIL=1; }

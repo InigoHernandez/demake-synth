@@ -305,9 +305,11 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
     if (ota_read(ota_off, b, 512))
         return -6;
     c = ota_rd16(b + 2);                                    /* outer dcrc of the body */
-    for (i = 0; i < OTA_AREA_LEN; i += 0x1000u)
+    for (i = 0; i < OTA_AREA_LEN; i += 0x1000u) {
         if (ota_erase(OTA_AREA + i))
             return -8;
+        ota_idle();                                         /* (the watchdog: a slow chip's erases add up) */
+    }
     {
         uint32_t crc = 0;
         for (i = 0; i < len; i += n) {
@@ -342,8 +344,10 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
 static void ota_unstage(void)
 {
     uint32_t i;
-    for (i = 0; i < OTA_AREA_LEN; i += 0x1000u)
+    for (i = 0; i < OTA_AREA_LEN; i += 0x1000u) {
         ota_erase(OTA_AREA + i);
+        ota_idle();
+    }
 }
 
 /* returns only when nothing was committed (refused, failed, or dry run) */
