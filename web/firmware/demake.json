@@ -1,8 +1,8 @@
 {
-  "file": "demake-0.4.24.fwsc",
-  "version": "0.4.24",
-  "date": "2026-10-29",
+  "file": "demake-0.4.25.fwsc",
+  "version": "0.4.25",
+  "date": "2026-11-15",
   "product": "FM-1_969",
-  "sha256": "b496d0efdfc403dba0d447a7987331cd7dbe2a5dbc8908cafbc2154f72f584da",
-  "note": "Tune reaches +24; Strum each synth's own. And 0.4.23's: the red screens fixed."
+  "sha256": "426b322abb001271eab63787463884395c73641be35830f6f3ac630bf0b3bd48",
+  "note": "Every FM-1, the newer chip 0xB36014 too: saving and updates work on both flash chips."
 }

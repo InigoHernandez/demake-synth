@@ -1,6 +1,6 @@
 Demake 0.4.25 for the M-VAVE FM-1: every FM-1, the newer chip 0xB36014 too.
 
-- **File:** `demake-0.4.25.fwsc`, identity **FM-1_969**, built and signed on GitHub from this commit.
+- **File:** `demake-0.4.25.fwsc`, identity **FM-1_969**, SHA-256 `426b322abb001271eab63787463884395c73641be35830f6f3ac630bf0b3bd48`, built and signed on GitHub from this commit (`gh attestation verify demake-0.4.25.fwsc --repo InigoHernandez/demake-synth --signer-workflow zvenson/fm1-build/.github/workflows/build.yml`); the same file as the [installer](https://inigohernandez.github.io/demake-synth/install.html)'s, run on FM-1s with both flash chips.
 - **Install:** from the [FM-1 Firmware Hub](https://thefirmwarehub.com) or the [installer page](https://inigohernandez.github.io/demake-synth/install.html), over USB in Chrome or Edge. Songs and sounds saved by earlier versions open as they were.
 
 New in 0.4.25:
