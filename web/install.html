@@ -12,7 +12,7 @@
   <title>Demake installer</title>
   <meta name="description" content="Install Demake on the M-VAVE FM-1 over USB, from the browser, and go back to the official firmware.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=35">
+  <link rel="stylesheet" href="style.css?v=36">
 </head>
 <body>
 <main class="canvas hxp">
@@ -103,7 +103,21 @@
       made or endorsed by M&#8209;VAVE.</span>
   </footer>
 </main>
+<!-- while the FM-1 is written (installing.js): the night ground, the wordmark lit as far as it is written, the meter,
+     the four stages and one line; Close once it is over -->
+<div class="inst" id="inst" hidden role="dialog" aria-modal="true" aria-labelledby="inst-verb" tabindex="-1">
+  <canvas class="inst-ground" id="inst-ground" aria-hidden="true"></canvas>
+  <div class="canvas dark g inst-c" id="inst-c">
+    <p class="inst-tt"><b id="inst-verb">Installing</b><span id="inst-what">Demake</span></p>
+    <canvas class="inst-mark" id="inst-mark" aria-hidden="true"></canvas>
+    <span class="ticks inst-ticks" id="inst-ticks" aria-hidden="true"></span>
+    <b class="say inst-pc" id="inst-pc" aria-hidden="true">0 %</b>
+    <ol class="inst-st" aria-label="Stages"><li>Check</li><li>Restart</li><li>Write</li><li>Start</li></ol>
+    <p class="inst-say" id="inst-say" role="status" aria-live="polite"></p>
+    <button class="lit inst-close" id="inst-close" hidden>Close</button>
+  </div>
+</div>
 <script src="app.js?v=44"></script>
-<script type="module" src="install.js?v=3"></script>
+<script type="module" src="install.js?v=4"></script>
 </body>
 </html>

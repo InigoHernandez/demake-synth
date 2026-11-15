@@ -298,11 +298,37 @@ code { font: inherit; color: var(--ink); }
 .st2 .note { left: 23px; right: 23px; top: 95px; }
 .log { grid-column: 1 / span 16; grid-row: 6; display: flex; align-items: center; gap: 12px; color: var(--label); box-shadow: inset 0 1px 0 var(--line); }
 .log.ok, .log.err { color: var(--ink); }
-.log.ok::before { content: ""; flex: none; width: 12px; height: 12px; border-radius: 6px; background: var(--t4); }
-.log.err::before { content: "!"; flex: none; width: 24px; height: 24px; border: 2px solid var(--t4); border-radius: 12px; color: var(--t4);
+.log.ok::before, .inst-say.ok::before { content: ""; flex: none; width: 12px; height: 12px; border-radius: 6px; background: var(--t4); }
+.log.err::before, .inst-say.err::before { content: "!"; flex: none; width: 24px; height: 24px; border: 2px solid var(--t4); border-radius: 12px; color: var(--t4);
   display: inline-flex; align-items: center; justify-content: center; font-weight: 500; line-height: 20px; }
 .bar { grid-column: 17 / span 8; grid-row: 6; align-self: stretch; height: auto; cursor: default; box-shadow: inset 0 1px 0 var(--line); }
 .bar[hidden] { display: none; }
+/* while the FM-1 is written (installing.js): the night ground over the page, come in blocks by the dither; the
+ * wordmark lit as far as it is written, the meter and the share under it, the four stages (done in ink, the one now
+ * lit), one line, and Close once it is over. Every box on the module's lines, its top a whole number of rows down */
+.inst { position: fixed; inset: 0; z-index: 90; overflow: auto; outline: none; }
+.inst[hidden] { display: none; }
+.inst.in { background: #141416; }
+.inst-ground { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.inst.in .inst-ground { display: none; }
+.inst-open body { overflow: hidden; }
+.inst-c { min-height: 100%; visibility: hidden; grid-template-rows: repeat(11, var(--m)); align-content: start; }
+.inst.in .inst-c { visibility: visible; }
+.inst-tt { grid-column: 5 / span 12; grid-row: 1 / span 2; display: flex; flex-direction: column; padding-top: 12px; }
+.inst-tt span { color: var(--label); }
+.inst-mark { grid-column: 5 / span 16; grid-row: 3 / span 4; width: 100%; height: 100%; image-rendering: pixelated; }
+.inst-ticks { grid-column: 5 / span 12; grid-row: 8; align-self: stretch; height: auto; cursor: default; }
+.inst-pc { grid-column: 17 / span 4; grid-row: 8; text-align: right; font-variant-numeric: tabular-nums; }   /* (a statement: .say) */
+.inst-st { grid-column: 5 / span 16; grid-row: 9; margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); }
+.inst-st li { padding-top: 12px; color: var(--label); box-shadow: inset 0 1px 0 var(--line); }
+.inst-st li.on { color: var(--ink); box-shadow: inset 0 1px 0 var(--ink); }
+.inst-st li.at { box-shadow: inset 0 2px 0 var(--t4); font-weight: 600; color: transparent;
+  background: var(--glint, url("img/bits/glint_0.png")) 0 0 / 48px 48px repeat; -webkit-background-clip: text; background-clip: text;
+  image-rendering: pixelated; }
+.inst-say { grid-column: 5 / span 12; grid-row: 10; display: flex; align-items: center; gap: 12px; color: var(--label); }
+.inst-say.ok, .inst-say.err { color: var(--ink); }
+.inst-close { grid-column: 17 / span 4; grid-row: 10; }
+.inst-close[hidden] { display: none; }
 /* a step: its sentence on one line, what it means under it, its actions at the right; a row of air at its end */
 .step { grid-template-rows: repeat(4, var(--m)); }
 .step.one { grid-template-rows: repeat(2, var(--m)); }
@@ -428,6 +454,9 @@ code { font: inherit; color: var(--ink); }
   .kv div { grid-template-columns: calc(2 * var(--m)) 1fr; }
   .log { grid-column: 1 / span 10; }
   .bar { grid-column: 11 / span 6; }
+  .inst-tt, .inst-ticks, .inst-say { grid-column: 1 / span 12; }
+  .inst-mark, .inst-st { grid-column: 1 / span 16; }
+  .inst-pc, .inst-close { grid-column: 13 / span 4; }
   .strip.say .lb { grid-column: 3 / span 14; }
   .step, .step.back { grid-template-rows: repeat(6, var(--m)); }
   .step.one { grid-template-rows: repeat(4, var(--m)); }
@@ -537,6 +566,14 @@ code { font: inherit; color: var(--ink); }
   .st2 { grid-column: 1 / -1; grid-row: 7 / span 5; }
   .log { grid-column: 1 / -1; grid-row: 13 / span 2; }
   .bar { grid-column: 1 / -1; grid-row: 14; }   /* while writing, the line is one line */
+  .inst-c { grid-template-rows: repeat(14, var(--m)); }
+  .inst-tt { grid-column: 1 / -1; }
+  .inst-mark { grid-column: 1 / -1; grid-row: 3 / span 5; }   /* the stacked word, 168 x 120 at 2 px a pixel */
+  .inst-ticks { grid-column: 1 / span 5; grid-row: 9; }
+  .inst-pc { grid-column: 6 / span 2; grid-row: 9; }
+  .inst-st { grid-column: 1 / -1; grid-row: 10; }
+  .inst-say { grid-column: 1 / -1; grid-row: 11 / span 2; align-items: flex-start; padding-top: 12px; }
+  .inst-close { grid-column: 1 / -1; grid-row: 13; }
   .strip.say { grid-template-rows: repeat(3, var(--m)); }   /* the step's sentence under its number, on two lines */
   .strip.say .lb { grid-column: 1 / -1; grid-row: 2 / span 2; padding-top: 0; }
   .step, .step.list, .step.back { grid-template-rows: repeat(8, var(--m)); }

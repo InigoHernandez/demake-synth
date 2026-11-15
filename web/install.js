@@ -3,6 +3,7 @@
 // (fm1/fm1ota.js, fm1/fm1pkg.js) do the work; this file says what is happening, in the page's words.
 import { Updater } from "./fm1/fm1ota.js?v=2";
 import { productOf, logicalImage, validateStockPackage, sha256hex } from "./fm1/fm1pkg.js?v=1";
+import { installing } from "./installing.js?v=1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -127,12 +128,20 @@ const bar = $("bar"), TICKS = 41, tick = [];
 for (let i = 0; i < TICKS; i++) tick.push(bar.appendChild(document.createElement("i")));
 const progress = (p) => { const at = Math.round(p * (TICKS - 1) / 100); tick.forEach((t, i) => { t.className = i < at ? "on" : i === at ? "at" : ""; }); };
 
-async function write(p, verb) {
+/* the installing screen over the page from the FM-1's first answer to the end (an error before it, such as no FM-1,
+ * stays on the page's line); its words for the end, the page's line keeps them too */
+const inst = installing();
+const runs = (a) => { const id = { model: "FM-1", version: parseInt(a.split("_")[1], 10), text: a }; return describe(id); };
+
+async function write(p, verb, look) {
   lock(true);
   bar.hidden = false; progress(0);
   $("status").scrollIntoView({ behavior: "smooth", block: "start" });
   const total = Math.ceil(p.image.length / 512);
   const step = (k, a) => {
+    if (!inst.isOpen()) inst.open({ ...look, total });
+    inst.step(k, a);
+    if (k === "done") inst.finish(`Done: your FM-1 runs ${a === p.product && look.ran ? look.ran : runs(a)}.`, true);
     if (k === "start") say(`Found ${a}. ${verb}: do not unplug.`);
     else if (k === "verify") say(`Checking the package (${a})…`);
     else if (k === "loader") say("The FM-1 restarts into its update mode…");
@@ -143,15 +152,23 @@ async function write(p, verb) {
   };
   try {
     const up = new Updater(await access(), (m) => console.log(m));
-    if (await up.resume(p.image, step, p.product)) { say(`That finished an update cut short: the FM-1 runs ${p.product}.`, "ok"); return; }
+    if (await up.resume(p.image, step, p.product)) {
+      say(`That finished an update cut short: the FM-1 runs ${p.product}.`, "ok");
+      inst.finish(`That finished an update cut short: your FM-1 runs ${look.ran || runs(p.product)}.`, true);
+      return;
+    }
     await up.install(p.image, p.product, step);
   } catch (e) {
-    say((WORDS[e.code] || e.message) + (e.detail ? ` (${e.detail})` : ""), "err");
+    const w = (WORDS[e.code] || e.message) + (e.detail ? ` (${e.detail})` : "");
+    say(w, "err");
+    if (inst.isOpen()) inst.finish(w, false);
     console.error(e);
   } finally { lock(false); }
 }
 
-$("install").addEventListener("click", () => { if (pkg && !busy) write(pkg, "Installing Demake"); });
+$("install").addEventListener("click", () => {
+  if (pkg && !busy) write(pkg, "Installing Demake", { verb: "Installing", what: pkg.label, ran: /^Demake /.test(pkg.label) ? pkg.label : "" });
+});
 
 $("stock-file").addEventListener("change", async (ev) => {
   const f = ev.target.files[0];
@@ -168,5 +185,26 @@ $("stock-file").addEventListener("change", async (ev) => {
 $("stock").addEventListener("click", () => {
   if (!stock || busy) return;
   if (!confirm("Back to M-VAVE's official V15? Demake, and what it keeps in the FM-1, will be gone.")) return;
-  write(stock, "Going back to V15");
+  write(stock, "Going back to V15", { verb: "Going back", what: "M-VAVE's official V15", out: true, ran: "M-VAVE's official firmware, V15" });
 });
+
+/* the installing screen without an FM-1: install.html#preview (or #preview-stop, #preview-back), at about the pace
+ * of a real install, for a look at it; it writes nothing and talks to no device */
+async function preview(kind) {
+  if (busy || inst.isOpen()) return;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms)), out = kind === "back", total = 1193;
+  inst.open(out ? { verb: "Going back", what: "M-VAVE's official V15 (a preview)", out, total }
+                : { verb: "Installing", what: "Demake 0.4.25 (a preview)", total });
+  inst.step("start", "FM-1_969"); await wait(1800);
+  for (let n = 1; n <= 40; n++) { inst.step("verify", n); await wait(90); }
+  inst.step("loader"); await wait(4200);
+  for (let n = 1; n <= total; n++) {
+    inst.step("write", n); await wait(22);
+    if (kind === "stop" && n === 700) { inst.finish(WORDS.lost, false); return; }
+  }
+  inst.step("reboot"); await wait(3600);
+  inst.finish(out ? "Done: your FM-1 runs M-VAVE's official firmware, V15." : "Done: your FM-1 runs Demake 0.4.25.", true);
+}
+const previewHash = () => { const m = /^#preview(?:-(stop|back))?$/.exec(location.hash); if (m) preview(m[1] || "in"); };
+addEventListener("hashchange", previewHash);
+previewHash();
