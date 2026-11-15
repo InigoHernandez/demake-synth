@@ -206,12 +206,13 @@ def lake(c):
     c.poly([(128, 34), (128, 50), (112, 44), (102, 36)], False)
     for x, h in ((4, 26), (13, 32), (21, 22), (122, 32), (113, 24), (105, 16)):
         c.spruce(x, 40 + (x > 100) * 3, h, 13)
-    # the cabin, its three windows the synths
-    c.poly([(26, 34), (34, 27), (42, 34)], False)
-    c.line(26, 34, 34, 27); c.line(34, 27, 42, 34)
-    c.rect(28, 34, 13, 7, False)
-    c.frame(28, 34, 13, 7)
-    c.rect(30, 36, 2, 2); c.rect(33, 36, 2, 2); c.rect(36, 36, 2, 2)
+    # the cabin, its four windows the synths (two pixels wider than the FM-1's three-window one)
+    c.poly([(25, 34), (34, 26), (43, 34)], False)
+    c.line(25, 34, 34, 26); c.line(34, 26, 43, 34)
+    c.rect(27, 34, 15, 7, False)
+    c.frame(27, 34, 15, 7)
+    for x in (29, 32, 35, 38):
+        c.rect(x, 36, 2, 2)
 
 
 def coast(c):

@@ -10,6 +10,7 @@
 #define MS_W 128
 #define MS_H 64
 #define MS_BYTES (16 * MS_H)           /* MSB first, the top row first */
+#define MV_SYNTHS 4                    /* the synths (the core's DMK_SYNTHS on the Move) */
 
 /* the tempo's source: Move's clock (followed, or waited for), or Demake's own (Move sent none when PLAY was pressed) */
 enum { MV_SYNC_INT, MV_SYNC_MOVE };
@@ -81,7 +82,7 @@ typedef struct {
     char note[34];                     /* a notice, "" none */
     uint8_t mp, mrow, rows;            /* the Move's page, its row, how many */
     uint8_t land, lights;              /* the landscape; a bit a synth sounding */
-    char letters[3];                   /* each synth's sound's first letter */
+    char letters[MV_SYNTHS];           /* each synth's sound's first letter */
     uint16_t t;                        /* the slow clock of what moves on its own */
     uint8_t held;                      /* a step is held: sound says which */
     uint8_t ready;                     /* REC and PLAY pressed: the first pad starts it */

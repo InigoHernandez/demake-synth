@@ -9,7 +9,8 @@
 
 #define ST_SECTOR 4096u
 #ifdef DMK_MOVE
-#define ST_SLOT 0x40000u                                /* a song, the Move's: every pattern full (the FM-1's: one sector) */
+#define ST_SLOT 0x60000u                                /* a song, the Move's: every pattern of four synths full (the
+                                                           FM-1's: one sector) */
 #else
 #define ST_SLOT ST_SECTOR
 #endif
@@ -22,8 +23,10 @@
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
 #ifdef DMK_MOVE
-#define ST_VER 16u  /* the Move's alone, its songs never reach the FM-1: 16: a roll's count two bytes */
+#define ST_VER 17u  /* the Move's alone, its songs never reach the FM-1: 17: four synths; 16: a roll's count two bytes */
+#define ST_SYN (st_ver >= 17u ? DMK_SYNTHS : 3)        /* synths a song holds: three before 17 */
 #else
+#define ST_SYN DMK_SYNTHS
 #define ST_VER 15u
 #endif
 /* 15: STRUM each synth's (the Chord page's K4); 14: the Keys row each synth's (the Chord page's K1), LOOP three ways and the Sound page's Loop row; 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
@@ -257,6 +260,18 @@ DMK_SMALL static void sound_init(int s)
 /* ---- songs */
 static uint32_t slot_at(int i) { return ST_SONG0 + (uint32_t)i * ST_SLOT; }
 #ifdef DMK_MOVE
+/* a synth as a new song has it: its values (ui_init's, kept), following the key, no patterns, in no scene's */
+static void synth_new(int s)
+{
+    int g;
+    __builtin_memcpy(ui.val[s], ui_new[s], sizeof ui.val[s]);
+    ch.follow[s] = FW_KEY; ch.hint[s] = 2;
+    ui.roll_cur[s] = 0; ui.roll_view[s] = ui_new_view[s]; ui.roll_pen[s] = 1; ui.roll_zoom[s] = 0;
+    for (g = 0; g < SYN_PATS; g++) { spat[s][g].used = 0; spat[s][g].count = 0; spat[s][g].steps = 16; }
+    for (g = 0; g < SCENES; g++) scn[g].pat[s] = 0;
+}
+#endif
+#ifdef DMK_MOVE
 /* before 16 the Move's lists were the FM-1's: a progression's value where the longer list has it, the User ones still last */
 static uint8_t prog_moved(int v) { int i = v * 20 / 128; return choice_val(i < 16 ? i : i - 16 + PROG_PRE, PROG_N); }
 #endif
@@ -349,11 +364,14 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     const uint8_t *e = p + n;
     int s, i, k, r, g;
     if (n < 1 || *p++ != PG_SAVED) return -1;
-    if (n < 1u + DMK_SYNTHS * PG_SAVED * 20u + 1u + DMK_SYNTHS + 4u * (3u + PROG_SLOTS * 4u) + DMK_SYNTHS * 4u + DMK_SYNTHS * 2u) return -1;
+    if (n < 1u + ST_SYN * PG_SAVED * 20u + 1u + ST_SYN + 4u * (3u + PROG_SLOTS * 4u) + ST_SYN * 4u + ST_SYN * 2u) return -1;
     seq_play(0);
     arp_clear_all();                                    /* (the last project's arps: their pools went on in this one) */
-    for (s = 0; s < DMK_SYNTHS; s++) ch.hint[s] = 2;    /* (before 4 none were kept: the last project's stayed) */
-    for (s = 0; s < DMK_SYNTHS; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
+    for (s = 0; s < ST_SYN; s++) ch.hint[s] = 2;    /* (before 4 none were kept: the last project's stayed) */
+#ifdef DMK_MOVE
+    for (s = ST_SYN; s < DMK_SYNTHS; s++) synth_new(s);   /* a synth the song did not have (the fourth, before 17): new */
+#endif
+    for (s = 0; s < ST_SYN; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
     if (st_ver < 7u) for (k = 0; k < 3; k++) if (ui.val[0][PG_GLOBAL][2][k] == 64) {   /* the MIDI row never set (a song of 0.2, before
                                                            it was there; no choice is 64): In Synth, Out Notes, the
                                                            own clock. It loaded as Ch 1-3, Clock out, an outside
@@ -361,14 +379,14 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         static const uint8_t MD[3] = {32, 48, 32};
         ui.val[0][PG_GLOBAL][2][k] = MD[k];
     }
-    if (st_ver < 6u) for (s = 0; s < DMK_SYNTHS; s++) fx_types_moved(s);   /* before 0.5: fewer types a row */
+    if (st_ver < 6u) for (s = 0; s < ST_SYN; s++) fx_types_moved(s);   /* before 0.5: fewer types a row */
     if (st_ver < 5u) {                                  /* before 0.4: its new controls off; Off first in the verb's
                                                            and the echo's types */
-        for (s = 0; s < DMK_SYNTHS; s++) snd_new_defaults(s);
+        for (s = 0; s < ST_SYN; s++) snd_new_defaults(s);
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 6 / 128 + 1, 7);
         ui.val[0][PG_GLOBAL][1][4] = choice_val(ui.val[0][PG_GLOBAL][1][4] * 2 / 128 + 1, 3);
     }
-    if (st_ver < 9u) for (s = 0; s < DMK_SYNTHS; s++) arp_defaults(s);   /* before 0.4.12: no Arp row, its 64s: off */
+    if (st_ver < 9u) for (s = 0; s < ST_SYN; s++) arp_defaults(s);   /* before 0.4.12: no Arp row, its 64s: off */
     if (st_ver < 8u)                                    /* before 0.4.11: the verb's type of seven at its place of twelve */
         ui.val[0][PG_GLOBAL][0][4] = choice_val(ui.val[0][PG_GLOBAL][0][4] * 7 / 128, OLD_VERBS);
     if (st_ver < 7u) {                                  /* before 0.5: the rolls' Vary off; the MIDI row a row down; the
@@ -377,14 +395,14 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         uint8_t *m = ui.val[0][PG_GLOBAL][2], *g = ui.val[0][PG_GLOBAL][3];
         int from = 0;
         for (k = 0; k < 3; k++) g[k] = m[k];
-        for (s = DMK_SYNTHS - 1; s >= 0; s--) if (ui.val[s][PG_FX][1][4] * FX_MEDIAS / 128) from = s;
+        for (s = ST_SYN - 1; s >= 0; s--) if (ui.val[s][PG_FX][1][4] * FX_MEDIAS / 128) from = s;
         for (k = 0; k < 5; k++) m[k] = ui.val[from][PG_FX][1][k];
-        for (s = 0; s < DMK_SYNTHS; s++) { roll_vary_defaults(s); delay_defaults(s); }
+        for (s = 0; s < ST_SYN; s++) { roll_vary_defaults(s); delay_defaults(s); }
     }
-    if (st_ver < 15u) for (s = 1; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][0][3] = ui.val[0][PG_CHORD][0][3];   /* before
+    if (st_ver < 15u) for (s = 1; s < ST_SYN; s++) ui.val[s][PG_CHORD][0][3] = ui.val[0][PG_CHORD][0][3];   /* before
                                                            0.4.24: one strum for all */
-    if (st_ver < 14u) for (s = 0; s < DMK_SYNTHS; s++) loop_moved(s);   /* before 0.4.22: LOOP two ways, no Loop row */
-    if (st_ver < 14u) for (s = 1; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][2][0] = ui.val[0][PG_CHORD][2][0];   /* before 0.4.22:
+    if (st_ver < 14u) for (s = 0; s < ST_SYN; s++) loop_moved(s);   /* before 0.4.22: LOOP two ways, no Loop row */
+    if (st_ver < 14u) for (s = 1; s < ST_SYN; s++) ui.val[s][PG_CHORD][2][0] = ui.val[0][PG_CHORD][2][0];   /* before 0.4.22:
                                                            one Keys row for all (the others' a 64 never set: All) */
     if (st_ver < 13u) {                                 /* before 0.4.18 (the owner's: the echo a track's, the huge
                                                            reverbs the Space's): the shared echo (GLO's second row) each
@@ -396,7 +414,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
                                                            to the Space */
         uint8_t *ev = ui.val[0][PG_GLOBAL][1];
         int et = ev[4] * 3 / 128;
-        for (s = 0; s < DMK_SYNTHS; s++) {
+        for (s = 0; s < ST_SYN; s++) {
             uint8_t *dv = ui.val[s][PG_FX][1], *sv = ui.val[s][PG_FX][3];
             int t = dv[4] * 3 / 128;
             dv[4] = t ? choice_val(t, DT_N) : 0;
@@ -423,9 +441,9 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         for (k = 0; k < 5; k++) old[k] = gv[k];
         o = old[4] * OLD_VERBS / 128 < OLD_VERBS ? old[4] * OLD_VERBS / 128 : OLD_VERBS - 1;
         t = TY[o];
-        for (s = DMK_SYNTHS - 1; s >= 0; s--) if (choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[s][PG_FX][0][4]))
+        for (s = ST_SYN - 1; s >= 0; s--) if (choice_index(choice_of(PG_GLOBAL, 0, 4), ui.val[s][PG_FX][0][4]))
             for (k = 0; k < 5; k++) col[k] = ui.val[s][PG_FX][0][k];
-        for (s = 0; s < DMK_SYNTHS; s++) {
+        for (s = 0; s < ST_SYN; s++) {
             uint8_t *rv = ui.val[s][PG_FX][0], *snd = &ui.val[s][PG_FX][3][0];
             rv[0] = 64; rv[1] = old[1]; rv[2] = old[2]; rv[3] = old[3]; rv[4] = 0;
             if (t) { rv[0] = (uint8_t)(*snd * old[0] / 127); if (*snd) rv[4] = choice_val(t, FX_REVERBS); *snd = 0; }
@@ -435,9 +453,9 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     }
     theme = *p++ % DMK_THEMES;
     ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);   /* (its dots) */
-    for (s = 0; s < DMK_SYNTHS; s++) { ch.follow[s] = *p++; if (ch.follow[s] >= FW_COUNT) ch.follow[s] = FW_FREE; }
+    for (s = 0; s < ST_SYN; s++) { ch.follow[s] = *p++; if (ch.follow[s] >= FW_COUNT) ch.follow[s] = FW_FREE; }
 #ifdef DMK_MOVE
-    if (st_ver < 16u) for (s = 0; s < DMK_SYNTHS; s++) {   /* (the progression comes with the open scene: moved there) */
+    if (st_ver < 16u) for (s = 0; s < ST_SYN; s++) {   /* (the progression comes with the open scene: moved there) */
         ui.val[s][PG_CHORD][1][1] = choice_val(ui.val[s][PG_CHORD][1][1] * 6 / 128, MO_COUNT);
         ui.val[s][PG_CHORD][2][1] = choice_val(ui.val[s][PG_CHORD][2][1] * 8 / 128, KT_COUNT);
     }
@@ -456,7 +474,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         if (uprog[i].mode >= MO_COUNT) uprog[i].mode = MO_AEOL;
         if (uprog[i].voicing >= VO_COUNT) uprog[i].voicing = VO_WIDE;
     }
-    for (s = 0; s < DMK_SYNTHS; s++) {                  /* (each checked: a zoom past 2 divided by nothing) */
+    for (s = 0; s < ST_SYN; s++) {                  /* (each checked: a zoom past 2 divided by nothing) */
         ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++;
 #ifdef DMK_MOVE
         if (ui.roll_view[s] < 10 || ui.roll_view[s] > 49) ui.roll_view[s] = 28;   /* (any scale's: its own is not set yet) */
@@ -469,7 +487,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     pat_init();
     song_init();
     if (st_ver < 2u) {                                  /* version 1: the rolls: each synth's first pattern, scene 1 */
-        for (s = 0; s < DMK_SYNTHS; s++) if (seq_unpack(&spat[s][0], &p, e)) return -1;
+        for (s = 0; s < ST_SYN; s++) if (seq_unpack(&spat[s][0], &p, e)) return -1;
         scn[0].prog = ui.val[0][PG_CHORD][0][4];
     } else if (st_ver < 4u) {                           /* versions 2, 3: a pattern of three rolls became a scene */
         int cur;
@@ -480,7 +498,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             if (e - p < 2) return -1;
             used = *p++; prog = *p++;
             if (!used) continue;
-            for (s = 0; s < DMK_SYNTHS; s++) { if (seq_unpack(&spat[s][g], &p, e)) return -1; scn[g].pat[s] = (uint8_t)g; }
+            for (s = 0; s < ST_SYN; s++) { if (seq_unpack(&spat[s][g], &p, e)) return -1; scn[g].pat[s] = (uint8_t)g; }
             scn[g].used = 1; scn[g].prog = (uint8_t)prog; scn[g].mute = 0;
         }
         scn_cur = (uint8_t)(cur < 8 && scn[cur].used ? cur : 0);
@@ -494,7 +512,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
         int cur;
         if (e - p < 1) return -1;
         cur = *p++;
-        for (s = 0; s < DMK_SYNTHS; s++)
+        for (s = 0; s < ST_SYN; s++)
             for (g = 0; g < SYN_PATS; g++) {
                 if (e - p < 1) return -1;
                 spat[s][g].used = 0;
@@ -505,8 +523,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             scn[g].used = *p++ ? 1 : 0;
             if (!scn[g].used) continue;
             if (e - p < 5) return -1;
-            for (s = 0; s < DMK_SYNTHS; s++) scn[g].pat[s] = (uint8_t)(*p++ & (SYN_PATS - 1));
-            scn[g].prog = *p++; scn[g].mute = (uint8_t)(*p++ & 7);
+            for (s = 0; s < ST_SYN; s++) scn[g].pat[s] = (uint8_t)(*p++ & (SYN_PATS - 1));
+            scn[g].prog = *p++; scn[g].mute = (uint8_t)(*p++ & ((1u << ST_SYN) - 1u));
 #ifdef DMK_MOVE
             if (st_ver < 16u) scn[g].prog = prog_moved(scn[g].prog);
 #endif
@@ -518,7 +536,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             for (i = 0; i < c && i < SONG_STEPS && e - p >= 2; i++, p += 2) song_put(i, p[0], p[1]);
             song_n = (uint8_t)i;
         }
-        for (s = 0; s < DMK_SYNTHS; s++) {               /* the harmonies' intervals (a song without them: a third) */
+        for (s = 0; s < ST_SYN; s++) {               /* the harmonies' intervals (a song without them: a third) */
             int h = e - p >= 1 ? (int8_t)*p++ : 2;
             ch.hint[s] = (int8_t)(h < -7 || h > 7 ? 2 : h);
         }
@@ -526,8 +544,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     scn[scn_cur].used = 1;
     if (!song_n) song_mode = 0;
     scn_load(scn_cur);
-    for (s = 0; s < DMK_SYNTHS; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
-    for (s = 0; s < DMK_SYNTHS; s++) {
+    for (s = 0; s < ST_SYN; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
+    for (s = 0; s < ST_SYN; s++) {
         if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N) ui.val[s][PG_SOUND][0][0] = 0;
     }
     chord_quiet();

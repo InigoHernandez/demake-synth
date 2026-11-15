@@ -84,7 +84,7 @@ static void ms_motion_land(uint8_t *o, const mv_view_t *v)
     case 1:                                             /* Lake: the cabin's windows, a synth each */
         ms_lap(o, 60, 37, 40, 10, t);
         ms_lap(o, 0, 47, 128, 17, t);
-        for (int s = 0; s < 3; s++) ms_rect(o, 30 + s * 3, 36, 2, 2, v->lights >> s & 1);
+        for (int s = 0; s < MV_SYNTHS; s++) ms_rect(o, 29 + s * 3, 36, 2, 2, v->lights >> s & 1);
         break;
     case 2: ms_lap(o, 52, 37, 48, 15, t); break;        /* Coast */
     case 3: ms_blink(o, 0, 0, 80, 14, t, 4); ms_blink(o, 105, 0, 23, 30, t + 5, 2); break;   /* Night */

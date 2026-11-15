@@ -2,7 +2,7 @@
 /* Demake on the Move from inside dsp.so's own code, for what the plugin API would take hours to reach: every pattern
  * full, saved and opened; the file of before the slots grew; every scale, chord and progression. Built as dsp.so is
  * (move/build.sh, static, so the Move can run it too: its times are the ones to read).
- *   inside DIR [OLD_STORE]     DIR is the tests' own: its store files are removed
+ *   inside DIR [OLD_STORE [V16_STORE]]   DIR is the tests' own: its store files are removed
  *   inside show FILE DIR       what a store of before holds, as the Move would open it */
 #define _GNU_SOURCE
 #include <math.h>
@@ -32,6 +32,11 @@ static const char *in(const char *dir, const char *name)
     snprintf(p, sizeof p, "%s/%s", dir, name);
     return p;
 }
+static void clear_store(const char *dir)               /* the store's file and every one before it */
+{
+    unlink(in(dir, SV_FILE));
+    for (unsigned k = 0; k < sizeof SV_BEFORE / sizeof SV_BEFORE[0]; k++) unlink(in(dir, SV_BEFORE[k].name));
+}
 static void *open_at(const char *dir)
 {
     char js[700];
@@ -43,8 +48,7 @@ static void copy(const char *from, const char *to)
     static uint8_t b[1 << 20];
     FILE *a = fopen(from, "rb"), *o = fopen(to, "wb");
     if (!a || !o) { printf("  FAIL  cannot copy %s\n", from); fails++; return; }
-    const size_t n = fread(b, 1, sizeof b, a);
-    fwrite(b, 1, n, o);
+    for (size_t n; (n = fread(b, 1, sizeof b, a)) > 0;) fwrite(b, 1, n, o);   /* (a store is MBs: all of it) */
     fclose(a); fclose(o);
 }
 
@@ -215,8 +219,8 @@ static void progressions(void)
 
 static void old_file(const char *dir, const char *file)
 {
-    unlink(in(dir, SV_FILE));
-    copy(file, in(dir, SV_OLD));
+    clear_store(dir);
+    copy(file, in(dir, "demake.dmks"));
     void *i = open_at(dir);
     check(i != NULL, "a store of before opens");
     check(!strcmp(PROGS[ch.prog], "Night drive"), "its progression the same one");
@@ -225,14 +229,16 @@ static void old_file(const char *dir, const char *file)
     check(sq[0].count == 23, "its notes");
     check(!strcmp(PROGS[scn[1].prog * PROG_N / 128], "User 2"), "a scene's progression, a User one");
     check(!strcmp(song_name(0), song_nm[0]) && song_nm[0][0], "its name");
+    check(ui.val[3][PG_SOUND][0][0] == smp_named("Scirpus") && ch.follow[3] == FW_KEY && sq[3].count == 0 && !(pat_mute >> 3 & 1),
+          "its fourth synth new: Scirpus, following the key, no notes");
     v2_destroy(i);
     check(access(in(dir, SV_FILE), F_OK) != 0, "nothing written until a save");
 }
 
 static void show(const char *file, const char *dir)
 {
-    unlink(in(dir, SV_FILE));
-    copy(file, in(dir, SV_OLD));
+    clear_store(dir);
+    copy(file, in(dir, "demake.dmks"));
     void *i = open_at(dir);
     for (int k = 0; k < ST_SONGS; k++) {
         if (!song_used(k)) continue;
@@ -280,7 +286,7 @@ static void full(const char *dir)
     static int16_t out[256];
     static mv_view_t vw;
     double t;
-    unlink(in(dir, SV_FILE)); unlink(in(dir, SV_OLD));
+    clear_store(dir);
     void *i = open_at(dir);
     {   /* a first save and Undo mark, as the audio thread makes them: no new memory touched there (faults counted, this thread's) */
         struct rusage a, b;
@@ -332,7 +338,8 @@ static void full(const char *dir)
     }
     /* a block, as Schwung runs it, the patterns all full and sounding (a save's file written first: pinned to one core, as
      * on the Move's test, the saver would share this thread's, which the audio thread's never does) */
-    for (int k = 0; k < 1000 && (sv.want || atomic_load(&sv.state) != SV_IDLE); k++) { v2_render(i, out, 128); usleep(2000); }
+    for (int k = 0; k < 5000 && (sv.want || atomic_load(&sv.state) != SV_IDLE); k++) { v2_render(i, out, 128); usleep(2000); }
+    if (sv.want || atomic_load(&sv.state) != SV_IDLE) puts("  (the file still being written: the times below share the core with it)");
     seq_play(1);
     double sum = 0, most = 0;
     const int blocks = 3000;
@@ -345,7 +352,9 @@ static void full(const char *dir)
     }
     seq_play(0);
     printf("  %-44s %8.0f us, most %.0f\n", "a block, every step all eight notes", sum / blocks, most);
+#ifndef __SANITIZE_ADDRESS__                            /* (under ASan a block's time says nothing: the plain run holds it) */
     check(most < 2902, "no block over its time");
+#endif
     v2_destroy(i);
     i = open_at(dir);
     check(as_filled(), "closed and reopened from the file: every note");
@@ -408,7 +417,8 @@ static void voices(const char *dir)
     for (int v = 0; v < DMK_VOICES; v++) on += vc[v].on && vc[v].sy == 0 && vc[v].src == SRC_ROLL;
     seq_play(0);
     check(on == 16, "a roll sounds sixteen at once");
-    /* the first song: what the voices it can keep now do to it */
+    /* the first song itself (no store: with one, dmk_init opens the newest song saved): what the voices it can keep do */
+    dmk_store_read = 0; dmk_store_write = 0;
     dmk_init(7);
     seq_play(1);
     int most = 0;
@@ -422,7 +432,67 @@ static void voices(const char *dir)
     }
     seq_play(0);
     printf("  the first song, 30 s: %d voices at most, the sum at %.0f%% at its lowest\n", most, low * 100.0 / 32768);
-    check(low > 26000, "the first song stays as it was, the sum within 2 dB");
+    check(low == 32768 && most > 12, "the first song keeps tails twelve voices would take, the sum never held down");
+    dmk_store_read = rs_read; dmk_store_write = rs_write;
+    v2_destroy(i);
+}
+
+/* ---------------------------------------------------------------------------------- four synths (Phase 2) */
+
+static void four(const char *dir, const char *v16)
+{
+    /* a store of format 16 (three synths, 256 KiB a song: move/test/store_v16.c built on the commit before) */
+    if (v16) {
+        clear_store(dir);
+        copy(v16, in(dir, "projects.dmks"));
+        void *i = open_at(dir);
+        int notes = 1;
+        for (int s = 0; s < 3; s++) {
+            notes &= sq[s].count == 40;
+            for (int t = 0; t < 40; t++) notes &= seq_find(s, t, 40 + s * 12 + t % 12) >= 0;
+        }
+        check(notes, "a store of format 16 (three synths, 256 KiB a song): every note of its three back");
+        check(ui.val[3][PG_SOUND][0][0] == smp_named("Scirpus") && sq[3].count == 0 && ch.follow[3] == FW_KEY,
+              "and its fourth synth new");
+        v2_destroy(i);
+        check(access(in(dir, SV_FILE), F_OK) != 0, "nothing written until a save");
+    }
+    void *i = open_at(dir);
+    /* Home: a synth a knob; the width and the Space's return on the Pan row; the tempo Shift + knob 1's alone */
+    check(vp(PG_HOME, 0, 3) == &ui.val[3][PG_AMP][0][4] && vp(PG_HOME, 1, 3) == &ui.val[3][PG_FX][3][0]
+          && vp(PG_HOME, 2, 3) == &ui.val[3][PG_FX][3][2] && vp(PG_HOME, 3, 3) == &ui.val[0][PG_HOME][3][3],
+          "Home: knob 4 synth 4's level, send and pan; row 4 the mix's width");
+    {
+        const kref_t w = MP[MP_HOME].k[1][4], r = MP[MP_HOME].k[1][5];
+        mc.page = MP_HOME; mc.row[MP_HOME] = 0; mc.shift = 0;
+        const int notempo = !is_tempo(3);
+        mc.shift = 1;
+        const int shifted = is_tempo(0);
+        mc.shift = 0;
+        check(w.pg == PG_HOME && w.row == 3 && w.k == 3 && r.pg == PG_GLOBAL && r.row == 1 && r.k == 0 && notempo && shifted,
+              "the Pan row's knobs 5 and 6 the width and the return; the tempo only on Shift + knob 1");
+    }
+    /* Harmony of 4: synth 1 in harmony with synth 4's notes */
+    {
+        const int f = ch.follow[0];
+        ch.follow[0] = FW_HARM4;
+        check(harm_of(0) == 3 && !strcmp(FOLLOWS[FW_HARM4], "Harmony of 4"), "Harmony of 4: synth 4 the lead");
+        ch.follow[0] = (uint8_t)f;
+    }
+    /* four synths saved and opened (format 17), mutes and a scene's patterns included */
+    {
+        clear_store(dir);
+        v2_destroy(i);
+        i = open_at(dir);
+        sq[3].count = 0;
+        seq_add(3, 2, 4, 36, 100);
+        ui.val[3][PG_AMP][0][4] = 77;
+        pat_mute = 8;
+        check(song_save(0) == 0, "four synths saved");
+        sq[3].count = 0; ui.val[3][PG_AMP][0][4] = 0; pat_mute = 0;
+        check(song_load(0) == 0 && seq_find(3, 2, 36) >= 0 && ui.val[3][PG_AMP][0][4] == 77 && (pat_mute & 8) && st_ver == 17u,
+              "and opened: synth 4's notes, level and mute (format 17)");
+    }
     v2_destroy(i);
 }
 
@@ -524,7 +594,7 @@ static void criticals(const char *dir)
 
     /* closed on Save's Sounds row: the project kept, no sound added */
     {
-        unlink(in(dir, SV_FILE)); unlink(in(dir, SV_OLD));
+        clear_store(dir);
         i = open_saving(dir);
         const int libs = lib_count();
         seq_add(0, 9, 1, 71, 100);
@@ -552,6 +622,7 @@ int main(int argc, char **argv)
     full(argv[1]);
     voices(argv[1]);
     criticals(argv[1]);
+    four(argv[1], argc > 3 ? argv[3] : NULL);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

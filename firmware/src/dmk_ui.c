@@ -110,7 +110,12 @@ static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\x
 static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Up", "Down"};   /* (the last two: arpeggios, as the
                                                            arp's own; "Arp down" was cut) */
 static const char *const KEYMODES[] = {"Chord", "All"};
-static const char *const MIDI_INS[] = {"Synth", "Ch 1-3"};   /* MIDI in: the synth selected, or synth n on channel n */
+/* MIDI in: the synth selected, or synth n on channel n */
+#ifdef DMK_MOVE
+static const char *const MIDI_INS[] = {"Synth", "Ch 1-4"};
+#else
+static const char *const MIDI_INS[] = {"Synth", "Ch 1-3"};
+#endif
 static const char *const MIDI_OUTS[] = {"Off", "Notes", "Clock", "All"};
 static const char *const CLOCKS[] = {"Own", "Ext"};   /* the keys play chords on CHORD, or on every page but the roll */
 static const char *const KTYPES[] = {"7ths", "Triads", "9ths", "Add9", "Sus2", "Sus4", "6/9", "Power"
@@ -119,7 +124,11 @@ static const char *const KTYPES[] = {"7ths", "Triads", "9ths", "Add9", "Sus2", "
 #endif
 };   /* (whole in a field) */
 static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords",
-                                      "Harmony of 1", "Harmony of 2", "Harmony of 3"};
+                                      "Harmony of 1", "Harmony of 2", "Harmony of 3"
+#ifdef DMK_MOVE
+                                      , "Harmony of 4"
+#endif
+};
 static const char *const PROGS[PROG_N] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
     "Power lines", "Tower beacon", "Slow thaw", "Candle", "Embers", "Low clouds", "Snowfield", "Static", "Mixtape", "Night drive",
 #ifdef DMK_MOVE
@@ -218,6 +227,10 @@ static struct {
     int8_t sel_dir;                                     /* SELECT's last step and when (one synth a click) */
     uint32_t sel_at;
 } ui;
+#ifdef DMK_MOVE
+static uint8_t ui_new[DMK_SYNTHS][PG_COUNT][4][5], ui_new_view[DMK_SYNTHS];   /* a new song's synths (ui_init's): a
+                                                           synth an older song did not have starts from them */
+#endif
 
 static uint8_t leds[DMK_KEYS + B_COUNT];
 static uint32_t mi_clk, mi_last, mi_per;                /* MIDI clock in: clocks since start; when the last came;
@@ -388,10 +401,19 @@ static uint8_t *vp(int page, int row, int k)
     if (page == PG_HOME) {                              /* each synth's level, send and pan; K4 the song's: the tempo, the
                                                            Space's return, the mix's width (ALGO: the rows, no value) */
         static const uint8_t PG[3] = {PG_AMP, PG_FX, PG_FX}, RW[3] = {0, 3, 3}, KK[3] = {4, 0, 2};
+#ifdef DMK_MOVE
+        /* the Move's: a synth a knob, four of them; the tempo is Shift + knob 1's, the Space's return GLO's, the mix's
+         * width row 3's */
+        if (row == 3) return &ui.val[0][PG_HOME][3][3];
+        row %= 3;
+        if (k < DMK_SYNTHS) return &ui.val[k][PG[row]][RW[row]][KK[row]];
+        return &ui.val[0][PG_HOME][2][4];               /* (nothing's) */
+#else
         row %= 3;
         if (k < 3) return &ui.val[k][PG[row]][RW[row]][KK[row]];
         if (k > 3) return &ui.val[0][PG_HOME][2][4];   /* (nothing's) */
         return row == 0 ? &ui.val[0][PG_HOME][0][4] : row == 1 ? &ui.val[0][PG_GLOBAL][1][0] : &ui.val[0][PG_HOME][3][3];
+#endif
     }
     return &ui.val[per_synth(page) ? ui.synth : 0][page][row][k];
 }
@@ -576,7 +598,11 @@ static void arp_defaults(int s)                         /* the ARP: off, sixteen
  * pluck a room, the shared hall's tone, size and sweep of before (its amount: ui_init's) */
 static void reverb_first(int s)
 {
+#ifdef DMK_MOVE
+    static const uint8_t TY[DMK_SYNTHS] = {RV_HALL, RV_PLATE, RV_ROOM, RV_ROOM};   /* (the bass: a room, kept small) */
+#else
     static const uint8_t TY[DMK_SYNTHS] = {RV_HALL, RV_PLATE, RV_ROOM};
+#endif
     uint8_t *v = ui.val[s][PG_FX][0];
     v[0] = 64; v[1] = 56; v[2] = 96; v[3] = 64; v[4] = choice_val(TY[s % DMK_SYNTHS], FX_REVERBS);
 }
@@ -609,11 +635,21 @@ DMK_SMALL static void ui_init(void)
 {
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
      * env, level, tape, wow, reverb (its amount), echo (its send to the shared one, now its tape echo), pan] */
+#ifdef DMK_MOVE
+    /* the Move's fourth: a bass (Scirpus, the cleanest of the bass recordings), short, dark, little reverb */
+    const uint8_t FIRST[DMK_SYNTHS] = {DMK_FIRST_PAD, DMK_FIRST_KEY, DMK_FIRST_PLUCK, (uint8_t)smp_named("Scirpus")};
+    static const uint8_t SET[DMK_SYNTHS][13] = {         /* (tape, wow: the mix's since 0.5, the pad's) */
+        {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
+        {0, 80, 56, 72, 96, 12, 76, 96, 1, 24, 60, 52, 72},
+        {0, 60, 0, 64, 112, 24, 80, 92, 0, 0, 72, 76, 40},
+        {0, 64, 100, 40, 72, 16, 56, 96, 0, 0, 24, 16, 40}};
+#else
     static const uint8_t FIRST[DMK_SYNTHS] = {DMK_FIRST_PAD, DMK_FIRST_KEY, DMK_FIRST_PLUCK};   /* a pad, keys, a pluck */
     static const uint8_t SET[DMK_SYNTHS][13] = {         /* (tape, wow: the mix's since 0.5, the pad's) */
         {48, 72, 112, 88, 104, 16, 72, 100, 1, 36, 84, 44, 52},
         {0, 80, 56, 72, 96, 12, 76, 96, 1, 24, 60, 52, 72},
         {0, 60, 0, 64, 112, 24, 80, 92, 0, 0, 72, 76, 40}};
+#endif
     int s, p, r, k;
     for (s = 0; s < DMK_SYNTHS; s++)
         for (p = 0; p < PG_COUNT; p++)
@@ -671,6 +707,9 @@ DMK_SMALL static void ui_init(void)
         ui.roll_zoom[s] = (uint8_t)(sq[s].steps > 16);
     }
     ui.roll_view[0] = (uint8_t)degree_of(53); ui.roll_view[1] = (uint8_t)degree_of(64); ui.roll_view[2] = (uint8_t)degree_of(69);
+#ifdef DMK_MOVE
+    ui.roll_view[3] = (uint8_t)degree_of(41);           /* (the bass: its roll from F2) */
+#endif
     ui.row[PG_FX] = 1;                                  /* the delay; Home on its levels */
     ui.row[PG_HOME] = 0;
     ui.page = PG_HOME;
@@ -679,6 +718,10 @@ DMK_SMALL static void ui_init(void)
     for (s = 0; s < DMK_SYNTHS; s++) { sound_put(s, ui_first[s]); ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
     ui.arr_cur = 0; ui.arr_bars = 4; ui.copy_arm = 0; ui.full = 0;
     ui.ren_slot = 0xFF;                                 /* (no name being turned) */
+#ifdef DMK_MOVE
+    __builtin_memcpy(ui_new, ui.val, sizeof ui_new);
+    for (s = 0; s < DMK_SYNTHS; s++) ui_new_view[s] = ui.roll_view[s];
+#endif
     sp_sync();
 }
 
@@ -736,7 +779,7 @@ DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, n
     const choice_t *c = choice_of(page, row, k);
     int v = *vp(page, row, k);
     if (page == PG_GLOBAL && row == 3 && k == 3) { str_cat(o, THEME_NAME[theme]); return; }
-    if (!v && ((page == PG_FX && (row == 0 || row == 3) && k == 0) || (page == PG_HOME && row == 1 && k < 3))) {
+    if (!v && ((page == PG_FX && (row == 0 || row == 3) && k == 0) || (page == PG_HOME && row == 1 && k < DMK_SYNTHS))) {
         str_cat(o, "Off");                              /* a send at 0, the reverb's amount at 0: none */
         return;
     }
@@ -757,8 +800,10 @@ DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, n
         fmt_int(o, v + 1);
         return;
     }
+#ifndef DMK_MOVE                                        /* (the Move's knob 4 is synth 4's level: its tempo is Shift + knob 1's) */
     if (page == PG_HOME && row == 0 && k == 3) { fmt_int(o, seq_bpm); return; }   /* the tempo as it plays (at least 20;
                                                            Ext: the clock's) */
+#endif
     if (page == PG_FX && row == 1 && k == 2 && dl_type(ui.synth) == DT_TAPE) {   /* the tape echo's time, in ms */
         str_cat(fmt_int(o, (int)(T_ETIME[v] * 1000u / 22050u)), " ms");
         return;
@@ -1025,7 +1070,11 @@ static void roll_fields(void)                           /* the cursor's, or a he
     note_name(v, note_of(ui.roll_view[ui.synth]));
     field_show(1, "View", v, (ui.roll_view[ui.synth] - 14) * 127 / 29);
     {                                                   /* K3 (where the pen's length was): how it follows the chords */
-        static const char *const FW_SHORT[FW_COUNT] = {"Free", "Key", "Chord", "Root", "Plays", "With 1", "With 2", "With 3"};
+        static const char *const FW_SHORT[FW_COUNT] = {"Free", "Key", "Chord", "Root", "Plays", "With 1", "With 2", "With 3"
+#ifdef DMK_MOVE
+                                                       , "With 4"
+#endif
+        };
         int f = ch.follow[ui.synth];
         field_show(2, "Follow", FW_SHORT[f], f * 127 / (FW_COUNT - 1));
     }
@@ -2750,7 +2799,7 @@ static void follow_turn(int dir)
     int f = ch.follow[ui.synth], i;
     for (i = 0; i < FW_COUNT; i++) {
         f = wrap(f + dir, FW_COUNT);
-        if (!(f >= FW_HARM1 && f <= FW_HARM3 && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS))) break;
+        if (!(f >= FW_HARM1 && f <= FW_HARM_LAST && (f - FW_HARM1 == ui.synth || harm_of(f - FW_HARM1) >= 0 || ch.follow[f - FW_HARM1] == FW_PLAYS))) break;
     }
     if (ch.follow[ui.synth] == FW_PLAYS) chord_off(ui.synth);
     ch.follow[ui.synth] = (uint8_t)f;

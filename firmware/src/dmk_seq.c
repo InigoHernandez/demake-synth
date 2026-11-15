@@ -113,7 +113,11 @@ static pseq_t spat[DMK_SYNTHS][SYN_PATS] POOL;
 typedef struct { uint8_t pat[DMK_SYNTHS], prog, mute, used; } scene_t;
 static scene_t scn[SCENES];
 static uint8_t scn_cur, scn_next = 0xFF, pat_mute;      /* the scene open, the one waiting for the bar, the mutes */
+#ifdef DMK_MOVE
+static uint8_t spat_next[DMK_SYNTHS] = {0xFF, 0xFF, 0xFF, 0xFF};   /* a synth's pattern waiting for the bar */
+#else
 static uint8_t spat_next[DMK_SYNTHS] = {0xFF, 0xFF, 0xFF};   /* a synth's pattern waiting for the bar */
+#endif
 static uint8_t pat_prog_get(void);                      /* the CHORD page's progression (dmk_ui.c) */
 static void pat_prog_put(uint8_t v);
 static void seq_quiet(int s);

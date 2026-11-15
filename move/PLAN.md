@@ -105,9 +105,9 @@ On Home's Song row the steps stay the scenes without Shift, so scenes can be pla
 | **Shift + Left / Right** | The pattern of the synth in view alone | New |
 | **Rec, then Play** | Ready: Rec blinks and the screen says so; the first pad starts the take from step 1, on the Move's nearest step. Move's transport runs on meanwhile, as it has Play too. Play again cancels | The FM-1's |
 | **Shift + jog** | The FM-1's ALGORITHM: filter type, zoom, progression | Same |
-| **Track buttons 1–3** | Synths 1–3 | Same |
-| **Track button 4** | Keys for the synth in view: chords from the piano rows on or off (lit as ARP is on the FM-1) | New |
-| **Mute** | Tapped, the synth in view; held, track buttons 1–3 or steps 1–3 mute | Same |
+| **Track buttons 1–4** | Synths 1–4 (the Move has four; the FM-1 three) | New |
+| **Shift + track button** | That synth's Keys: chords from the piano rows on or off, without selecting it. While Shift is held the track lights show which synths have Keys | New |
+| **Mute** | Tapped, the synth in view; held, track buttons 1–4 or steps 1–4 mute | Same |
 | **Up / Down** | The octave | Same |
 | **16 steps** | The sequencer on every page (above) | Same |
 | **Shift + steps** | The 16 scenes | Same as MONO2K's patterns |
@@ -131,9 +131,9 @@ Rows the FM-1 keeps apart sit side by side, so fewer taps reach the same values.
 
 | Page | Row | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | Shift + jog |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Home | Mix | Level 1 | Level 2 | Level 3 | Tempo | Space 1 | Space 2 | Space 3 | Return | |
-| | Pan | Pan 1 | Pan 2 | Pan 3 | Width | | | | | |
-| | Song | Synth 1 | Synth 2 | Synth 3 | Chords | Step | Scene | Bars | End | |
+| Home | Mix | Level 1 | Level 2 | Level 3 | Level 4 | Space 1 | Space 2 | Space 3 | Space 4 | |
+| | Pan | Pan 1 | Pan 2 | Pan 3 | Pan 4 | Width | Return | | | |
+| | Song | Synth 1 | Synth 2 | Synth 3 | Synth 4 | Step | Scene | Bars | End | |
 | Roll | Roll | Cursor | View | Follow | Steps | Mutate | Range | Chance | Evolve | Zoom |
 | | Arp | Mode | Rate | Octave | Gate | | | | | |
 | Chord | Voice | Voicing | Invert | Spread | Strum | Key | Mode | Change | Rhythm | Progression |
@@ -184,9 +184,10 @@ Each step ends with something you can hear, see or try.
    Built 2026-11-04: `sh move/proof.sh` and `sh move/test/mutants.sh` pass. Against Move's true time, the clock wanders about 0.2 ms at 71 to 133 BPM, tenths included, about 1.5 ms early on average. The plain screen uses Tiny5 for now; step 4's sheet still picks the face. Undo covers the rolls, every value and the mutes, not a progression's written chords, and a scene or pattern switched empties it.
 4. **The screen.** Sheets first, Roll then the landscapes, then every page. Your verdict comes before the device.
 5. **More power, only if you want it.** Behind Move build flags, never on the FM-1.
+   Four synths (the owner's brief, Phase 2, 2026-11-15): track buttons 1–4, Keys on Shift + track, Home's Mix and Pan rows a synth a knob (the tempo on Shift + knob 1 alone, the width and the Space's return on the Pan row's knobs 5 and 6, the Song row's Chords given to synth 4: the progression is on Chord), "Harmony of 4", MIDI channels 1–4, the Lake's cabin four windows. Synth 4 starts as a new song's: Scirpus, a bass, following the key, no notes, in older songs too. Save format 17 in `projects4.dmks` (384 KiB a song, so four synths' every pattern full fit); `projects.dmks` (format 16, three synths) and `demake.dmks` are read until the first save and never written. On the Move, the render on a spare core: worst voices mean 1,068 µs, most 1,714 (three synths: 1,055, 1,618).
    Asked for 2026-11-05: 2,048 notes a pattern and projects to 49,152 notes (`projects.dmks`, 256 KiB a project; the old `demake.dmks` is read until the first save and never written), 23 scales of five to eight notes, 53 chord qualities, 21 Keys types, 45 progressions and the four User ones. Songs of before keep their scale, progression and Keys type. On the owner's Move the same day.
 
-   40 voices, the owner's (2026-11-05), shared by the three synths, 16 of them from one roll. Past twelve voices' power the sum is held at what twelve give (`poly_run`), so more notes thicken a chord and don't drive the limiters: 40 notes measure as 12 do, RMS within about 1 dB, no clipping, and twelve or fewer are untouched to the bit (`move/test/level.c`). Long tails now ring, so the first song is a little fuller: up to 40 voices, its sum at most 2 dB down.
+   40 voices, the owner's (2026-11-05), shared by the three synths, 16 of them from one roll. Past twelve voices' power the sum is held at what twelve give (`poly_run`), so more notes thicken a chord and don't drive the limiters: 40 notes measure as 12 do, RMS within about 1 dB, no clipping, and twelve or fewer are untouched to the bit (`move/test/level.c`). Long tails now ring that twelve voices took: the first song reaches 17 voices, its sum never held down (an earlier note here said 40: that test measured a full project, not the first song).
 
    On the Move, the real build, `cpu.sh 5 1`: first song mean 148 µs, p99 430; heavy jam 631, 1,039; worst voices 1,055, 1,486, most 1,618; the jam with LP24 and drive touched 1,991. Before that, `DMK_VOICES` patched in a copy (`cpu N 3 1`, worst voices, of about 2,370 µs of room):
 

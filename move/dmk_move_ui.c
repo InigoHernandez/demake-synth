@@ -51,10 +51,11 @@ typedef struct {
     kref_t k[3][8], jog[3];
 } mpage_t;
 enum { MP_HOME, MP_ROLL, MP_CHORD, MP_SOUND, MP_FILTAMP, MP_LFO, MP_FX, MP_GLOBAL, MP_SAVE, MP_N };
+_Static_assert(DMK_SYNTHS == MV_SYNTHS, "the view (dmk_move_view.h) and the core count the synths alike");
 static const mpage_t MP[MP_N] = {
     {"Home", PG_HOME, 3, {"Mix", "Pan", "Song"},
      {{KR(HOME, 0, 0), KR(HOME, 0, 1), KR(HOME, 0, 2), KR(HOME, 0, 3), KR(HOME, 1, 0), KR(HOME, 1, 1), KR(HOME, 1, 2), KR(HOME, 1, 3)},
-      {KR(HOME, 2, 0), KR(HOME, 2, 1), KR(HOME, 2, 2), KR(HOME, 2, 3), KN, KN, KN, KN},
+      {KR(HOME, 2, 0), KR(HOME, 2, 1), KR(HOME, 2, 2), KR(HOME, 2, 3), KR(HOME, 3, 3), KR(GLOBAL, 1, 0), KN, KN},
       {KR(ARR, 0, 0), KR(ARR, 0, 1), KR(ARR, 0, 2), KR(ARR, 0, 3), KR(ARR, 1, 0), KR(ARR, 1, 1), KR(ARR, 1, 2), KR(ARR, 1, 3)}},
      {KN, KN, KN}},
     {"Roll", PG_ROLL, 2, {"Roll", "Arp", ""},
@@ -633,7 +634,8 @@ static void mv_turn(kref_t r, int d)
 static int is_tempo(int i)
 {
     const kref_t r = mp_knob(i);
-    return (i == 0 && mc.shift) || (r.pg == PG_HOME && r.row == 0 && r.k == 3);
+    (void)r;
+    return i == 0 && mc.shift;                          /* (Home's knob 4 is synth 4's level) */
 }
 static void focus_on(int i) { mc.focus = (int8_t)i; mc.focus_t = ui.now | 1u; }
 
@@ -855,11 +857,16 @@ static void bars(int d)
 
 static void mv_track(int i)
 {
-    if (i == 3) {                      /* the Keys of the synth in view */
-        const kref_t r = {PG_CHORD, 2, 0};
-        if (mc.mute || mc.copy || mc.del) return;
+    if (mc.shift && !mc.mute && !mc.copy && !mc.del) {   /* Shift + a track: that synth's Keys, on or off */
+        uint8_t *kv = &ui.val[i][PG_CHORD][2][0];
+        const int on = !choice_index(choice_of(PG_CHORD, 2, 0), *kv);
+        char m[24];
+        mc.used = 1;
         undo_mark(0);
-        mv_turn(r, 1);
+        *kv = choice_val(on, 2);
+        sp_sync();
+        fmt_int(str_cat(m, on ? "Keys on: synth " : "Keys off: synth "), i + 1);
+        notice(m);
         return;
     }
     if (mc.mute) { mc.used = 1; undo_mark(0); pat_mute_flip(i); return; }
@@ -1051,6 +1058,17 @@ static const char *knob_label(kref_t r)
     const int pg = r.pg, row = r.row, k = r.k;
     if (k == 4) return PAGE[pg].algo[row];
     if (pg == PG_CHORD && row == 1 && k == 1) return "Scale";
+    if (pg == PG_HOME && row == 3) return "Width";
+    if (pg == PG_ARR && row == 0 && k < DMK_SYNTHS) {   /* the Song row: a synth's pattern a knob (the chords: Chord's) */
+        static const char *const SK[DMK_SYNTHS] = {"Synth 1", "Synth 2", "Synth 3", "Synth 4"};
+        return SK[k];
+    }
+    if (pg == PG_HOME && k < DMK_SYNTHS) {              /* four synths: the FM-1's labels end at three, then the song's */
+        static const char *const HK[3][DMK_SYNTHS] = {{"Level 1", "Level 2", "Level 3", "Level 4"},
+                                                       {"Space 1", "Space 2", "Space 3", "Space 4"},
+                                                       {"Pan 1", "Pan 2", "Pan 3", "Pan 4"}};
+        return HK[row % 3][k];
+    }
     const char *l = PAGE[pg].k[row][k];
     if (pg == PG_FX && row == 2) l = FXK[2][choice_index(choice_of(PG_FX, 2, 4), *vp(PG_FX, 2, 4))][k];
     if (pg == PG_FX && row == 0 && k == 3) l = RVK4[choice_index(choice_of(PG_FX, 0, 4), *vp(PG_FX, 0, 4))];
@@ -1080,7 +1098,7 @@ static void knob_view(mv_knob_t *o, kref_t r, int i)
     }
     ascii(o->name, knob_label(r), sizeof o->name);
     if (r.pg == PG_ROLL && r.row == 0 && r.k < 4) {
-        static const char *const FW_SHORT[FW_COUNT] = {"Free", "Key", "Chord", "Root", "Plays", "With 1", "With 2", "With 3"};
+        static const char *const FW_SHORT[FW_COUNT] = {"Free", "Key", "Chord", "Root", "Plays", "With 1", "With 2", "With 3", "With 4"};
         const int st = sq[s].steps > 1 ? sq[s].steps - 1 : 1, f = ch.follow[s];
         if (r.k == 0) { fmt_int(v, ui.roll_cur[s] + 1); o->raw = (uint8_t)(ui.roll_cur[s] * 127 / st); }
         if (r.k == 1) { note_name(v, note_of(ui.roll_view[s])); o->raw = (uint8_t)((ui.roll_view[s] - VIEW_LO) * 127 / (VIEW_HI - VIEW_LO)); }
@@ -1194,8 +1212,8 @@ static void mv_leds(mv_view_t *v)
     }
     for (int p = 16; p < 24; p++) l->pad[p] = mc.pkind[p] ? L_WHITE : p == mc.pen[s].pad ? L_BLUE : L_VIOLET;
     for (int i = 0; i < MP_SAVE; i++) l->pad[24 + i] = i == mc.page ? PAGE_LIT[i] : PAGE_DIM[i];
-    for (int t = 0; t < DMK_SYNTHS; t++) l->trk[t] = t == s ? L_WHITE : pat_mute >> t & 1u ? L_OFF : L_DARK;
-    l->trk[3] = ch.keys >> s & 1u ? L_WHITE : L_DARK;
+    for (int t = 0; t < DMK_SYNTHS; t++)
+        l->trk[t] = mc.shift ? (ch.keys >> t & 1u ? L_WHITE : L_OFF) : t == s ? L_WHITE : pat_mute >> t & 1u ? L_OFF : L_DARK;
     l->btn[MB_REC] = seq_rec && !(v->ready && ui.now / 250u & 1u) ? L_RED : L_OFF;
     l->btn[MB_MUTE] = pat_mute >> s & 1u ? W_ON : W_DIM;
     l->btn[MB_UNDO] = un.at ? W_MID : W_DIM;
@@ -1537,9 +1555,14 @@ static void mv_view_build(mv_view_t *v)
     }
     pic_build(v);
     if (mc.shift) {                    /* knob 1 is the tempo on every page */
-        kref_t t = {PG_HOME, 0, 3};
-        knob_view(&v->knob[0], t, 0);
-        ascii(v->knob[0].name, "Tempo", sizeof v->knob[0].name);
+        mv_knob_t *o = &v->knob[0];
+        char t[12];
+        memset(o, 0, sizeof *o);
+        o->on = 1;
+        fmt_int(t, seq_bpm);
+        ascii(o->name, "Tempo", sizeof o->name);
+        ascii(o->val, t, sizeof o->val);
+        o->raw = (uint8_t)clampi((seq_bpm - 20) * 127 / 235, 0, 127);
         v->kkind[0] = MV_KK_TEMPO;
     }
     if (steps_held()) { held_view(v); v->held = 1; }

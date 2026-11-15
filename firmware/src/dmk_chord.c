@@ -49,7 +49,13 @@ enum { MO_AEOL, MO_DOR, MO_PHRY, MO_LYD, MO_MIXO, MO_ION,
 #endif
        MO_COUNT };
 enum { VO_CLOSE, VO_OPEN, VO_WIDE, VO_SHELL, VO_QUART, VO_COUNT };
-enum { FW_FREE, FW_KEY, FW_CHORD, FW_ROOT, FW_PLAYS, FW_HARM1, FW_HARM2, FW_HARM3, FW_COUNT };   /* HARMn: synth n's notes, moved */
+#ifdef DMK_MOVE
+enum { FW_FREE, FW_KEY, FW_CHORD, FW_ROOT, FW_PLAYS, FW_HARM1, FW_HARM2, FW_HARM3, FW_HARM4, FW_COUNT };
+#define FW_HARM_LAST FW_HARM4
+#else
+enum { FW_FREE, FW_KEY, FW_CHORD, FW_ROOT, FW_PLAYS, FW_HARM1, FW_HARM2, FW_HARM3, FW_COUNT };
+#define FW_HARM_LAST FW_HARM3
+#endif   /* HARMn: synth n's notes, moved */
 enum { RH_HOLD, RH_PULSE4, RH_PULSE8, RH_ARPUP, RH_ARPDN, RH_COUNT };
 
 /* the presets (plan 4.2): a chord a slot, its root in semitones above the key, its quality, its length in half-bars,
@@ -126,7 +132,11 @@ static struct {
     uint8_t follow[DMK_SYNTHS];
     uint8_t keys, ktype;                                 /* the keys play chords: on CHORD (0) or everywhere (1); their type */
     int8_t hint[DMK_SYNTHS];                             /* HARMONY: the interval over the lead, in scale steps (-7..7) */
+#ifdef DMK_MOVE
+} ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, {0, 0, 0, 0}, {FW_PLAYS, FW_KEY, FW_ROOT, FW_KEY}, 0, 0, {2, 2, 2, 2}};
+#else
 } ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, {0, 0, 0}, {FW_PLAYS, FW_KEY, FW_ROOT}, 0, 0, {2, 2, 2}};
+#endif
 enum { KT_SEVENTH, KT_TRIAD, KT_NINTH, KT_ADD9, KT_SUS2, KT_SUS4, KT_69, KT_POWER,
 #ifdef DMK_MOVE
        KT_6TH, KT_11, KT_13, KT_SHELL, KT_7SUS, KT_9SUS, KT_ADD11, KT_4THS, KT_5THS, KT_ALLM7, KT_ALLM9, KT_ALLMAJ9, KT_ALL7,
@@ -203,7 +213,7 @@ static int snap_set(int p, uint16_t set, uint16_t pref)  /* the nearest pitch in
 static int plays_chords(int s) { return ch.follow[s] == FW_PLAYS; }
 /* HARMONY (after the sequencers that harmonize one track from another): a synth that follows another plays each note
  * the lead plays, its roll left, moved by its interval in scale steps on the scale as the chord bends it (S') */
-static int harm_of(int s) { return ch.follow[s] >= FW_HARM1 && ch.follow[s] <= FW_HARM3 ? ch.follow[s] - FW_HARM1 : -1; }
+static int harm_of(int s) { return ch.follow[s] >= FW_HARM1 && ch.follow[s] <= FW_HARM_LAST ? ch.follow[s] - FW_HARM1 : -1; }
 static int harm_note(int f, int n)
 {
     int h = note_of(degree_of(snap(n)) + ch.hint[f]);

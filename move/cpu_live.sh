@@ -10,7 +10,7 @@ SEC=${1:-10}
 # shellcheck disable=SC2029
 ssh -o BatchMode=yes -o ConnectTimeout=8 "$HOST" "
     snap() { for f in /proc/[0-9]*/task/[0-9]*/stat; do cat \$f 2>/dev/null; done | awk '{
-        tid = \$1; sub(/^[0-9]+ \\(/, \"\"); i = index(\$0, \") \"); comm = substr(\$0, 1, i - 1); \$0 = substr(\$0, i + 2);
+        tid = \$1; sub(/^[0-9]+ \\(/, \"\"); i = index(\$0, \") \"); comm = substr(\$0, 1, i - 1); gsub(/ /, \"_\", comm); \$0 = substr(\$0, i + 2);
         if (\$39 == 1) print tid, comm, \$37, \$38, \$12 + \$13 }'; }
     hz=\$(getconf CLK_TCK 2>/dev/null || echo 100)
     snap > /tmp/.dmk_a; sleep $SEC; snap > /tmp/.dmk_b

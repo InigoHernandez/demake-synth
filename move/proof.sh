@@ -31,6 +31,10 @@ cc -std=gnu11 $FL -o "$P/mac/render_hash" move/test/render_hash.c
 cc -std=gnu11 $FL -DDMK_MOVE=1 -o "$P/mac/render_move" move/test/render_hash.c
 "$P/mac/render_move" 1 > "$P/mac/hash_move.txt"
 cc -std=gnu11 $FL -o "$P/mac/old_store" move/test/old_store.c
+# a store of format 16 (three synths, 256 KiB a song), written by the commit before four synths: its code, this generator
+mkdir -p build/move/v16src "$P/v16"
+git archive c6b82ab move firmware | tar -x -C build/move/v16src
+cp move/test/store_v16.c build/move/v16src/move/test/
 "$P/mac/old_store" "$P/old/demake.dmks"
 "$P/mac/render_hash" > "$P/mac/hash.txt"
 
@@ -43,10 +47,12 @@ docker run --rm --platform linux/arm64 -v "$ROOT":/w -w /w -e P="$P" -e DSP="$DS
     $L/bench $DSP hash > $L/dsp_hash.txt
     for m in rt ctl clock; do $L/bench $DSP $m > $L/dsp_$m.txt || true; done
     $L/bench $DSP save $P/save $P/old/demake.dmks > $L/dsp_save.txt || true
-    build/move/demake-inside $P/inside $P/old/demake.dmks > $L/dsp_inside.txt || true
+    gcc -std=gnu11 -O2 -DDMK_MOVE=1 -fsigned-char -fwrapv -w -pthread -Ibuild/move/v16src/firmware/src -Ibuild/move/v16src/firmware/gen \
+        -o $L/store_v16 build/move/v16src/move/test/store_v16.c -lm && $L/store_v16 $P/v16 > /dev/null
+    build/move/demake-inside $P/inside $P/old/demake.dmks $P/v16/projects.dmks > $L/dsp_inside.txt || true
     gcc -std=gnu11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -DDMK_MOVE=1 \
         -fsigned-char -fwrapv -Ifirmware/src -Ifirmware/gen -w -pthread -o $L/inside_san move/test/inside.c -lm
-    $L/inside_san $P/inside $P/old/demake.dmks > $L/dsp_inside_san.txt 2>&1 || true
+    $L/inside_san $P/inside $P/old/demake.dmks $P/v16/projects.dmks > $L/dsp_inside_san.txt 2>&1 || true
     $L/bench $DSP draw $P/screens > $L/dsp_draw.txt || true
     $L/bench $DSP time $SEC > $L/dsp_time.txt
 '

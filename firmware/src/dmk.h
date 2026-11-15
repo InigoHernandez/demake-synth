@@ -9,7 +9,11 @@
 
 #define DMK_SR        44100
 #define DMK_SUB       16          /* control-rate block: envelopes, parameters, triggers */
+#ifdef DMK_MOVE
+#define DMK_SYNTHS    4           /* the Move's: a fourth synth on its fourth track button (the owner's, 2026-11-15) */
+#else
 #define DMK_SYNTHS    3
+#endif
 #ifdef DMK_MOVE
 #define DMK_VOICES    40          /* the owner's; 48 measured on the Move's worst case at 1.7 ms of its 2.4 */
 #else

@@ -11,6 +11,7 @@ if [ -z "${DOCKER_CONFIG:-}" ] && [ -d "$HOME/.jieli/docker" ]; then
     export DOCKER_CONFIG
 fi
 docker run --rm --platform linux/arm64 -v "$ROOT":/w -w /w demake-move-build:bookworm sh -eu -c '
+ulimit -c 0                                   # (a broken copy that crashes leaves no core file in the repo)
 F="-std=gnu11 -O2 -mtune=cortex-a72 -DDMK_MOVE=1 -fsigned-char -fwrapv -fPIC -shared -fvisibility=hidden -w -Ifirmware/src -Ifirmware/gen"
 W=/tmp/mut
 mkdir -p $W/move/test
@@ -54,7 +55,7 @@ core() {   # what it breaks, the file, the change, the bench (none: inside)
         else
             gcc $G -static -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         fi
-        out=$(timeout 300 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks 2>&1); code=$?
+        out=$(timeout 300 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks build/move/proof/v16/projects.dmks 2>&1); code=$?
     else
         gcc $G -fPIC -shared -fvisibility=hidden -pthread -o /tmp/mut2/x.so /tmp/mut2/move/dmk_move.c || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         if [ "$4" = hash ]; then
@@ -112,7 +113,7 @@ one "a project reopened empty" dmk_move.c "s#if (mv.dir\[0\]) { store_load();#if
 one "closing loses the last edits" dmk_move.c "s#mv.save_on_close \&\& store_on() \&\& song_changed()#0#" "save /tmp/mut_save"
 SEQ=firmware/src/dmk_seq.c; ST=firmware/src/dmk_store.c; CH=firmware/src/dmk_chord.c; FUI=firmware/src/dmk_ui.c
 core "a pattern stops at 96 notes" $SEQ "s#if (q->count >= SEQ_NOTES) return -1;#if (q->count >= 96) return -1;#"
-core "a project must fit a sector" $ST "s#define ST_SLOT 0x40000u#define ST_SLOT 0x1000u#"
+core "a slot just short of four synths full" $ST "s#define ST_SLOT 0x60000u#define ST_SLOT 0x50000u#"
 core "a count saved in one byte" $ST "s#\*p++ = (uint8_t)q->count; \*p++ = (uint8_t)(q->count >> 8);#*p++ = (uint8_t)q->count; *p++ = 0;#"
 core "a song of before read with two" $ST "s#if (st_ver >= 16u) { if (e - p < 1) return -1;#if (st_ver >= 1u) { if (e - p < 1) return -1;#"
 core "a scene of before keeps its place" $ST "s#if (st_ver < 16u) scn\[g\].prog = prog_moved(scn\[g\].prog);#;#"
@@ -147,5 +148,13 @@ core "a held step line unbounded" move/dmk_move_ui.c "s#if ((size_t)(e - t) + 1 
 core "a scene copied onto the open one" move/dmk_move_ui.c "s#if (k == scn_cur) { notice(\"Another scene\"); return; }#;#"
 core "the dump unbounded" move/dmk_move.c "s#for (int i = 0; i < q->count \\&\\& e - o < n - 24; i++) {#for (int i = 0; i < q->count; i++) {#"
 core "closing on Sounds saves a sound" move/dmk_move.c "s#song_changed()) mv_save_project();#song_changed()) mv_save();#"
+core "old songs read as four synths" $ST "s#define ST_SYN (st_ver >= 17u ? DMK_SYNTHS : 3) #define ST_SYN DMK_SYNTHS #"
+core "a fourth synth left from before" $ST "s#for (s = ST_SYN; s < DMK_SYNTHS; s++) synth_new(s);#;#"
+core "the Home width row unread" $FUI "s#        if (row == 3) return \\&ui.val\\[0\\]\\[PG_HOME\\]\\[3\\]\\[3\\];#        ;#"
+core "the tempo on Home knob 4 again" move/dmk_move_ui.c "s#    return i == 0 \\&\\& mc.shift; #    return (i == 0 \\&\\& mc.shift) || (r.pg == PG_HOME \\&\\& r.row == 0 \\&\\& r.k == 3); #"
+core "no Harmony of 4" $CH "s#define FW_HARM_LAST FW_HARM4#define FW_HARM_LAST FW_HARM3#"
+core "four synths in a 256 KiB slot" $ST "s#define ST_SLOT 0x60000u#define ST_SLOT 0x40000u#"
+core "the three synth file skipped" move/dmk_move.c "s#    {\"projects.dmks\", ST_SONG0 + ST_SONGS \\* 0x40000u, 0x40000u},##"
+one "Keys still on track 4" $UI "s#if (mc.shift \\&\\& !mc.mute \\&\\& !mc.copy \\&\\& !mc.del) {#if (0) {#" ctl
 exit $bad
 '

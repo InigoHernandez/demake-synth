@@ -138,9 +138,9 @@ static void ms_header(uint8_t *o, const mv_view_t *v)
         char b[6] = {(char)('1' + v->bar % 9), '/', (char)('0' + v->bars % 10), 0, 0, 0};
         ms_text(o, x + 3, 1, 20, b, 1, 1);
     }
-    for (int s = 0; s < 3; s++) {                       /* the synths */
+    for (int s = 0; s < MV_SYNTHS; s++) {              /* the synths */
         const char c[2] = {v->letters[s], 0};
-        const int cx = 86 + s * 10;
+        const int cx = 76 + s * 10;
         if (s == v->synth) { ms_pill(o, cx - 2, 0, 9, FCAP + 2, 1); ms_text(o, cx, 1, 8, c, 1, 0); }
         else if (!(v->mutes >> s & 1)) ms_text(o, cx, 1, 8, c, 1, 1);
         else ms_rect(o, cx, 3, 4, 1, 1);

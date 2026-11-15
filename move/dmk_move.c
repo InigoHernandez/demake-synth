@@ -47,9 +47,12 @@ static float mv_host_bpm(void) { return host && host->get_bpm ? host->get_bpm() 
  * a save: the audio thread copies the RAM into a snapshot a piece a block, the saver's thread writes that as a temp
  * file and renames it over the last */
 #define ST_SIZE (ST_SONG0 + ST_SONGS * ST_SLOT)
-#define SV_FILE "projects.dmks"
-#define SV_OLD "demake.dmks"           /* the file before the slots grew: read until a save, never written */
-#define SV_OLD_SIZE 65536u
+#define SV_FILE "projects4.dmks"     /* four synths, 384 KiB a song */
+/* the files before it, newest first: read (the first there) until a save, never written, each song moved to its slot */
+static const struct { const char *name; uint32_t size, slot; } SV_BEFORE[] = {
+    {"projects.dmks", ST_SONG0 + ST_SONGS * 0x40000u, 0x40000u},   /* three synths, 256 KiB a song (2026-11-05) */
+    {"demake.dmks", ST_SONG0 + ST_SONGS * ST_SECTOR, ST_SECTOR},    /* the FM-1's layout, 4 KiB a song */
+};
 #define SV_PIECE 65536u
 enum { SV_IDLE, SV_COPY, SV_READY };
 static uint8_t st_ram[ST_SIZE], sv_snap[ST_SIZE];
@@ -121,18 +124,22 @@ static int sv_write(const uint8_t *b)
 }
 
 /* the file before the slots grew: what it holds, each song in its slot (the records as they were, read by their version) */
-static void store_old(void)
+static void store_old(void)            /* (read through the snapshot's buffer: free at create) */
 {
-    static uint8_t old[SV_OLD_SIZE];
-    char path[256];
-    sv_path(path, sizeof path, SV_OLD);
-    FILE *f = fopen(path, "rb");
-    if (!f) return;
-    const size_t n = fread(old, 1, SV_OLD_SIZE, f);
-    fclose(f);
-    if (n != SV_OLD_SIZE) return;
-    memcpy(st_ram, old, ST_SONG0);
-    for (uint32_t i = 0; i < ST_SONGS; i++) memcpy(st_ram + slot_at((int)i), old + ST_SONG0 + i * ST_SECTOR, ST_SECTOR);
+    _Static_assert(ST_SONG0 + ST_SONGS * 0x40000u <= ST_SIZE, "a file before fits the snapshot");
+    for (unsigned k = 0; k < sizeof SV_BEFORE / sizeof SV_BEFORE[0]; k++) {
+        char path[256];
+        sv_path(path, sizeof path, SV_BEFORE[k].name);
+        FILE *f = fopen(path, "rb");
+        if (!f) continue;
+        const size_t n = fread(sv_snap, 1, SV_BEFORE[k].size, f);
+        fclose(f);
+        if (n != SV_BEFORE[k].size) continue;
+        memcpy(st_ram, sv_snap, ST_SONG0);
+        for (uint32_t i = 0; i < ST_SONGS; i++)
+            memcpy(st_ram + slot_at((int)i), sv_snap + ST_SONG0 + i * SV_BEFORE[k].slot, SV_BEFORE[k].slot);
+        return;
+    }
 }
 
 /* the store from its file, at create (before any render). One of another size is kept aside as .bad */

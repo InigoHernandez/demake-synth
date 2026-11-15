@@ -330,10 +330,10 @@ static void ctl_pens(void)
     /* an empty pattern, so a step's notes are all it holds */
     jog(1); tap(3);
     int led[32];
-    tap(40);
+    held(49); tap(43); lift(49);
     pad_tap(4);
-    check(vint("keys") == 1 && pen_n() >= 3, "track button 4, Keys on: the piano's pad a chord, a step takes it as heard");
-    tap(40);
+    check(vint("keys") == 1 && pen_n() >= 3, "Shift + track 1, Keys on: the piano's pad a chord, a step takes it as heard");
+    held(49); tap(43); lift(49);
     pad_tap(4);
     vlist("pads", led, 32);
     { int pn[1] = {0}; vlist("pen", pn, 1);
@@ -447,11 +447,19 @@ static int do_ctl(void)
     check(vint("syn") == 2, "the third: synth 3");
     tap(43);
     check(vint("syn") == 0, "the first: synth 1");
+    tap(40);
+    check(vint("syn") == 3, "the fourth: synth 4");
+    tap(43);
     int k0 = vint("keys");
-    tap(40);
-    check(vint("keys") != k0, "the fourth: the Keys of the synth in view");
-    tap(40);
+    held(49); tap(40);
+    vlist("trkled", trk, 4);
+    check(vint("keys") == (k0 ^ 8) && vint("syn") == 0 && trk[3] == 120 && trk[1] == 0,
+          "Shift + track 4: synth 4's Keys, the synth in view kept; with Shift held the lights say which have Keys");
+    tap(40); lift(49);
     check(vint("keys") == k0, "and off");
+    held(88); tap(40); lift(88);
+    check(vint("mutes") >> 3 & 1, "Mute + track 4: synth 4 muted");
+    held(88); tap(40); lift(88);
 
     /* ---- the pages: every knob on every row has a name, a value, and moves something */
     page(MP_ROLL);
@@ -909,7 +917,7 @@ static int do_clock(void)
 
 static long fsize(const char *p) { struct stat st; return stat(p, &st) ? -1 : (long)st.st_size; }
 
-#define ST_BYTES 3678208           /* the store's file: settings, the library, 14 songs of 256 KiB */
+#define ST_BYTES 5513216           /* the store's file: settings, the library, 14 songs of 384 KiB */
 static int same_file(const char *a, const char *b)
 {
     static char x[70000], y[70000];
@@ -925,9 +933,10 @@ static int do_save(const char *d, const char *old)
     char t[256];
     host.get_bpm = 0;
     snprintf(js, sizeof js, "{\"seed\": 7, \"data_dir\": \"%s\", \"save_on_close\": 0}", d);
-    snprintf(file, sizeof file, "%s/projects.dmks", d);
-    snprintf(bad, sizeof bad, "%s/projects.dmks.bad", d);
+    snprintf(file, sizeof file, "%s/projects4.dmks", d);
+    snprintf(bad, sizeof bad, "%s/projects4.dmks.bad", d);
     snprintf(was, sizeof was, "%s/demake.dmks", d);
+    { char prev[640]; snprintf(prev, sizeof prev, "%s/projects.dmks", d); remove(prev); }   /* (the file between: three synths) */
     remove(file); remove(bad); remove(was);
     inst = open_js(js);
     blocks(4);
