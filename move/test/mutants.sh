@@ -47,9 +47,14 @@ core() {   # what it breaks, the file, the change, the bench (none: inside)
     if cmp -s "/tmp/mut2/$2" "$2"; then echo "  $1: THE CHANGE DID NOT APPLY"; bad=1; return; fi
     G="-std=gnu11 -O2 -mtune=cortex-a72 -DDMK_MOVE=1 -fsigned-char -fwrapv -w -I/tmp/mut2/firmware/src -I/tmp/mut2/firmware/gen"
     set +e
-    if [ "${4:-}" = "" ]; then
-        gcc $G -static -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
-        out=$(timeout 120 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks 2>&1); code=$?
+    if [ "${4:-}" = "" ] || [ "${4:-}" = san ]; then
+        if [ "${4:-}" = san ]; then                         # (a memory fault: only the sanitizer is sure to see it)
+            gcc $G -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm ||
+                { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
+        else
+            gcc $G -static -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
+        fi
+        out=$(timeout 300 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks 2>&1); code=$?
     else
         gcc $G -fPIC -shared -fvisibility=hidden -pthread -o /tmp/mut2/x.so /tmp/mut2/move/dmk_move.c || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         if [ "$4" = hash ]; then
@@ -136,5 +141,11 @@ core "a list one name short" $FUI "s#\"Dust storm\", \"Salt flats\", \"Red deser
 core "the roll lost on a shorter scale" move/dmk_move_ui.c "s#^    if (mc.scale_n == SCALE_N) return;#    return;#"
 core "a scale named by the FM-1s six" $FUI "s#str_cat(o, MODENAMES\[choice_index(c, v)\]);#str_cat(o, MODENAMES[choice_index(c, v) % 6]);#" "draw /tmp/mut_save"
 core "a new song on another progression" $FUI "s#^    ui.val\[0\]\[PG_CHORD\]\[0\]\[4\] = choice_val(0, PROG_N); ui.val\[0\]\[PG_CHORD\]\[1\]\[1\] = choice_val(MO_AEOL, MO_COUNT);.*#    ;#" hash
+core "an 11th overruns the chord buffer" $CH "s#int8_t iv2\\[IV_N\\];#int8_t iv2[6];#" san
+core "the root wrapped by seven" $CH "s#if (d > SCALE_N / 2) d -= SCALE_N;#if (d > 3) d -= 7;#"
+core "a held step line unbounded" move/dmk_move_ui.c "s#if ((size_t)(e - t) + 1 + strlen(nn) >= sizeof t) break;#;#" san
+core "a scene copied onto the open one" move/dmk_move_ui.c "s#if (k == scn_cur) { notice(\"Another scene\"); return; }#;#"
+core "the dump unbounded" move/dmk_move.c "s#for (int i = 0; i < q->count \\&\\& e - o < n - 24; i++) {#for (int i = 0; i < q->count; i++) {#"
+core "closing on Sounds saves a sound" move/dmk_move.c "s#song_changed()) mv_save_project();#song_changed()) mv_save();#"
 exit $bad
 '

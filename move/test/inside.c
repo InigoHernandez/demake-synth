@@ -426,6 +426,119 @@ static void voices(const char *dir)
     v2_destroy(i);
 }
 
+/* ------------------------------------------------------------------------- Phase 1's critical findings */
+
+static void *open_saving(const char *dir)
+{
+    char js[700];
+    snprintf(js, sizeof js, "{\"seed\": 7, \"data_dir\": \"%s\", \"save_on_close\": 1, \"draw_thread\": 0}", dir);
+    return v2_create("", js);
+}
+
+static void criticals(const char *dir)
+{
+    static mv_view_t vw;
+    void *i = open_at(dir);
+
+    /* 11ths and 13ths: six tones and the end into each chord's buffer (ASan's build reads it too) */
+    {
+        int six = 1;
+        const int kt = ch.ktype, mode = seq_mode, key = seq_key;
+        for (int m = 0; m < MO_COUNT; m++)
+            for (int t = KT_11; t <= KT_13; t++) {
+                seq_mode = (uint8_t)m; seq_key = 9; ch.ktype = (uint8_t)t;
+                for (int n = 53; n < 80; n++) {
+                    uint8_t notes[8];
+                    const int c = chord_key(n, 0, notes);
+                    six &= c >= 3 && c <= 7;
+                    for (int j = 1; j < c; j++) six &= notes[j] > notes[j - 1];
+                }
+            }
+        seq_mode = MO_AEOL; ch.ktype = KT_11;
+        uint8_t notes[8];
+        uint16_t pcs = 0;
+        const int c = chord_key(60, 0, notes);
+        for (int j = 0; j < c; j++) pcs |= (uint16_t)(1u << notes[j] % 12);
+        check(six && pcs == (1u << 0 | 1u << 2 | 1u << 4 | 1u << 5 | 1u << 7 | 1u << 11),
+              "11ths and 13ths on every key, in every scale: whole chords (A Aeolian, 11ths, C: C D E F G B)");
+        ch.ktype = (uint8_t)kt; seq_mode = (uint8_t)mode; seq_key = (uint8_t)key;
+    }
+
+    /* Follows the root, in a scale of other than seven notes: the roll moves to the chord's root's note, not another */
+    {
+        const int mode = seq_mode, key = seq_key, prog = ch.prog, f = ch.follow[2];
+        int same = 1;
+        seq_mode = MO_MPENT; seq_key = 9; ch.prog = 0; ch.follow[2] = FW_ROOT; ch_cmask = 0;
+        for (int idx = 0; idx < SCALE_N; idx++) {
+            ch_root = (uint16_t)(48 + 9 + MODES[seq_mode][idx]);
+            const int got = follow_note(2, 57), want = note_of(degree_of(57) + idx);
+            same &= (got % 12) == (want % 12);
+        }
+        check(same, "Follows the root in a pentatonic: each chord's root moves the roll to that root's note");
+        seq_mode = (uint8_t)mode; seq_key = (uint8_t)key; ch.prog = (uint8_t)prog; ch.follow[2] = (uint8_t)f;
+    }
+
+    /* a held step's notes: as many as fit in the view's line, the notice beside it untouched */
+    {
+        ui.synth = 0;
+        sq[0].count = 0;
+        seq_add(0, 120, 1, 61, 100); seq_add(0, 120, 1, 64, 100); seq_add(0, 120, 1, 68, 100);
+        memset(&vw, 0, sizeof vw);
+        memcpy(vw.note, "Hello", 6);
+        mc.sdown[0] = 1; mc.sstep[0] = 120;
+        held_view(&vw);
+        mc.sdown[0] = 0;
+        check(!strcmp(vw.note, "Hello") && memchr(vw.sound, 0, sizeof vw.sound) && !strncmp(vw.sound, "Step 121 C#4 E4", 15),
+              "a held step's notes fit its line (\"Step 121 C#4 E4\"), the notice beside it as it was");
+    }
+
+    /* a scene copied: never onto the open one, twice over one in use, as the FM-1 */
+    {
+        scn_cur = 0; scn[0].used = 1;
+        for (int s = 0; s < DMK_SYNTHS; s++) scn[0].pat[s] = 0;
+        scn[1] = scn[0]; scn[1].pat[0] = 1;
+        scn[2] = scn[0]; scn[2].pat[0] = 2;
+        mc.copy = 1; mc.csrc = CS_SCENE; mc.cstep = 1;
+        scene_key(0);
+        const int kept = scn[0].pat[0] == 0 && !strcmp(ui.note, "Another scene");
+        scene_key(2);
+        const int asked = scn[2].pat[0] == 2;
+        scene_key(2);
+        const int over = scn[2].pat[0] == 1;
+        mc.copy = 0; mc.csrc = CS_NONE;
+        check(kept && asked && over, "Copy, scene onto scene: not onto the open one; over one in use, the second press");
+    }
+
+    /* the tests' dump of a full roll stays in its buffer */
+    {
+        static char buf[8192 + 64];
+        sq[ui.synth].count = 0;
+        for (int t = 0; t < 256; t++) for (int j = 0; j < 8; j++) seq_add(ui.synth, t, 8, 30 + j * 11, 127);
+        memset(buf + 8192, 0x5A, 64);
+        const int n = dump_string(buf, 8192);
+        int canary = 1;
+        for (int k = 8192; k < 8192 + 64; k++) canary &= buf[k] == 0x5A;
+        check(n < 8192 && canary, "a full roll's dump stays in its 8 KiB");
+    }
+    v2_destroy(i);
+
+    /* closed on Save's Sounds row: the project kept, no sound added */
+    {
+        unlink(in(dir, SV_FILE)); unlink(in(dir, SV_OLD));
+        i = open_saving(dir);
+        const int libs = lib_count();
+        seq_add(0, 9, 1, 71, 100);
+        const int notes = sq[0].count;
+        mc.page = MP_SAVE; ui.row[PG_DISCS] = 1;
+        v2_destroy(i);
+        i = open_at(dir);
+        const int libs2 = lib_count();
+        check(sq[0].count == notes && seq_find(0, 9, 71) >= 0 && libs2 == libs,
+              "closed on Save's Sounds row: the project saved, no sound added");
+        v2_destroy(i);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 3 && !strcmp(argv[1], "show")) { show(argv[2], argv[3]); return 0; }
@@ -438,6 +551,7 @@ int main(int argc, char **argv)
     if (argc > 2) old_file(argv[1], argv[2]);
     full(argv[1]);
     voices(argv[1]);
+    criticals(argv[1]);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

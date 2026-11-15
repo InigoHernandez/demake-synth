@@ -316,6 +316,14 @@ static void scene_key(int k)
         mc.used = 1;
         if (mc.csrc != CS_SCENE) { mc.csrc = CS_SCENE; mc.cstep = (uint16_t)k; fmt_int(str_cat(m, "Copy scene "), k + 1); notice(m); return; }
         if (k == mc.cstep) return;
+        if (k == scn_cur) { notice("Another scene"); return; }   /* (the open one's rolls are loaded: kept, they would
+                                                           land in the copy's patterns) */
+        if (!scn[mc.cstep].used && mc.cstep != scn_cur) { notice("That scene is empty"); return; }
+        if (scn[k].used && !(ui.copy_to == k && ui.now - ui.copy_at < 2000u)) {   /* over one in use: twice, as the FM-1 */
+            ui.copy_to = (uint8_t)k; ui.copy_at = ui.now;
+            notice("Again: over it");
+            return;
+        }
         scn_keep();
         scn[k] = scn[mc.cstep];
         fmt_int(str_cat(fmt_int(str_cat(m, "Scene "), mc.cstep + 1), " to "), k + 1);
@@ -796,9 +804,8 @@ static void jog_click(void)
     }
 }
 
-static void mv_save(void)               /* Shift + Rec: the project open, or the sound on Save's Sounds row */
+static void mv_save_project(void)       /* the project open into its slot (Shift + Rec, and closing) */
 {
-    if (mc.page == MP_SAVE && ui.row[PG_DISCS]) { dmk_button(B_SAVE, 1); dmk_button(B_SAVE, 0); return; }
     if (!store_on()) { notice("No store here"); return; }
     const int at = ui.song;
     ren_flush();
@@ -813,6 +820,11 @@ static void mv_save(void)               /* Shift + Rec: the project open, or the
     str_cat(str_cat(m, "Saved: "), song_name(at));
     notice(m);
     mv_save_request();
+}
+static void mv_save(void)               /* Shift + Rec: the project open, or the sound on Save's Sounds row */
+{
+    if (mc.page == MP_SAVE && ui.row[PG_DISCS]) { dmk_button(B_SAVE, 1); dmk_button(B_SAVE, 0); return; }
+    mv_save_project();
 }
 
 static void tap_core(int b, int pg, int row)   /* a modifier tapped: the FM-1's button on PG's row */
@@ -1120,11 +1132,19 @@ static void held_view(mv_view_t *v)
     while (h < 15 && !mc.sdown[h]) h++;
     const int st = mc.sstep[h];
     for (int i = 0; i < sq[s].count; i++) if (sq[s].n[i].step == st) j = i;
-    char *e = str_cat(v->sound, "Step ");
-    e = fmt_int(e, st + 1);
+    char t[sizeof v->sound], nn[8];                     /* the step and as many of its notes as fit, whole */
+    char *e = fmt_int(str_cat(t, "Step "), st + 1);
     int shown = 0;
     for (int i = 0; i < sq[s].count && shown < 3; i++)
-        if (sq[s].n[i].step == st) { *e++ = ' '; e[0] = 0; note_name(e, sq[s].n[i].note); while (*e) e++; shown++; }
+        if (sq[s].n[i].step == st) {
+            nn[0] = 0;
+            note_name(nn, sq[s].n[i].note);
+            if ((size_t)(e - t) + 1 + strlen(nn) >= sizeof t) break;
+            *e++ = ' ';
+            e = str_cat(e, nn);
+            shown++;
+        }
+    ascii(v->sound, t, sizeof v->sound);
     for (int k = 0; k < 8; k++) {
         mv_knob_t *o = &v->knob[k];
         memset(o, 0, sizeof *o);

@@ -412,12 +412,12 @@ static int view_string(char *o)
     return (int)(e - o);
 }
 
-/* the synth in view's roll, for the tests: "step.len.note.vel.off" a note */
-static int dump_string(char *o)
+/* the synth in view's roll, for the tests: "step.len.note.vel.off" a note, as many as fit in n */
+static int dump_string(char *o, int n)
 {
     const seq_t *q = &sq[ui.synth];
     char *e = o;
-    for (int i = 0; i < q->count; i++) {
+    for (int i = 0; i < q->count && e - o < n - 24; i++) {   /* (a note: 19 at most, and its space) */
         if (i) *e++ = ' ';
         e = ap_int(e, q->n[i].step); *e++ = '.';
         e = ap_int(e, q->n[i].len); *e++ = '.';
@@ -565,7 +565,8 @@ static void v2_destroy(void *inst)
     th_draw_on = th_save_on = 0;
     /* closing keeps what was played (as MONO2K, the owner's choice): the project open into its slot, the store's file
      * with it. Nothing else runs now */
-    if (mv.dir[0] && mv.save_on_close && store_on() && song_changed()) mv_save();
+    if (mv.dir[0] && mv.save_on_close && store_on() && song_changed()) mv_save_project();   /* (the project, whatever the
+                                                           Save page shows: its Sounds row would save a sound) */
     if (mv.dir[0] && (sv.want || atomic_load(&sv.state) != SV_IDLE)) sv_write(st_ram);   /* (and a save not yet written) */
 }
 
@@ -630,7 +631,7 @@ static int v2_get_param(void *inst, const char *key, char *buf, int buf_len)
     if (s_is(key, "frame")) return put_out(buf, buf_len, o, frame_string(o));
     if (s_is(key, "ui")) return put_out(buf, buf_len, o, ui_string(o));
     if (s_is(key, "view")) return put_out(buf, buf_len, o, view_string(o));
-    if (s_is(key, "dump")) return put_out(buf, buf_len, o, dump_string(o));
+    if (s_is(key, "dump")) return put_out(buf, buf_len, o, dump_string(o, (int)sizeof o));
     if (s_is(key, "vals")) return put_out(buf, buf_len, o, val_string(o));
     if (s_is(key, "cost")) return put_out(buf, buf_len, o, cost_string(o));
     return -1;                          /* (rui_poll, state, remote_snapshot_rt_safe...: not served) */

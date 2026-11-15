@@ -44,6 +44,9 @@ docker run --rm --platform linux/arm64 -v "$ROOT":/w -w /w -e P="$P" -e DSP="$DS
     for m in rt ctl clock; do $L/bench $DSP $m > $L/dsp_$m.txt || true; done
     $L/bench $DSP save $P/save $P/old/demake.dmks > $L/dsp_save.txt || true
     build/move/demake-inside $P/inside $P/old/demake.dmks > $L/dsp_inside.txt || true
+    gcc -std=gnu11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -DDMK_MOVE=1 \
+        -fsigned-char -fwrapv -Ifirmware/src -Ifirmware/gen -w -pthread -o $L/inside_san move/test/inside.c -lm
+    $L/inside_san $P/inside $P/old/demake.dmks > $L/dsp_inside_san.txt 2>&1 || true
     $L/bench $DSP draw $P/screens > $L/dsp_draw.txt || true
     $L/bench $DSP time $SEC > $L/dsp_time.txt
 '
@@ -60,7 +63,7 @@ want=$(sed -n 1p "$P/mac/hash_move.txt" | awk '{print $NF}')
 got=$(awk '{print $NF}' "$P/linux/dsp_hash.txt")
 if [ "$want" = "$got" ]; then echo "  dsp.so $got = mac $want"; else echo "  dsp.so $got != mac $want"; fail=1; fi
 
-for m in rt ctl clock save draw inside; do
+for m in rt ctl clock save draw inside inside_san; do
     case $m in
         rt) echo "== dsp.so on the audio thread's rules (bench rt)" ;;
         ctl) echo "== the controls (bench ctl)" ;;
@@ -68,6 +71,7 @@ for m in rt ctl clock save draw inside; do
         save) echo "== saving and opening (bench save)" ;;
         draw) echo "== the screen (bench draw): $P/screens/*.pbm" ;;
         inside) echo "== from inside: every pattern full, a store of before, the scales, chords and progressions" ;;
+        inside_san) echo "== the same under ASan + UBSan (every report fails it)"; grep -q -E "ERROR: AddressSanitizer|runtime error" "$P/linux/dsp_$m.txt" && { grep -m3 -E "ERROR: AddressSanitizer|runtime error|SUMMARY" "$P/linux/dsp_$m.txt"; fail=1; } ;;
     esac
     cat "$P/linux/dsp_$m.txt"
     grep -q FAIL "$P/linux/dsp_$m.txt" && fail=1

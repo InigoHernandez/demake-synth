@@ -221,8 +221,8 @@ static int follow_note(int s, int n)
                                                            * counted from the key's tonic, the shortest way */
         int t = 48 + seq_key, first = cur_prog()->s[0].root % 12, now = ((int)(ch_root % 12) - seq_key + 12) % 12;
         int d = degree_of(snap(t + now)) - degree_of(snap(t + first));
-        if (d > 3) d -= 7;
-        if (d < -3) d += 7;
+        if (d > SCALE_N / 2) d -= SCALE_N;              /* (a scale of five to eight notes: its own octave) */
+        if (d < -(SCALE_N / 2)) d += SCALE_N;
         return snap_set(note_of(degree_of(snap(n)) + d), pc_bent(), ch_cmask);
     }
     default: return n;
@@ -648,7 +648,7 @@ static int chord_key(int n, int oct, uint8_t *notes)
     ch_nosub = (uint8_t)(lo - 12 < 28);
     ch_pn = 0;                                          /* as it is built: no inversion that moves least from the last */
     for (d = 0; d < 7; d++) {
-        int8_t iv2[6];
+        int8_t iv2[IV_N];
         uint8_t t2[8];
         int nd = note_of(degree_of(snap(60)) + d), k, m;
         diatonic(nd, iv2);
@@ -659,7 +659,7 @@ static int chord_key(int n, int oct, uint8_t *notes)
     {   /* and at the top: an octave down for all while the highest key's chord would fold under C7 (it went down) */
         int hi = note_of(degree_of(snap(53 + DMK_KEYS - 1 + oct * 12))) - 12 + (lo - (note_of(degree_of(snap(53 + oct * 12))) - 12)), top = 0;
         for (d = 0; d < 7; d++) {
-            int8_t iv2[6];
+            int8_t iv2[IV_N];
             uint8_t t2[8];
             int nd = note_of(degree_of(snap(48)) + d), k, m;
             diatonic(nd, iv2);
