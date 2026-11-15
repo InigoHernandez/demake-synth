@@ -53,6 +53,11 @@ dithered, for what is lit.
 
 - **What it is to the FM-1.** Identity `FM-1_969`, the same for every release; over USB a MIDI device named
   "Demake FM-1" (its update loader, Felucca's, shows as "Felucca Update"). It carries Felucca's update loader.
+- **Every FM-1, from 0.4.25.** Both flash chips the FM-1 has shipped with: the first units' (JEDEC id `0x856014`) and
+  the `0xB36014` of units sold since autumn 2026. Up to 0.4.24 Demake took the newer chip for an unknown one: nothing
+  saved, and it refused every update, the rescue's and the way back to V15 included: such a unit needs the chip's
+  download mode once (M-Flasher; the hub's rescue page shows how), then updates as usual. On a chip it does not know,
+  Demake still writes nothing and shows its id ("FLASH ?? id"); the rescue screen shows the id of any chip.
 - **What it keeps.** Its own store: 64 KiB of the FM-1's data area, `0xB0000`–`0xC0000`, holding up to 14 songs and
   32 of your sounds. Installing Demake writes only its program, never the data area. Demake writes there only when
   you save (a song, a sound, or a song erased), a 4 KiB sector at a time, and reads only its own records (each has
