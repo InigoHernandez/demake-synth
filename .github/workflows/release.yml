@@ -1,10 +1,17 @@
 # The FM-1 package, built and signed on GitHub by the hub's shared workflow (thefirmwarehub.com/kb/#sign): a tag vX.Y.Z
 # makes the release, its .fwsc GitHub's. Tag only at the owner's word, once a build of the same commit has run on their
-# FM-1: the hub takes the newest release within three hours.
+# FM-1: the hub takes the newest release within three hours. Run by hand (workflow_dispatch, a version given) it builds
+# and attests a trial package with no release, to compare its SHA-256 with the one tested before tagging.
 name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "the version to build as, e.g. 0.4.25"
+        required: true
+        type: string
 jobs:
   build:
     uses: zvenson/fm1-build/.github/workflows/build.yml@v1
@@ -13,6 +20,6 @@ jobs:
       id-token: write        # the signing certificate
       attestations: write    # the attestation
     with:
-      build: python3 tools/fm1/build.py --release "${GITHUB_REF_NAME#v}"
+      build: V="${{ inputs.version }}"; python3 tools/fm1/build.py --release "${V:-${GITHUB_REF_NAME#v}}"
       packages: build/fm1/demake-*.fwsc
       test: sh tools/fm1/flash_test.sh
