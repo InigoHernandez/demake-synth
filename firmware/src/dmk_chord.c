@@ -8,20 +8,46 @@
 
 /* the qualities; the later ones appended, so a song saved keeps its numbers */
 enum { Q_M, Q_MAJ, Q_M7, Q_MAJ7, Q_7, Q_M7B5, Q_MADD9, Q_SUS2, Q_M9, Q_MAJ9, Q_6, Q_M11, Q_ADD9, Q_MMAJ7, Q_M6, Q_7SUS4, Q_9, Q_DIM,
-       Q_69, Q_M69, Q_SUS4, Q_AUG, Q_5, Q_MAJ7S11, Q_13, Q_MADD11, Q_ADD11, Q_DIM7, Q_COUNT };
+       Q_69, Q_M69, Q_SUS4, Q_AUG, Q_5, Q_MAJ7S11, Q_13, Q_MADD11, Q_ADD11, Q_DIM7,
+#ifdef DMK_MOVE
+       Q_M13, Q_MAJ13, Q_MMAJ9, Q_9SUS4, Q_7B9, Q_7S9, Q_7S11, Q_7B13, Q_7B5, Q_7S5, Q_MAJ7S5, Q_MAJ7SUS2, Q_M7ADD11, Q_M9B5,
+       Q_SUSB2, Q_7SUSB9, Q_MADDB9, Q_SUS24, Q_QRT3, Q_QRT4, Q_QRT5, Q_OPEN5, Q_SHM7, Q_SHMAJ7, Q_SH7,
+#endif
+       Q_COUNT };
 static const int8_t QI[Q_COUNT][7] = {          /* a quality's tones, semitones above the root, -1 ends */
     {0, 3, 7, -1}, {0, 4, 7, -1}, {0, 3, 7, 10, -1}, {0, 4, 7, 11, -1}, {0, 4, 7, 10, -1}, {0, 3, 6, 10, -1},
     {0, 3, 7, 14, -1}, {0, 2, 7, -1}, {0, 3, 7, 10, 14, -1}, {0, 4, 7, 11, 14, -1}, {0, 4, 7, 9, -1},
     {0, 3, 7, 10, 14, 17, -1}, {0, 4, 7, 14, -1}, {0, 3, 7, 11, -1}, {0, 3, 7, 9, -1}, {0, 5, 7, 10, -1},
     {0, 4, 7, 10, 14, -1}, {0, 3, 6, -1},
     {0, 4, 7, 9, 14, -1}, {0, 3, 7, 9, 14, -1}, {0, 5, 7, -1}, {0, 4, 8, -1}, {0, 7, -1}, {0, 4, 7, 11, 18, -1},
-    {0, 4, 7, 10, 14, 21, -1}, {0, 3, 7, 17, -1}, {0, 4, 7, 17, -1}, {0, 3, 6, 9, -1}};
+    {0, 4, 7, 10, 14, 21, -1}, {0, 3, 7, 17, -1}, {0, 4, 7, 17, -1}, {0, 3, 6, 9, -1}
+#ifdef DMK_MOVE
+    , {0, 3, 7, 10, 14, 21, -1}, {0, 4, 7, 11, 14, 21, -1}, {0, 3, 7, 11, 14, -1}, {0, 5, 7, 10, 14, -1},
+    {0, 4, 7, 10, 13, -1}, {0, 4, 7, 10, 15, -1}, {0, 4, 7, 10, 18, -1}, {0, 4, 7, 10, 20, -1}, {0, 4, 6, 10, -1},
+    {0, 4, 8, 10, -1}, {0, 4, 8, 11, -1}, {0, 2, 7, 11, -1}, {0, 3, 7, 10, 17, -1}, {0, 3, 6, 10, 14, -1},
+    {0, 1, 7, -1}, {0, 5, 7, 10, 13, -1}, {0, 3, 7, 13, -1}, {0, 2, 5, 7, -1}, {0, 5, 10, -1}, {0, 5, 10, 15, -1},
+    {0, 5, 10, 15, 20, -1}, {0, 7, 14, -1}, {0, 3, 10, -1}, {0, 4, 11, -1}, {0, 4, 10, -1}
+#endif
+};
 static const char *const QN[Q_COUNT] = {"m", "", "m7", "maj7", "7", ("m7\xE2\x99\xAD" "5"), "m(add9)", "sus2", "m9",
                                         "maj9", "6", "m11", "(add9)", "m(maj7)", "m6", "7sus4", "9", "dim",
                                         "6/9", "m6/9", "sus4", "aug", "5", ("maj7\xE2\x99\xAF" "11"), "13", "m(add11)",
-                                        "(add11)", "dim7"};
+                                        "(add11)", "dim7"
+#ifdef DMK_MOVE
+                                        , "m13", "maj13", "m(maj9)", "9sus4", ("7\xE2\x99\xAD" "9"), ("7\xE2\x99\xAF" "9"),
+                                        ("7\xE2\x99\xAF" "11"), ("7\xE2\x99\xAD" "13"), ("7\xE2\x99\xAD" "5"), ("7\xE2\x99\xAF" "5"),
+                                        ("maj7\xE2\x99\xAF" "5"), "maj7sus2", "m7(add11)", ("m9\xE2\x99\xAD" "5"),
+                                        ("sus\xE2\x99\xAD" "2"), ("7sus\xE2\x99\xAD" "9"), ("m(add\xE2\x99\xAD" "9)"), "sus2/4",
+                                        " 4ths", " 4ths+", " 4ths++", "5/9", "m7(no5)", "maj7(no5)", "7(no5)"
+#endif
+};
 
-enum { MO_AEOL, MO_DOR, MO_PHRY, MO_LYD, MO_MIXO, MO_ION, MO_COUNT };
+enum { MO_AEOL, MO_DOR, MO_PHRY, MO_LYD, MO_MIXO, MO_ION,
+#ifdef DMK_MOVE
+       MO_LOCR, MO_HMIN, MO_MMIN, MO_HMAJ, MO_PDOM, MO_LDOM, MO_HUNG, MO_DHARM, MO_MPENT, MO_PENT, MO_BLUES, MO_HIRA,
+       MO_INSEN, MO_IWATO, MO_YO, MO_WHOLE, MO_DIM,
+#endif
+       MO_COUNT };
 enum { VO_CLOSE, VO_OPEN, VO_WIDE, VO_SHELL, VO_QUART, VO_COUNT };
 enum { FW_FREE, FW_KEY, FW_CHORD, FW_ROOT, FW_PLAYS, FW_HARM1, FW_HARM2, FW_HARM3, FW_COUNT };   /* HARMn: synth n's notes, moved */
 enum { RH_HOLD, RH_PULSE4, RH_PULSE8, RH_ARPUP, RH_ARPDN, RH_COUNT };
@@ -31,7 +57,12 @@ enum { RH_HOLD, RH_PULSE4, RH_PULSE8, RH_ARPUP, RH_ARPDN, RH_COUNT };
 typedef struct { uint8_t root, q, half, pedal; } cslot_t;
 #define PROG_SLOTS 8
 typedef struct { const char *name; uint8_t mode, voicing, n; cslot_t s[PROG_SLOTS]; } prog_t;
-static const prog_t PROG[16] = {
+#ifdef DMK_MOVE
+#define PROG_PRE 45                                     /* the presets; the FM-1's sixteen first, in their places */
+#else
+#define PROG_PRE 16
+#endif
+static const prog_t PROG[PROG_PRE] = {
     {"First snow", MO_AEOL, VO_WIDE, 4, {{0, Q_MADD9, 2, 0}, {8, Q_MAJ7, 2, 0}, {3, Q_MAJ7, 2, 0}, {10, Q_SUS2, 2, 0}}},
     {"Last train", MO_AEOL, VO_OPEN, 4, {{0, Q_M9, 2, 0}, {5, Q_M9, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_M7, 2, 0}}},
     {"Fogbound", MO_AEOL, VO_WIDE, 3, {{8, Q_MAJ9, 2, 0}, {10, Q_6, 2, 0}, {0, Q_M9, 4, 0}}},
@@ -47,13 +78,46 @@ static const prog_t PROG[16] = {
     {"Snowfield", MO_AEOL, VO_WIDE, 2, {{8, Q_MAJ7, 4, 0}, {0, Q_MADD9, 4, 0}}},
     {"Static", MO_AEOL, VO_OPEN, 4, {{0, Q_SUS2, 2, 0}, {10, Q_SUS2, 2, 0}, {8, Q_SUS2, 2, 0}, {10, Q_SUS2, 2, 0}}},
     {"Mixtape", MO_ION, VO_OPEN, 4, {{0, Q_MAJ9, 2, 0}, {4, Q_M7, 2, 0}, {5, Q_MAJ7, 2, 0}, {5, Q_M6, 2, 0}}},
-    {"Night drive", MO_AEOL, VO_WIDE, 5, {{0, Q_MADD9, 2, 0}, {10, Q_6, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_7SUS4, 1, 0}, {7, Q_7, 1, 0}}}};
+    {"Night drive", MO_AEOL, VO_WIDE, 5, {{0, Q_MADD9, 2, 0}, {10, Q_6, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_7SUS4, 1, 0}, {7, Q_7, 1, 0}}}
+#ifdef DMK_MOVE
+    ,
+    {"Cold platform", MO_HMIN, VO_OPEN, 4, {{0, Q_MMAJ7, 2, 0}, {8, Q_MAJ7, 2, 0}, {5, Q_M7, 2, 0}, {7, Q_7B9, 2, 0}}},
+    {"Ice road", MO_MMIN, VO_WIDE, 4, {{0, Q_MMAJ9, 2, 0}, {5, Q_9, 2, 0}, {3, Q_MAJ7S5, 2, 0}, {7, Q_9SUS4, 2, 0}}},
+    {"Harbour lamps", MO_DOR, VO_OPEN, 4, {{0, Q_M11, 2, 0}, {5, Q_13, 2, 0}, {10, Q_MAJ9, 2, 0}, {3, Q_MAJ7, 2, 0}}},
+    {"Far signal", MO_LYD, VO_WIDE, 4, {{0, Q_MAJ7S11, 2, 0}, {7, Q_ADD9, 2, 0}, {9, Q_M9, 2, 0}, {2, Q_ADD9, 2, 0}}},
+    {"Cable car", MO_MIXO, VO_OPEN, 4, {{0, Q_9, 2, 0}, {10, Q_MAJ9, 2, 0}, {5, Q_MAJ9, 2, 0}, {0, Q_9SUS4, 2, 0}}},
+    {"Ghost market", MO_PDOM, VO_CLOSE, 4, {{0, Q_7B9, 2, 0}, {1, Q_MAJ7, 2, 0}, {10, Q_M7, 2, 0}, {1, Q_MAJ7, 2, 0}}},
+    {"Late ferry", MO_AEOL, VO_SHELL, 6, {{5, Q_M9, 2, 0}, {10, Q_9, 2, 0}, {3, Q_MAJ9, 2, 0}, {8, Q_MAJ7, 2, 0}, {2, Q_M7B5, 2, 0}, {7, Q_7B9, 2, 0}}},
+    {"Wet asphalt", MO_DOR, VO_SHELL, 4, {{0, Q_M9, 2, 0}, {7, Q_M9, 2, 0}, {5, Q_9, 2, 0}, {10, Q_13, 2, 0}}},
+    {"Rooftop", MO_ION, VO_OPEN, 4, {{0, Q_MAJ9, 2, 0}, {9, Q_M9, 2, 0}, {2, Q_M9, 2, 0}, {7, Q_13, 2, 0}}},
+    {"Soft arcade", MO_ION, VO_CLOSE, 4, {{5, Q_MAJ9, 2, 0}, {7, Q_9SUS4, 2, 0}, {4, Q_M7, 2, 0}, {9, Q_M9, 2, 0}}},
+    {"Drift ice", MO_MPENT, VO_QUART, 4, {{0, Q_QRT4, 2, 0}, {3, Q_QRT4, 2, 0}, {5, Q_QRT4, 2, 0}, {10, Q_QRT4, 2, 0}}},
+    {"Open water", MO_PENT, VO_WIDE, 3, {{0, Q_69, 4, 0}, {5, Q_69, 2, 0}, {9, Q_M7ADD11, 2, 0}}},
+    {"Paper lantern", MO_HIRA, VO_OPEN, 4, {{0, Q_MADD9, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_SUSB2, 2, 0}, {0, Q_SUS2, 2, 0}}},
+    {"Stone garden", MO_INSEN, VO_WIDE, 3, {{0, Q_7SUS4, 4, 0}, {1, Q_MAJ7, 2, 0}, {10, Q_M7, 2, 0}}},
+    {"Shrine steps", MO_YO, VO_OPEN, 4, {{0, Q_SUS2, 2, 0}, {5, Q_SUS2, 2, 0}, {7, Q_SUS24, 2, 0}, {2, Q_M7, 2, 0}}},
+    {"Slow rust", MO_BLUES, VO_SHELL, 6, {{0, Q_M7, 4, 0}, {5, Q_M7, 2, 0}, {0, Q_M7, 2, 0}, {7, Q_7S9, 2, 0}, {5, Q_M7, 2, 0}, {0, Q_M9, 4, 0}}},
+    {"Mirror hall", MO_WHOLE, VO_CLOSE, 4, {{0, Q_7S5, 2, 0}, {2, Q_7S5, 2, 0}, {4, Q_7S5, 2, 0}, {6, Q_7S5, 2, 0}}},
+    {"Neon rain", MO_DIM, VO_CLOSE, 4, {{0, Q_DIM7, 2, 0}, {2, Q_7B9, 2, 0}, {5, Q_7B9, 2, 0}, {8, Q_7B9, 2, 0}}},
+    {"Long shadows", MO_AEOL, VO_WIDE, 4, {{0, Q_M9, 2, 0}, {8, Q_MAJ7, 2, 1}, {5, Q_M7, 2, 1}, {10, Q_ADD9, 2, 1}}},
+    {"Tidewater", MO_MIXO, VO_WIDE, 2, {{0, Q_ADD9, 4, 0}, {10, Q_ADD9, 4, 0}}},
+    {"Old projector", MO_AEOL, VO_CLOSE, 4, {{0, Q_M9, 2, 0}, {10, Q_6, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_7S9, 2, 0}}},
+    {"Snow globe", MO_LYD, VO_CLOSE, 4, {{0, Q_MAJ9, 2, 0}, {2, Q_9, 2, 0}, {0, Q_MAJ7S11, 2, 0}, {7, Q_MAJ7SUS2, 2, 0}}},
+    {"Empty mall", MO_ION, VO_WIDE, 4, {{0, Q_MAJ7, 2, 0}, {4, Q_MAJ7, 2, 0}, {8, Q_MAJ7, 2, 0}, {4, Q_MAJ7, 2, 0}}},
+    {"Street lamp", MO_HMAJ, VO_OPEN, 4, {{0, Q_MAJ7, 2, 0}, {5, Q_M9, 2, 0}, {8, Q_MAJ7, 2, 0}, {7, Q_7B9, 2, 0}}},
+    {"Dust storm", MO_LOCR, VO_OPEN, 3, {{0, Q_M7B5, 4, 0}, {1, Q_MAJ7, 2, 0}, {10, Q_M7, 2, 0}}},
+    {"Salt flats", MO_LDOM, VO_WIDE, 3, {{0, Q_7S11, 4, 0}, {2, Q_9, 2, 0}, {10, Q_MAJ7S5, 2, 0}}},
+    {"Red desert", MO_HUNG, VO_OPEN, 4, {{0, Q_MMAJ7, 2, 0}, {8, Q_MAJ7, 2, 0}, {2, Q_7B5, 2, 0}, {7, Q_MAJ7, 2, 0}}},
+    {"Sun temple", MO_DHARM, VO_CLOSE, 4, {{0, Q_MAJ7, 2, 0}, {1, Q_MAJ7, 2, 0}, {5, Q_MMAJ7, 2, 0}, {1, Q_MAJ7, 2, 0}}},
+    {"Bell tower", MO_IWATO, VO_QUART, 3, {{0, Q_QRT3, 4, 0}, {1, Q_QRT3, 2, 0}, {5, Q_QRT3, 2, 0}}}
+#endif
+};
 
 /* the four USER progressions (plan 4.4): written from the keys on CHORD, stopped, with REC armed; a preset's first
  * edit copies it into the first empty one */
 static prog_t uprog[4] = {{"User 1", MO_AEOL, VO_WIDE, 0, {{0}}}, {"User 2", MO_AEOL, VO_WIDE, 0, {{0}}},
                           {"User 3", MO_AEOL, VO_WIDE, 0, {{0}}}, {"User 4", MO_AEOL, VO_WIDE, 0, {{0}}}};
-#define PROG_N 20                                       /* the sixteen presets, then the four of the user's */
+#define PROG_N (PROG_PRE + 4)                            /* the sixteen presets, then the four of the user's */
 
 /* the song's harmony, set from the CHORD page (sp_sync) */
 static struct {
@@ -63,7 +127,11 @@ static struct {
     uint8_t keys, ktype;                                 /* the keys play chords: on CHORD (0) or everywhere (1); their type */
     int8_t hint[DMK_SYNTHS];                             /* HARMONY: the interval over the lead, in scale steps (-7..7) */
 } ch = {0, VO_WIDE, 0, 0, 1, RH_HOLD, {0, 0, 0}, {FW_PLAYS, FW_KEY, FW_ROOT}, 0, 0, {2, 2, 2}};
-enum { KT_SEVENTH, KT_TRIAD, KT_NINTH, KT_ADD9, KT_SUS2, KT_SUS4, KT_69, KT_POWER, KT_COUNT };
+enum { KT_SEVENTH, KT_TRIAD, KT_NINTH, KT_ADD9, KT_SUS2, KT_SUS4, KT_69, KT_POWER,
+#ifdef DMK_MOVE
+       KT_6TH, KT_11, KT_13, KT_SHELL, KT_7SUS, KT_9SUS, KT_ADD11, KT_4THS, KT_5THS, KT_ALLM7, KT_ALLM9, KT_ALLMAJ9, KT_ALL7,
+#endif
+       KT_COUNT };
 
 /* what sounds: the slot, its notes as voiced (the last ones too, for AUTO), its tones as a mask */
 static uint8_t ch_slot, ch_notes[7], ch_n, ch_prev[7], ch_pn, ch_arp, ch_play[7], ch_np;
@@ -104,7 +172,7 @@ static void later_tick(int frames)
 }
 
 /* ---- pitch-class sets: the scale, the chord, the scale as the chord bends it (plan 4.6) */
-static uint16_t pc_scale(void) { int i; uint16_t m = 0; for (i = 0; i < 7; i++) m |= (uint16_t)(1u << ((seq_key + SCALE[i]) % 12)); return m; }
+static uint16_t pc_scale(void) { int i; uint16_t m = 0; for (i = 0; i < SCALE_N; i++) m |= (uint16_t)(1u << ((seq_key + SCALE[i]) % 12)); return m; }
 static uint16_t pc_bent(void)
 {
     uint16_t s = pc_scale(), c = ch_cmask;
@@ -141,7 +209,7 @@ static int harm_note(int f, int n)
     int h = note_of(degree_of(snap(n)) + ch.hint[f]);
     return snap_set(h, pc_bent(), ch_cmask);
 }
-static const prog_t *cur_prog(void) { return ch.prog < 16 ? &PROG[ch.prog] : &uprog[ch.prog - 16]; }
+static const prog_t *cur_prog(void) { return ch.prog < PROG_PRE ? &PROG[ch.prog] : &uprog[ch.prog - PROG_PRE]; }
 
 /* a synth's note as it plays, by its FOLLOW */
 static int follow_note(int s, int n)
@@ -264,7 +332,15 @@ static int voice(int root, const int8_t *iv, int pedal, uint8_t *out) { return v
 static const char *const QS[Q_COUNT] = {"m", "", "m7", "maj7", "7", ("m7\xE2\x99\xAD" "5"), "madd9", "sus2", "m9",
                                         "maj9", "6", "m11", "add9", "mM7", "m6", "7sus4", "9", "dim",
                                         "6/9", "m6/9", "sus4", "aug", "5", ("M7\xE2\x99\xAF" "11"), "13", "madd11",
-                                        "add11", "dim7"};
+                                        "add11", "dim7"
+#ifdef DMK_MOVE
+                                        , "m13", "maj13", "mM9", "9sus4", ("7\xE2\x99\xAD" "9"), ("7\xE2\x99\xAF" "9"),
+                                        ("7\xE2\x99\xAF" "11"), ("7\xE2\x99\xAD" "13"), ("7\xE2\x99\xAD" "5"), ("7\xE2\x99\xAF" "5"),
+                                        ("M7\xE2\x99\xAF" "5"), "M7sus2", "m7+11", ("m9\xE2\x99\xAD" "5"),
+                                        ("s\xE2\x99\xAD" "2"), ("7s\xE2\x99\xAD" "9"), ("m+\xE2\x99\xAD" "9"), "s2/4",
+                                        "4ths", "4ths+", "4ths+", "5/9", "m7no5", "M7no5", "7no5"
+#endif
+};
 /* a note's name in the key's spelling: the flat keys' flats (F, B-flat ... as the relative major), else sharps; one
  * outside the key named as a lowered or raised neighbour of its own */
 static const char *pc_name(int pc)
@@ -273,7 +349,11 @@ static const char *pc_name(int pc)
                                        "G\xE2\x99\xAF", "A", "A\xE2\x99\xAF", "B"};
     static const char *const FL[12] = {"C", "D\xE2\x99\xAD", "D", "E\xE2\x99\xAD", "E", "F", "G\xE2\x99\xAD", "G",
                                        "A\xE2\x99\xAD", "A", "B\xE2\x99\xAD", "B"};
+#ifdef DMK_MOVE
+    static const uint8_t TO_MAJOR[MO_COUNT] = {3, 10, 8, 7, 5, 0, 1, 3, 3, 0, 8, 7, 3, 8, 3, 0, 3, 3, 8, 8, 0, 0, 3};
+#else
     static const uint8_t TO_MAJOR[MO_COUNT] = {3, 10, 8, 7, 5, 0};   /* the mode's tonic to its relative major's */
+#endif
     int major, in;
     pc = (pc % 12 + 12) % 12;                           /* (a root under C-1, a MIDI note 0's chord: it read before the
                                                            names, a null on the FM-1, its red screen) */
@@ -322,6 +402,40 @@ static void quartal_name(char *o, int root, const uint8_t *notes, int n)
     if (!chord_of(notes, n, o)) str_cat(str_cat(o, pc_name(root)), " in 4ths");
 }
 
+#ifdef DMK_MOVE
+#define IV_N 7                                          /* a chord's tones, and the end */
+/* a scale of other than seven notes: a third is not two degrees up. The first of these it has, else its nearest to the first */
+static int tone_of(int r, int w0, int w1, int w2)
+{
+    const uint16_t m = pc_scale();
+    const int want[3] = {w0, w1, w2};
+    for (int i = 0; i < 3; i++) if (m >> ((r + want[i]) % 12) & 1u) return want[i];
+    for (int i = 1; i < 6; i++) {
+        if (m >> ((r + w0 + i) % 12) & 1u) return w0 + i;
+        if (m >> ((r + w0 + 120 - i) % 12) & 1u) return w0 - i;
+    }
+    return w0;
+}
+/* the quality these tones are: the one with the same intervals, else the one sharing the most. A scale's chord need not
+ * be a stack of thirds, and a progression written from it is voiced by this */
+static int q_of(const int8_t *iv)
+{
+    uint32_t m = 0;
+    int best = 0, top = -99;
+    for (int i = 0; iv[i] >= 0; i++) m |= 1u << iv[i];
+    for (int q = 0; q < Q_COUNT; q++) {
+        uint32_t w = 0;
+        for (int i = 0; i < 7 && QI[q][i] >= 0; i++) w |= 1u << QI[q][i];
+        if (w == m) return q;
+        const int score = 2 * __builtin_popcount(w & m) - __builtin_popcount(w ^ m);
+        if (score > top) { top = score; best = q; }
+    }
+    return best;
+}
+#else
+#define IV_N 6
+#endif
+
 /* the mode's chord on a scale tone, of the keys' type (the CHORD page's Keys row), named by what it turns out to be:
  * its seventh, its triad, its ninth (the seventh where the mode's ninth has no name here), the triad and its ninth, or
  * a fixed shape on the scale tone (sus2, sus4, 6/9 by the mode's third, the fifth alone) */
@@ -329,6 +443,12 @@ static int diatonic(int n, int8_t *iv)
 {
     int d = degree_of(snap(n)), r = note_of(d), q, k = 0;
     int a = note_of(d + 2) - r, b = note_of(d + 4) - r, c = note_of(d + 6) - r, e = note_of(d + 8) - r;
+#ifdef DMK_MOVE
+    const int seven = SCALE_N == 7;
+    if (!seven) { a = tone_of(r, 3, 4, 2); b = tone_of(r, 7, 6, 8); c = tone_of(r, 10, 11, 9); e = tone_of(r, 14, 13, 15); }
+    const int s6 = seven ? note_of(d + 5) - r : tone_of(r, 9, 8, 10), f = seven ? note_of(d + 10) - r : tone_of(r, 17, 18, 16);
+    const int s13 = seven ? note_of(d + 12) - r : tone_of(r, 21, 20, 22);
+#endif
     int q3 = a == 3 ? (b == 6 ? Q_DIM : Q_M) : b == 8 ? Q_AUG : Q_MAJ;
     int q7 = a == 3 ? (b == 6 ? Q_M7B5 : c == 11 ? Q_MMAJ7 : Q_M7) : c == 11 ? Q_MAJ7 : Q_7;
     iv[k++] = 0;
@@ -348,9 +468,27 @@ static int diatonic(int n, int8_t *iv)
     case KT_SUS4: iv[k++] = 5; iv[k++] = 7; q = Q_SUS4; break;
     case KT_69: iv[k++] = (int8_t)(a == 3 ? 3 : 4); iv[k++] = 7; iv[k++] = 9; iv[k++] = 14; q = a == 3 ? Q_M69 : Q_69; break;
     case KT_POWER: iv[k++] = 7; q = Q_5; break;
+#ifdef DMK_MOVE
+    case KT_6TH: iv[k++] = (int8_t)a; iv[k++] = (int8_t)b; iv[k++] = (int8_t)s6; q = q3; break;
+    case KT_11: iv[k++] = (int8_t)a; iv[k++] = (int8_t)b; iv[k++] = (int8_t)c; iv[k++] = (int8_t)e; iv[k++] = (int8_t)f; q = q7; break;
+    case KT_13: iv[k++] = (int8_t)a; iv[k++] = (int8_t)b; iv[k++] = (int8_t)c; iv[k++] = (int8_t)e; iv[k++] = (int8_t)s13; q = q7; break;
+    case KT_SHELL: iv[k++] = (int8_t)a; iv[k++] = (int8_t)c; q = q7; break;
+    case KT_7SUS: iv[k++] = 5; iv[k++] = 7; iv[k++] = (int8_t)c; q = Q_7SUS4; break;
+    case KT_9SUS: iv[k++] = 5; iv[k++] = 7; iv[k++] = (int8_t)c; iv[k++] = 14; q = Q_9SUS4; break;
+    case KT_ADD11: iv[k++] = (int8_t)a; iv[k++] = (int8_t)b; iv[k++] = (int8_t)f; q = q3; break;
+    case KT_4THS: iv[k++] = 5; iv[k++] = 10; iv[k++] = 15; q = Q_QRT4; break;
+    case KT_5THS: iv[k++] = 7; iv[k++] = 14; q = Q_OPEN5; break;
+    case KT_ALLM7: iv[k++] = 3; iv[k++] = 7; iv[k++] = 10; q = Q_M7; break;
+    case KT_ALLM9: iv[k++] = 3; iv[k++] = 7; iv[k++] = 10; iv[k++] = 14; q = Q_M9; break;
+    case KT_ALLMAJ9: iv[k++] = 4; iv[k++] = 7; iv[k++] = 11; iv[k++] = 14; q = Q_MAJ9; break;
+    case KT_ALL7: iv[k++] = 4; iv[k++] = 7; iv[k++] = 10; q = Q_7; break;
+#endif
     default: iv[k++] = (int8_t)a; iv[k++] = (int8_t)b; iv[k++] = (int8_t)c; q = q7; break;
     }
     iv[k] = -1;
+#ifdef DMK_MOVE
+    q = q_of(iv);
+#endif
     return q;
 }
 
@@ -364,7 +502,7 @@ static void strike_src(int sy, const uint8_t *notes, int n, int src, int most_ms
         later_on(sy, notes[k], (int32_t)ms * i * (DMK_SR / 1000), src, own, vel);
     }
 }
-static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1, VEL_KEY); }   /* a key's */
+static void strike(int sy, const uint8_t *notes, int n, int key) { strike_src(sy, notes, n, SRC_KEY, 0, key + 1, KEY_VEL); }   /* a key's */
 /* how late note k of n starts after the first as a key strums it: Q8 steps at the tempo (strike_src's order and
  * spacing) */
 static uint32_t strum_q8(int s, int k, int n)
@@ -501,7 +639,7 @@ static void chord_step(void)
  * the page, the followers and its voice leading */
 static int chord_key(int n, int oct, uint8_t *notes)
 {
-    int8_t iv[6];
+    int8_t iv[IV_N];
     int q = diatonic(n, iv), r = note_of(degree_of(snap(n))) - 12, c, i, pn = ch_pn, d, rel = 0;
     int lo = note_of(degree_of(snap(53 + oct * 12))) - 12;   /* the keyboard's lowest key's root, at this octave */
     /* the same for every key at an octave, so a higher key is never a lower chord (a chord lifted alone by the floor
@@ -549,7 +687,7 @@ static int chord_key(int n, int oct, uint8_t *notes)
 static prog_t *edit_prog(void)                          /* 0: the four are full */
 {
     int i;
-    if (ch.prog >= 16) return &uprog[ch.prog - 16];
+    if (ch.prog >= PROG_PRE) return &uprog[ch.prog - PROG_PRE];
     for (i = 0; i < 4 && uprog[i].n; i++) {}
     if (i == 4) return 0;
     {
@@ -557,7 +695,7 @@ static prog_t *edit_prog(void)                          /* 0: the four are full 
         uprog[i] = PROG[ch.prog];
         uprog[i].name = nm;
     }
-    ch.prog = (uint8_t)(16 + i);
+    ch.prog = (uint8_t)(PROG_PRE + i);
     return &uprog[i];
 }
 
@@ -565,7 +703,7 @@ static prog_t *edit_prog(void)                          /* 0: the four are full 
 static int slot_write(int n)                            /* -1: not written (the four full, or eight chords already) */
 {
     prog_t *p = edit_prog();
-    int8_t iv[6];
+    int8_t iv[IV_N];
     int q = diatonic(n, iv), r = note_of(degree_of(snap(n))), at = ch_cur;
     if (!p) return -1;
     if (at > p->n) at = p->n;

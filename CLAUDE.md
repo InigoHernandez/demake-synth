@@ -52,6 +52,7 @@ colour, media, motion and space effects per synth, a store of songs and sounds. 
   with JieLi's toolchain in a linux/amd64 container (see
   `firmware/fm1/README.md`). The platform (`firmware/fm1/{hal,loader,src}`) is CS-1's as MONO2K carries it, GPL-3.0,
   its headers kept; `dmk_fm1.c` is the glue.
+- The Ableton Move: `move/`, a Schwung overtake module on the same core, never part of the FM-1's or the site's builds. The plan and the pad map: `move/PLAN.md`, `move/padmap.svg`; the route: `../MOVE-PORT-HANDBOOK.md` (its Updates take what each step teaches). `sh move/build.sh` (dsp.so in an aarch64 container), `sh move/proof.sh` (renders bit for bit, the bench, ui.js, the FM-1 package rebuilt to v0.4.24's SHA-256), `sh move/test/mutants.sh` (each proof failing on a broken copy, ~15 minutes), `sh move/deploy.sh`, `sh move/cpu.sh` (the render timed on the Move). Move releases: tags `move-vX.Y.Z`, at the owner's word, never marked Latest.
 
 ## The screen
 

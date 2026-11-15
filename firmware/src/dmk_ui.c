@@ -100,7 +100,12 @@ static const char *const LFOS[] = {"Sine", "Triangle", "Ramp", "Square", "Random
 static const char *const VOICINGS[] = {"Close", "Open", "Wide", "Shell", "Quartal"};
 static const char *const INVERTS[] = {"Auto", "Root", "1st", "2nd", "3rd"};
 static const char *const KEYS[] = {"C", "C\xE2\x99\xAF", "D", "E\xE2\x99\xAD", "E", "F", "F\xE2\x99\xAF", "G", "A\xE2\x99\xAD", "A", "B\xE2\x99\xAD", "B"};
-static const char *const MODENAMES[] = {"Aeolian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Ionian"};
+static const char *const MODENAMES[] = {"Aeolian", "Dorian", "Phrygian", "Lydian", "Mixolydian", "Ionian"
+#ifdef DMK_MOVE
+    , "Locrian", "Harmonic minor", "Melodic minor", "Harmonic major", "Phrygian dom", "Lydian dom", "Hungarian minor",
+    "Double harmonic", "Minor penta", "Major penta", "Blues", "Hirajoshi", "In sen", "Iwato", "Yo", "Whole tone", "Diminished"
+#endif
+};
 static const char *const CHANGES[] = {"\xC3\x97\xC2\xBD", ("\xC3\x97" "1"), ("\xC3\x97" "2"), ("\xC3\x97" "4")};
 static const char *const RHYTHMS[] = {"Hold", "Pulse 4", "Pulse 8", "Up", "Down"};   /* (the last two: arpeggios, as the
                                                            arp's own; "Arp down" was cut) */
@@ -108,11 +113,21 @@ static const char *const KEYMODES[] = {"Chord", "All"};
 static const char *const MIDI_INS[] = {"Synth", "Ch 1-3"};   /* MIDI in: the synth selected, or synth n on channel n */
 static const char *const MIDI_OUTS[] = {"Off", "Notes", "Clock", "All"};
 static const char *const CLOCKS[] = {"Own", "Ext"};   /* the keys play chords on CHORD, or on every page but the roll */
-static const char *const KTYPES[] = {"7ths", "Triads", "9ths", "Add9", "Sus2", "Sus4", "6/9", "Power"};   /* (whole in a field) */
+static const char *const KTYPES[] = {"7ths", "Triads", "9ths", "Add9", "Sus2", "Sus4", "6/9", "Power"
+#ifdef DMK_MOVE
+    , "6ths", "11ths", "13ths", "Shells", "7sus4", "9sus4", "Add11", "4ths", "5ths", "All m7", "All m9", "All maj9", "All 7"
+#endif
+};   /* (whole in a field) */
 static const char *const FOLLOWS[] = {"Free", "Follows the key", "Follows the chord", "Follows the root", "Plays chords",
                                       "Harmony of 1", "Harmony of 2", "Harmony of 3"};
-static const char *const PROGS[20] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
+static const char *const PROGS[PROG_N] = {"First snow", "Last train", "Fogbound", "Overpass", "Vending light", "Blue hour",
     "Power lines", "Tower beacon", "Slow thaw", "Candle", "Embers", "Low clouds", "Snowfield", "Static", "Mixtape", "Night drive",
+#ifdef DMK_MOVE
+    "Cold platform", "Ice road", "Harbour lamps", "Far signal", "Cable car", "Ghost market", "Late ferry", "Wet asphalt",
+    "Rooftop", "Soft arcade", "Drift ice", "Open water", "Paper lantern", "Stone garden", "Shrine steps", "Slow rust",
+    "Mirror hall", "Neon rain", "Long shadows", "Tidewater", "Old projector", "Snow globe", "Empty mall", "Street lamp",
+    "Dust storm", "Salt flats", "Red desert", "Sun temple", "Bell tower",
+#endif
     "User 1", "User 2", "User 3", "User 4"};
 static uint8_t choice_val(int i, int n) { return (uint8_t)(i * 128 / n + 64 / n); }   /* a choice's place, its middle */
 /* a list goes round: past its last, its first, and back (the owner: no turning back to reach the start). Numbers stop
@@ -156,9 +171,9 @@ static const choice_t CHOICE[] = {
     {PG_ROLL, 2, 0, AR_N, ARPS}, {PG_ROLL, 2, 1, 9, ARPDIVS}, {PG_ROLL, 2, 2, 4, ARPOCTS}, {PG_ROLL, 2, 4, 2, HOLDS}, {PG_LFO, 0, 2, 5, LFOS}, {PG_LFO, 0, 4, 5, TARGETS},
     {PG_LFO, 1, 0, 8, SYNCS}, {PG_LFO, 1, 1, 2, RESTARTS}, {PG_LFO, 1, 4, 5, TARGETS}, {PG_SOUND, 1, 1, 7, LTUNES}, {PG_SOUND, 1, 2, 2, LOOPS},
     {PG_SOUND, 2, 3, 3, GRITS},
-    {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, 20, PROGS}, {PG_CHORD, 1, 4, 20, PROGS},
-    {PG_CHORD, 1, 0, 12, KEYS}, {PG_CHORD, 1, 1, 6, MODENAMES}, {PG_CHORD, 1, 2, 4, CHANGES}, {PG_CHORD, 1, 3, 5, RHYTHMS},
-    {PG_CHORD, 2, 0, 2, KEYMODES}, {PG_CHORD, 2, 1, 8, KTYPES}, {PG_CHORD, 2, 4, 20, PROGS},
+    {PG_CHORD, 0, 0, 5, VOICINGS}, {PG_CHORD, 0, 1, 5, INVERTS}, {PG_CHORD, 0, 4, PROG_N, PROGS}, {PG_CHORD, 1, 4, PROG_N, PROGS},
+    {PG_CHORD, 1, 0, 12, KEYS}, {PG_CHORD, 1, 1, MO_COUNT, MODENAMES}, {PG_CHORD, 1, 2, 4, CHANGES}, {PG_CHORD, 1, 3, 5, RHYTHMS},
+    {PG_CHORD, 2, 0, 2, KEYMODES}, {PG_CHORD, 2, 1, KT_COUNT, KTYPES}, {PG_CHORD, 2, 4, PROG_N, PROGS},
     {PG_GLOBAL, 3, 0, 2, MIDI_INS}, {PG_GLOBAL, 3, 1, 4, MIDI_OUTS}, {PG_GLOBAL, 3, 2, 2, CLOCKS},
 };
 
@@ -222,6 +237,11 @@ static void notice(const char *s)
 /* the keys play chords here: on CHORD, or anywhere but Arrange (whose keys write its steps) when the Keys row says
  * All; there they light and play as on CHORD, and on the roll they write the chord (the owner's ask) */
 static int chords_here(void) { return ui.page == PG_CHORD || (ch.keys >> ui.synth & 1u && ui.page != PG_ARR); }
+#ifdef DMK_MOVE
+#define KEY_CHORDS(k) (mv_kchord[k] || chords_here())
+#else
+#define KEY_CHORDS(k) chords_here()
+#endif
 /* a roll written to: a synth that plays the chords, or harmonizes another, leaves its roll, so what was written
  * would not be heard; it plays its roll from now (SEQ held + ALGORITHM puts it back) */
 static void roll_heard(int s)
@@ -240,9 +260,13 @@ static void roll_show(int s, int note)
 {
     int d = degree_of(note), v = ui.roll_view[s];
     if (d < v) v = d; else if (d > v + 6) v = d - 6;
-    ui.roll_view[s] = (uint8_t)(v < 14 ? 14 : v > 43 ? 43 : v);
+    ui.roll_view[s] = (uint8_t)(v < VIEW_LO ? VIEW_LO : v > VIEW_HI ? VIEW_HI : v);
 }
+#ifdef DMK_MOVE
+static void roll_full(void) { notice("Pattern full: 2048 notes"); }
+#else
 static void roll_full(void) { notice("The roll is full: 64 notes"); }
+#endif
 static void roll_unarmed(void)                          /* the first time keys play a stopped roll: how to write */
 {
     if (ui.hinted >> 15 & 1u) return;
@@ -263,10 +287,10 @@ static void prog_step(int d)
 {
     int p = wrap(choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]) + (d > 0 ? 1 : -1), PROG_N);
     const prog_t *pr;
-    pr = p < 16 ? &PROG[p] : &uprog[p - 16];
+    pr = p < PROG_PRE ? &PROG[p] : &uprog[p - PROG_PRE];
     ui.val[0][PG_CHORD][0][4] = choice_val(p, PROG_N);
     keys_unslot();
-    if (pr->n) { ui.val[0][PG_CHORD][1][1] = choice_val(pr->mode, 6); ui.val[0][PG_CHORD][0][0] = choice_val(pr->voicing, 5); }
+    if (pr->n) { ui.val[0][PG_CHORD][1][1] = choice_val(pr->mode, MO_COUNT); ui.val[0][PG_CHORD][0][0] = choice_val(pr->voicing, 5); }
     ch_cur = 0;
     sp_sync();
     if (seq_on) { chord_quiet(); chord_start(); }       /* from its first chord, at the next step */
@@ -525,9 +549,9 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
     ch.invert = (uint8_t)(VS(0, PG_CHORD, 0, 1) * 5 / 128);
     ch.spread = (uint8_t)(VS(0, PG_CHORD, 0, 2) * 4 / 128);
     for (s = 0; s < DMK_SYNTHS; s++) ch.strum[s] = (int16_t)((VS(s, PG_CHORD, 0, 3) - 64) * 250 / 64);   /* each synth's */
-    ch.prog = (uint8_t)(VS(0, PG_CHORD, 0, 4) * 20 / 128);
+    ch.prog = (uint8_t)(VS(0, PG_CHORD, 0, 4) * PROG_N / 128);
     seq_key = (uint8_t)(VS(0, PG_CHORD, 1, 0) * 12 / 128);
-    seq_mode = (uint8_t)(VS(0, PG_CHORD, 1, 1) * 6 / 128);
+    seq_mode = (uint8_t)(VS(0, PG_CHORD, 1, 1) * MO_COUNT / 128);
     ch.change = (uint8_t)(VS(0, PG_CHORD, 1, 2) * 4 / 128);
     ch.rhythm = (uint8_t)(VS(0, PG_CHORD, 1, 3) * 5 / 128);
     for (ch.keys = 0, s = 0; s < DMK_SYNTHS; s++)     /* each synth's own (a player's ask: chords on one, notes on the others) */
@@ -626,6 +650,9 @@ DMK_SMALL static void ui_init(void)
     for (s = 0; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][0][3] = 64;   /* no strum (each synth's) */
     ui.val[0][PG_CHORD][0][4] = 4;                     /* wide, auto, no spread; First snow */
     ui.val[0][PG_CHORD][1][0] = 9 * 128 / 12 + 5; ui.val[0][PG_CHORD][1][1] = 10;   /* A, Aeolian */
+#ifdef DMK_MOVE
+    ui.val[0][PG_CHORD][0][4] = choice_val(0, PROG_N); ui.val[0][PG_CHORD][1][1] = choice_val(MO_AEOL, MO_COUNT);   /* (the longer lists) */
+#endif
     ui.val[0][PG_CHORD][1][2] = 48; ui.val[0][PG_CHORD][1][3] = 12;           /* x1, hold */
     for (s = 0; s < DMK_SYNTHS; s++) ui.val[s][PG_CHORD][2][0] = choice_val(0, 2);   /* keys: chords on CHORD (each synth's) */
     ui.val[0][PG_CHORD][2][1] = choice_val(KT_SEVENTH, KT_COUNT);   /* sevenths */
@@ -678,8 +705,8 @@ static void arr_text(char *o, int row, int k)
         {                                               /* its progression's number (its name in the card's title: it
                                                            was cut here); the users' U1-U4 */
             int pi = choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]);
-            if (pi >= 16) o = str_cat(o, "U");
-            fmt_int(o, pi >= 16 ? pi - 15 : pi + 1);
+            if (pi >= PROG_PRE) o = str_cat(o, "U");
+            fmt_int(o, pi >= PROG_PRE ? pi - (PROG_PRE - 1) : pi + 1);
         }
         return;
     }
@@ -715,8 +742,12 @@ DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, n
     }
     if (page == PG_CHORD && row == 1 && k == 1) {       /* the mode: Phrygian, Mixolydian short in the field (cut), whole
                                                            in the card's title */
+#ifdef DMK_MOVE
+        str_cat(o, MODENAMES[choice_index(c, v)]);
+#else
         static const char *const MODEFIELD[6] = {"Aeolian", "Dorian", "Phryg", "Lydian", "Mixo", "Ionian"};
         str_cat(o, MODEFIELD[choice_index(c, v) % 6]);
+#endif
         return;
     }
     if (page == PG_SOUND && row == 3 && k < 2) { str_cat(fmt_int(o, v * 100 / 127), "%"); return; }   /* the loop's
@@ -2760,7 +2791,7 @@ static void roll_turn(int k, int d)
         return;
     }
     if (k == 0) ui.roll_cur[s] = (uint8_t)((ui.roll_cur[s] + dir + st) % st);
-    if (k == 1) { int v = ui.roll_view[s] + dir; ui.roll_view[s] = (uint8_t)(v < 14 ? 14 : v > 43 ? 43 : v); }
+    if (k == 1) { int v = ui.roll_view[s] + dir; ui.roll_view[s] = (uint8_t)(v < VIEW_LO ? VIEW_LO : v > VIEW_HI ? VIEW_HI : v); }
     if (k == 2) follow_turn(dir);                       /* how it follows the chords: Free, its roll as written */
     if (k == 3) {                                       /* this synth's length: the three loop against each other; a
                                                            click a step to 16, a beat to 64, then a bar to 256 */
@@ -3333,7 +3364,7 @@ DMK_SMALL static void ui_key(int k, int down)
     if (k < 0 || k >= DMK_KEYS) return;
     roll_cur_in();
     ui.boot_done = 1;
-    n = 53 + k + ui.octave * 12;                        /* F3 = 53, chromatic */
+    n = KEY_NOTE(k) + ui.octave * 12;                   /* F3 = 53, chromatic */
     if (down && ui.btn_held >> B_HOME & 1u) {           /* HOME held: the white keys the sixteen scenes, black 1-3 the mutes */
         int t = white_of(k);
         ui.btn_used |= (uint16_t)(1u << B_HOME);
@@ -3387,7 +3418,7 @@ DMK_SMALL static void ui_key(int k, int down)
                                                            first step */
     ui.keys_down[k] = (uint8_t)down;
     /* a key, a chord: on CHORD, or everywhere but the roll when the Keys row says so; released as it began */
-    if (down ? chords_here() : ui.key_nch[k] > 0) {
+    if (down ? KEY_CHORDS(k) : ui.key_nch[k] > 0) {
         int j;
         if (down) {
             s = ui.synth;
@@ -3396,10 +3427,10 @@ DMK_SMALL static void ui_key(int k, int down)
             if (!seq_on && seq_rec && ui.page != PG_ROLL) {   /* stopped, REC armed: the chord into the slot at the cursor */
                 int was = ch.prog;
                 ui.key_slot[k] = (uint8_t)(slot_write(n) + 1);
-                if (!ui.key_slot[k]) notice(ch.prog < 16 ? "User 1-4 are full" : "Eight chords at most");
-                else if (was < 16 && ch.prog >= 16) {   /* a preset written to: its copy, said (it was silent) */
+                if (!ui.key_slot[k]) notice(ch.prog < PROG_PRE ? "User 1-4 are full" : "Eight chords at most");
+                else if (was < PROG_PRE && ch.prog >= PROG_PRE) {   /* a preset written to: its copy, said (it was silent) */
                     char t[32];
-                    fmt_int(str_cat(str_cat(t, PROGS[was]), " \xE2\x86\x92 User "), ch.prog - 15);
+                    fmt_int(str_cat(str_cat(t, PROGS[was]), " \xE2\x86\x92 User "), ch.prog - (PROG_PRE - 1));
                     notice(t);
                 }
                 ui.val[0][PG_CHORD][0][4] = choice_val(ch.prog, PROG_N);
@@ -3414,7 +3445,7 @@ DMK_SMALL static void ui_key(int k, int down)
                 int c = ui.roll_cur[s];
                 roll_heard(s);
                 for (j = 0; j < ui.key_nch[k]; j++)     /* as it strums, all ending at the pen's length */
-                    if (roll_strum(s, (uint32_t)c << 8, (uint32_t)(c + ui.roll_pen[s]) << 8, ui.key_ch[k][j], VEL_KEY, j, ui.key_nch[k], 1) < 0) roll_full();
+                    if (roll_strum(s, (uint32_t)c << 8, (uint32_t)(c + ui.roll_pen[s]) << 8, ui.key_ch[k][j], KEY_VEL, j, ui.key_nch[k], 1) < 0) roll_full();
                 roll_show(s, ui.key_ch[k][0]);
                 ui.key_roll[k] = 4;
                 ui.key_step[k] = (uint8_t)c;
@@ -3433,7 +3464,7 @@ DMK_SMALL static void ui_key(int k, int down)
                                                            strum started it (one let go before it came never sounded) */
                 uint32_t held = seq_now() - ui.key_t0[k], d = strum_q8(s, j, ui.key_nch[k]);
                 if (d && d >= held) continue;
-                if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_ch[k][j], 100, j, ui.key_nch[k], 0) < 0) roll_full();
+                if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_ch[k][j], KEY_VEL_OF(k), j, ui.key_nch[k], 0) < 0) roll_full();
                 else if (!j) roll_show(s, ui.key_ch[k][j]);
             }
         }
@@ -3452,7 +3483,7 @@ DMK_SMALL static void ui_key(int k, int down)
                                                            move a black key onto the scale) */
             if (seq_find(s, c, n) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; }
             else if (!seq_rec) roll_unarmed();
-            else if (seq_add(s, c, ui.roll_pen[s], n, 100) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); roll_show(s, n); }
+            else if (seq_add(s, c, ui.roll_pen[s], n, KEY_VEL) >= 0) { ui.key_roll[k] = 1; ui.key_step[k] = (uint8_t)c; roll_heard(s); roll_show(s, n); }
             else roll_full();
         } else if (seq_on && seq_rec && !song_rec) {   /* a song's take records the switches, not the keys */
             ui.key_roll[k] = 2;
@@ -3485,7 +3516,7 @@ DMK_SMALL static void ui_key(int k, int down)
                                                            as long as it was held (a stop or a pattern switch since: not) */
         uint32_t held = seq_now() - ui.key_t0[k];
         roll_heard(s);
-        if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_note[k], 100, 0, 1, 0) < 0) roll_full();
+        if (roll_strum(s, ui.key_q8[k], ui.key_q8[k] + held, ui.key_note[k], KEY_VEL_OF(k), 0, 1, 0) < 0) roll_full();
         else roll_show(s, ui.key_note[k]);
     }
     ui.key_roll[k] = 0;

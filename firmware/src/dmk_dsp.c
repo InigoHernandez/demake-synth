@@ -13,7 +13,7 @@
 #define XG_STEP (32768 / 16)                            /* a type change's fade, a block's step of the share: 16 blocks */
 
 #ifdef DMK_METER                                        /* the host's meters: where a sound runs out of room */
-static struct { int32_t pre_max, syn_max, voice_max; uint32_t knee, sat_line, sat_rv, sat_sp, clamp_v; } dmeter;
+static struct { int32_t pre_max, syn_max, voice_max; uint32_t knee, bend, sat_line, sat_rv, sat_sp, clamp_v; } dmeter;
 #define METER(x) (x)
 #else
 #define METER(x) ((void)0)
@@ -173,6 +173,9 @@ static void mq_put(int st, int d1, int d2)
 /* the song's fades (dmk_seq.c sets them): the synths' share of the mix, Q15, and its step a block; the spaces' tails
  * are left to ring */
 static int32_t mix_g = 32768, mix_dg, mix_next;          /* mix_next: the fade after this one ends (0: none) */
+#ifdef DMK_MOVE
+static uint32_t poly_g = 32768, poly_was = 32768;       /* the voices' sum, past twelve (poly_run) */
+#endif
 /* the machine's state for GLO: the platform's load (dmk_status) and the samples the rider turned down (the limiter
  * bending it: what sounds like overload) */
 static struct { uint8_t cpu, core2, screen, on; uint32_t shorts, loud; } sys;
@@ -351,6 +354,18 @@ static void note_on_vel(int sy, int n, int src, int vel)
     if (midi_out & 1u && src != SRC_MIDI) mq_put(0x90 | sy, n, vel);
 }
 #define VEL_KEY 100                                     /* the keys' velocity, as the roll writes it */
+#ifdef DMK_MOVE                                         /* the Move's pads (move/dmk_move_ui.c): a pad's velocity, as it
+                                                           goes down and in its key's roll; each key's note, any pitch;
+                                                           the chord row's keys */
+static uint8_t mv_vel = VEL_KEY, mv_kvel[DMK_KEYS], mv_knote[DMK_KEYS], mv_kchord[DMK_KEYS];
+#define KEY_VEL mv_vel
+#define KEY_VEL_OF(k) mv_kvel[k]
+#define KEY_NOTE(k) mv_knote[k]
+#else
+#define KEY_VEL VEL_KEY
+#define KEY_VEL_OF(k) VEL_KEY
+#define KEY_NOTE(k) (53 + (k))
+#endif
 static void note_on_src(int sy, int n, int src) { note_on_vel(sy, n, src, VEL_KEY); }
 
 /* a note off: one voice, the oldest of that note from that source (a second key, an octave apart, or a chord sharing
@@ -367,7 +382,11 @@ static void note_off_src(int sy, int n, int src)
     if (midi_out & 1u && src != SRC_MIDI && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     if (best >= 0) { vc[best].on = 0; if (vc[best].stage) vc[best].stage = 3; }
 }
+#ifdef DMK_MOVE
+static void note_on_s(int sy, int n) { note_on_vel(sy, n, SRC_KEY, KEY_VEL); }
+#else
 static void note_on_s(int sy, int n) { note_on_src(sy, n, SRC_KEY); }   /* the keys' */
+#endif
 static void note_off_s(int sy, int n) { note_off_src(sy, n, SRC_KEY); }
 
 /* the filter: a Chamberlin state-variable, one stage or two; its products past 32 bits (resonance runs past 16 bits)
@@ -1779,6 +1798,9 @@ DMK_SMALL static void dsp_reset(void)
 {
     uint32_t i;
     gm_lg[0] = gm_lg[1] = 32768;                        /* (the rider at rest: a loud song's riding left a new one quiet) */
+#ifdef DMK_MOVE
+    poly_g = poly_was = 32768;
+#endif
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) {                  /* the delays: off (as set, they come in from silence), their
                                                            lines, their grains' dice (renders repeat) */
@@ -2021,16 +2043,53 @@ static void lfo_run(int s, int nb)
  * limiter's bend, then its rows; vbuf[0] holds its left after, vbuf[1] its right. Each synth's state is its own, so
  * the chains can run on either core */
 static int ch_nb;                                       /* blocks this run */
+#ifdef DMK_MOVE
+/* the Move's 40 voices: past what twelve sound, the sum held at what twelve give, by their power, so a tail fading counts as
+ * little as it sounds and more notes thicken a chord rather than drive the limiters. Down within a few ms, back over ~50.
+ * Twelve or fewer: exactly 32768, the sound as it was */
+#define POLY_FREE (12u << 24)
+static uint32_t isqrt32(uint32_t n)
+{
+    uint32_t x = 0, b = 1u << 30;
+    while (b > n) b >>= 2;
+    for (; b; b >>= 2) {
+        if (n >= x + b) { n -= x + b; x = (x >> 1) + b; }
+        else x >>= 1;
+    }
+    return x;
+}
+static void poly_run(void)                              /* each run, after the voices */
+{
+    uint32_t e = 0, want = 32768;
+    for (int v = 0; v < DMK_VOICES; v++)
+        if (vc[v].stage) {
+            const uint32_t a = ((uint32_t)vc[v].env >> 12) * (uint32_t)(vc[v].vg >> 1) >> 14;
+            e += a * a;
+        }
+    if (e > POLY_FREE) want = isqrt32((POLY_FREE / (e >> 15)) << 15);
+    poly_was = poly_g;
+    if (want < poly_g) poly_g -= (poly_g - want + 3u) >> 2;
+    else poly_g += (want - poly_g + 15u) >> 4;
+}
+#endif
 static void chain_run(int s)
 {
     int b, i;
     for (b = 0; b < ch_nb; b++) {
         int32_t *pl = &vbuf[0][s][b * DMK_SUB], *pr = &vbuf[1][s][b * DMK_SUB], x[DMK_SUB];
+#ifdef DMK_MOVE
+        const int32_t pg = (int32_t)poly_was + ((int32_t)poly_g - (int32_t)poly_was) * (b + 1) / ch_nb;
+#endif
         for (i = 0; i < DMK_SUB; i++) {                 /* half the level through the effects, room for a chord; no DC */
             int32_t v = (pl[i] + pr[i] + vc_tail[s]) >> 2;
+#ifdef DMK_MOVE
+            if (pg != 32768) v = (int32_t)(((int64_t)v * pg) >> 15);
+            v = clampi(v, -500000, 500000);             /* (all forty in phase at a resonance's top: the DC blocker's Q12 stays in 32 bits) */
+#endif
             vc_tail[s] -= (vc_tail[s] >> 6) + (vc_tail[s] > 0) - (vc_tail[s] < 0);   /* to zero, ~1.5 ms */
             syn_dc[s] += (v * 4096 - syn_dc[s]) / 512;  /* ~14 Hz, Q12: its stall under a 512th is under */
             x[i] = curve(T_LIM, v - ((syn_dc[s] + 2048) >> 12));   /* a chord past full: bent, never cut */
+            METER(dmeter.bend += v > LIM_KNEE || v < -LIM_KNEE);
         }
 #ifdef DMK_METER
         for (i = 0; i < DMK_SUB; i++) { int32_t a = x[i] < 0 ? -x[i] : x[i]; if (a > dmeter.syn_max) dmeter.syn_max = a; }
@@ -2103,6 +2162,9 @@ static void dsp_render(int16_t *lr, int frames)
         sp_live = (uint8_t)sp_on;
         /* the chains (and the last synth's reverb, a third of the Space) there, the rest here */
         ch_nb = nb;
+#ifdef DMK_MOVE
+        poly_run();
+#endif
         par = dmk_par_begin && dmk_par_begin(chain_job);
         for (s = 0; s < DMK_SYNTHS - 1; s++) chain_run(s);
         if (par) dmk_par_end(); else chain_job();

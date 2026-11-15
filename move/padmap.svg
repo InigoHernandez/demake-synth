@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 760" width="1180" height="760" font-family="Geist, Helvetica, Arial, sans-serif">
+<rect width="1180" height="760" fill="#141416"/>
+<text x="40" y="50" font-size="26" fill="#EDEDEA" text-anchor="start" font-weight="600">Demake on the Move</text>
+<text x="40" y="76" font-size="15" fill="#8E8E8A" text-anchor="start" font-weight="400">The proposed pad map. Nothing is built yet.</text>
+<rect x="40" y="104" width="256" height="128" rx="6" fill="#000000" stroke="#2A2A2D" stroke-width="1.5"/>
+<text x="168" y="164" font-size="14" fill="#8E8E8A" text-anchor="middle" font-weight="500">128 x 64</text>
+<text x="168" y="186" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">Home: the landscape, whole</text>
+<text x="40" y="270" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Menu</text>
+<text x="136" y="270" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Save: projects, sounds</text>
+<text x="40" y="301" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Shift + Rec</text>
+<text x="136" y="301" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Save now</text>
+<text x="40" y="332" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Undo</text>
+<text x="136" y="332" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Undo; Shift: redo</text>
+<text x="40" y="363" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Copy</text>
+<text x="136" y="363" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Hold: steps, pattern</text>
+<text x="40" y="394" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Delete</text>
+<text x="136" y="394" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Hold: notes, roll, a value</text>
+<text x="40" y="425" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Mute</text>
+<text x="136" y="425" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Tap, or hold + track</text>
+<text x="40" y="456" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Loop</text>
+<text x="136" y="456" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Arp hold</text>
+<text x="40" y="487" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Capture</text>
+<text x="136" y="487" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Played notes to the roll</text>
+<text x="40" y="518" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Sample</text>
+<text x="136" y="518" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Piano, or in key</text>
+<text x="40" y="549" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Up, Down</text>
+<text x="136" y="549" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Octave</text>
+<text x="40" y="580" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Left, Right</text>
+<text x="136" y="580" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">The roll's bars</text>
+<text x="40" y="611" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Jog</text>
+<text x="136" y="611" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">The sound</text>
+<text x="40" y="642" font-size="14" fill="#EDEDEA" text-anchor="start" font-weight="600">Shift + jog</text>
+<text x="136" y="642" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Filter type, zoom, progression</text>
+<circle cx="461.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="461.0" y1="108" x2="461.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="461.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">1</text>
+<circle cx="553.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="553.0" y1="108" x2="553.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="553.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">2</text>
+<circle cx="645.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="645.0" y1="108" x2="645.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="645.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">3</text>
+<circle cx="737.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="737.0" y1="108" x2="737.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="737.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">4</text>
+<circle cx="829.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="829.0" y1="108" x2="829.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="829.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">5</text>
+<circle cx="921.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="921.0" y1="108" x2="921.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="921.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">6</text>
+<circle cx="1013.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="1013.0" y1="108" x2="1013.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="1013.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">7</text>
+<circle cx="1105.0" cy="124" r="22" fill="none" stroke="#EDEDEA" stroke-width="1.5"/>
+<line x1="1105.0" y1="108" x2="1105.0" y2="116" stroke="#EDEDEA" stroke-width="2.5" stroke-linecap="round"/>
+<text x="1105.0" y="160" font-size="13" fill="#8E8E8A" text-anchor="middle" font-weight="500">8</text>
+<text x="420" y="92" font-size="14" fill="#8E8E8A" text-anchor="start" font-weight="400">Knobs: the page's eight. Shift + knob 1: the tempo</text>
+<rect x="420" y="170" width="82" height="74" rx="10" fill="#3663FC"/>
+<text x="461.0" y="213" font-size="15" fill="#FFFFFF" text-anchor="middle" font-weight="600">Home</text>
+<rect x="512" y="170" width="82" height="74" rx="10" fill="#153999"/>
+<text x="553.0" y="213" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">Roll</text>
+<rect x="604" y="170" width="82" height="74" rx="10" fill="#153999"/>
+<text x="645.0" y="213" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">Chord</text>
+<rect x="696" y="170" width="82" height="74" rx="10" fill="#661154"/>
+<text x="737.0" y="213" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">Sound</text>
+<rect x="788" y="170" width="82" height="74" rx="10" fill="#661154"/>
+<text x="829.0" y="204" font-size="14" fill="#EDEDEA" text-anchor="middle" font-weight="600">Filter</text>
+<text x="829.0" y="223" font-size="14" fill="#EDEDEA" text-anchor="middle" font-weight="600">Amp</text>
+<rect x="880" y="170" width="82" height="74" rx="10" fill="#661154"/>
+<text x="921.0" y="213" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">LFO</text>
+<rect x="972" y="170" width="82" height="74" rx="10" fill="#661154"/>
+<text x="1013.0" y="213" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">FX</text>
+<rect x="1064" y="170" width="82" height="74" rx="10" fill="#733A67"/>
+<text x="1105.0" y="213" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">Global</text>
+<rect x="420" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="461.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">I</text>
+<rect x="512" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="553.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">ii</text>
+<rect x="604" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="645.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">iii</text>
+<rect x="696" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="737.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">IV</text>
+<rect x="788" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="829.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">V</text>
+<rect x="880" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="921.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">vi</text>
+<rect x="972" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="1013.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">vii</text>
+<rect x="1064" y="254" width="82" height="74" rx="10" fill="#3C1166"/>
+<text x="1105.0" y="297" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">I</text>
+<rect x="420" y="338" width="82" height="74" rx="10" fill="#1A1A1A" stroke="#333336" stroke-width="1.5"/>
+<text x="461.0" y="381" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="500">C#</text>
+<rect x="512" y="338" width="82" height="74" rx="10" fill="#1A1A1A" stroke="#333336" stroke-width="1.5"/>
+<text x="553.0" y="381" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="500">D#</text>
+<rect x="604" y="338" width="82" height="74" rx="10" fill="#141416" stroke="#242427" stroke-width="1.5"/>
+<rect x="696" y="338" width="82" height="74" rx="10" fill="#1A1A1A" stroke="#333336" stroke-width="1.5"/>
+<text x="737.0" y="381" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="500">F#</text>
+<rect x="788" y="338" width="82" height="74" rx="10" fill="#1A1A1A" stroke="#333336" stroke-width="1.5"/>
+<text x="829.0" y="381" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="500">G#</text>
+<rect x="880" y="338" width="82" height="74" rx="10" fill="#1A1A1A" stroke="#333336" stroke-width="1.5"/>
+<text x="921.0" y="381" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="500">A#</text>
+<rect x="972" y="338" width="82" height="74" rx="10" fill="#141416" stroke="#242427" stroke-width="1.5"/>
+<rect x="1064" y="338" width="82" height="74" rx="10" fill="#141416" stroke="#242427" stroke-width="1.5"/>
+<rect x="420" y="422" width="82" height="74" rx="10" fill="#FF2BD4"/>
+<text x="461.0" y="465" font-size="15" fill="#FFFFFF" text-anchor="middle" font-weight="600">C</text>
+<rect x="512" y="422" width="82" height="74" rx="10" fill="#404040"/>
+<text x="553.0" y="465" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">D</text>
+<rect x="604" y="422" width="82" height="74" rx="10" fill="#404040"/>
+<text x="645.0" y="465" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">E</text>
+<rect x="696" y="422" width="82" height="74" rx="10" fill="#404040"/>
+<text x="737.0" y="465" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">F</text>
+<rect x="788" y="422" width="82" height="74" rx="10" fill="#404040"/>
+<text x="829.0" y="465" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">G</text>
+<rect x="880" y="422" width="82" height="74" rx="10" fill="#404040"/>
+<text x="921.0" y="465" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">A</text>
+<rect x="972" y="422" width="82" height="74" rx="10" fill="#404040"/>
+<text x="1013.0" y="465" font-size="15" fill="#EDEDEA" text-anchor="middle" font-weight="600">B</text>
+<rect x="1064" y="422" width="82" height="74" rx="10" fill="#FF2BD4"/>
+<text x="1105.0" y="465" font-size="15" fill="#FFFFFF" text-anchor="middle" font-weight="600">C</text>
+<rect x="328" y="190.0" width="78" height="34" rx="8" fill="#FFFFFF"/>
+<text x="367" y="212.0" font-size="13" fill="#141416" text-anchor="middle" font-weight="600">Synth 1</text>
+<rect x="328" y="274.0" width="78" height="34" rx="8" fill="#2A2A2D"/>
+<text x="367" y="296.0" font-size="13" fill="#EDEDEA" text-anchor="middle" font-weight="600">Synth 2</text>
+<rect x="328" y="358.0" width="78" height="34" rx="8" fill="#2A2A2D"/>
+<text x="367" y="380.0" font-size="13" fill="#EDEDEA" text-anchor="middle" font-weight="600">Synth 3</text>
+<rect x="328" y="442.0" width="78" height="34" rx="8" fill="#2A2A2D"/>
+<text x="367" y="464.0" font-size="13" fill="#EDEDEA" text-anchor="middle" font-weight="600">Keys</text>
+<rect x="420.0" y="522" width="39.75" height="30" rx="6" fill="#FFFFFF"/>
+<text x="439.875" y="542" font-size="12" fill="#141416" text-anchor="middle" font-weight="600">1</text>
+<rect x="465.75" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="485.625" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">2</text>
+<rect x="511.5" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="531.375" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">3</text>
+<rect x="557.25" y="522" width="39.75" height="30" rx="6" fill="#3663FC"/>
+<text x="577.125" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">4</text>
+<rect x="603.0" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="622.875" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">5</text>
+<rect x="648.75" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="668.625" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">6</text>
+<rect x="694.5" y="522" width="39.75" height="30" rx="6" fill="#3663FC"/>
+<text x="714.375" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">7</text>
+<rect x="740.25" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="760.125" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">8</text>
+<rect x="786.0" y="522" width="39.75" height="30" rx="6" fill="#3663FC"/>
+<text x="805.875" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">9</text>
+<rect x="831.75" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="851.625" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">10</text>
+<rect x="877.5" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="897.375" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">11</text>
+<rect x="923.25" y="522" width="39.75" height="30" rx="6" fill="#3663FC"/>
+<text x="943.125" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">12</text>
+<rect x="969.0" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="988.875" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">13</text>
+<rect x="1014.75" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="1034.625" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">14</text>
+<rect x="1060.5" y="522" width="39.75" height="30" rx="6" fill="#3663FC"/>
+<text x="1080.375" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">15</text>
+<rect x="1106.25" y="522" width="39.75" height="30" rx="6" fill="#2A2A2D"/>
+<text x="1126.125" y="542" font-size="12" fill="#EDEDEA" text-anchor="middle" font-weight="600">16</text>
+<text x="420" y="576" font-size="14" fill="#8E8E8A" text-anchor="start" font-weight="400">Steps: the sequencer, on every page. Blue a note, white the playhead.</text>
+<text x="420" y="598" font-size="14" fill="#8E8E8A" text-anchor="start" font-weight="400">Shift + steps: the 16 scenes.</text>
+<circle cx="427" cy="725" r="7" fill="#3663FC"/>
+<text x="442" y="730" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">The song</text>
+<circle cx="577" cy="725" r="7" fill="#FF2BD4"/>
+<text x="592" y="730" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">The sound</text>
+<circle cx="727" cy="725" r="7" fill="#EF8BB0"/>
+<text x="742" y="730" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">The mix</text>
+<circle cx="877" cy="725" r="7" fill="#FFFFFF"/>
+<text x="892" y="730" font-size="13" fill="#8E8E8A" text-anchor="start" font-weight="400">Page in view: bright</text>
+</svg>

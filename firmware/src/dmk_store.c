@@ -8,6 +8,11 @@
  * Erasing a sector stops the sound for ~50 ms (the FM-1), so the UI saves only while stopped. Integer only */
 
 #define ST_SECTOR 4096u
+#ifdef DMK_MOVE
+#define ST_SLOT 0x40000u                                /* a song, the Move's: every pattern full (the FM-1's: one sector) */
+#else
+#define ST_SLOT ST_SECTOR
+#endif
 #define ST_HDR 16u
 #define ST_LIB 0x1000u                                  /* the library's sector */
 #define ST_SONG0 0x2000u                                /* the first song's */
@@ -16,7 +21,12 @@
 #define ST_SOUND 64u                                    /* bytes a sound */
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
-#define ST_VER 15u  /* 15: STRUM each synth's (the Chord page's K4); 14: the Keys row each synth's (the Chord page's K1), LOOP three ways and the Sound page's Loop row; 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
+#ifdef DMK_MOVE
+#define ST_VER 16u  /* the Move's alone, its songs never reach the FM-1: 16: a roll's count two bytes */
+#else
+#define ST_VER 15u
+#endif
+/* 15: STRUM each synth's (the Chord page's K4); 14: the Keys row each synth's (the Chord page's K1), LOOP three ways and the Sound page's Loop row; 13: the echo a track's (each delay's tape echo and grains), the huge reverbs GLO's Space (where the
                        echo was), each synth's send to it on FX's Space row (where its reverb's amount was: back on the
                        reverb's row); 12: a reverb a track (FX's first row, where the colour was), the colour the mix's (GLO's first row,
                        where the shared verb was); 11: patterns to 256 steps, a note 5 bytes; 10: a note's place in its step (a strum recorded); 9: the rolls' Arp row; 8: five more verbs (its types' places moved); 7: the rolls' Vary row; a delay a synth for its media, one media for the mix, the MIDI row
@@ -26,7 +36,7 @@
 
 #define OLD_VERBS 12                                    /* the shared verb's types, before 12: Off, Room, Hall, Space,
                                                            Haze, Bloom, Lofi, Plate, Spring, Shimmer, Reverse, Freeze */
-static uint8_t st_buf[ST_SECTOR];                       /* a sector as it is written or was read (in RAM: the pool is
+static uint8_t st_buf[ST_SLOT];                         /* a sector as it is written or was read (in RAM: the pool is
                                                            the sound's) */
 static uint8_t lib[ST_USER][ST_SOUND];                  /* the library, as the flash holds it: [used, its form, the values]:
                                                            form 0, 45 values (before 0.4); 1, 55; 2, 55 with the
@@ -67,6 +77,26 @@ static const uint8_t SND_ROWS[SND_ROWS_N][2] = {{PG_SOUND, 0}, {PG_SOUND, 1}, {P
 
 static int store_on(void) { return dmk_store_read && dmk_store_write; }
 
+#ifdef DMK_MOVE
+static uint32_t st_crc(const uint8_t *p, uint32_t n)    /* (eight bytes at a time: a song can be 256 KiB here, saved as it
+                                                           plays, on the audio thread) */
+{
+    static uint32_t t[8][256];
+    uint32_t c = 0xFFFFFFFFu, i, k;
+    if (!t[0][1]) {
+        for (i = 0; i < 256u; i++) { for (c = i, k = 0; k < 8u; k++) c = c & 1u ? (c >> 1) ^ 0xEDB88320u : c >> 1; t[0][i] = c; }
+        for (i = 0; i < 256u; i++) for (k = 1; k < 8u; k++) t[k][i] = t[k - 1][i] >> 8 ^ t[0][t[k - 1][i] & 255u];
+        c = 0xFFFFFFFFu;
+    }
+    for (; n >= 8u; n -= 8u, p += 8) {
+        const uint32_t a = c ^ ((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24);
+        c = t[7][a & 255u] ^ t[6][a >> 8 & 255u] ^ t[5][a >> 16 & 255u] ^ t[4][a >> 24]
+            ^ t[3][p[4]] ^ t[2][p[5]] ^ t[1][p[6]] ^ t[0][p[7]];
+    }
+    while (n--) c = t[0][(c ^ *p++) & 255u] ^ c >> 8;
+    return ~c;
+}
+#else
 static uint32_t st_crc(const uint8_t *p, uint32_t n)
 {
     uint32_t c = 0xFFFFFFFFu, k;
@@ -76,6 +106,7 @@ static uint32_t st_crc(const uint8_t *p, uint32_t n)
     }
     return ~c;
 }
+#endif
 static void st_put32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
 static uint32_t st_get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 
@@ -87,7 +118,7 @@ static int st_load(uint32_t at, uint32_t magic, uint32_t *len, uint32_t *gen)
     if (!store_on() || dmk_store_read(at, st_buf, ST_HDR) || st_get32(st_buf) != magic) return -1;
     n = st_get32(st_buf + 4);
     st_ver = st_get32(st_buf + 12) & 0xFFFFu;
-    if (n > ST_SECTOR - ST_HDR || st_ver < 1u || st_ver > ST_VER) return -1;
+    if (n > ST_SLOT - ST_HDR || st_ver < 1u || st_ver > ST_VER) return -1;
     if (dmk_store_read(at + ST_HDR, st_buf + ST_HDR, n) || st_crc(st_buf + ST_HDR, n) != st_get32(st_buf + 8)) return -1;
     *len = n;
     if (gen) *gen = st_get32(st_buf + 12) >> 16;
@@ -96,7 +127,7 @@ static int st_load(uint32_t at, uint32_t magic, uint32_t *len, uint32_t *gen)
 /* st_buf's record of n bytes to at, of version ver (a rename keeps the one it was written in); 0: written */
 static int st_write(uint32_t at, uint32_t magic, uint32_t n, uint32_t gen, uint32_t ver)
 {
-    if (!store_on() || n > ST_SECTOR - ST_HDR) return -1;
+    if (!store_on() || n > ST_SLOT - ST_HDR) return -1;
     st_put32(st_buf, magic);
     st_put32(st_buf + 4, n);
     st_put32(st_buf + 8, st_crc(st_buf + ST_HDR, n));
@@ -224,7 +255,11 @@ DMK_SMALL static void sound_init(int s)
 }
 
 /* ---- songs */
-static uint32_t slot_at(int i) { return ST_SONG0 + (uint32_t)i * ST_SECTOR; }
+static uint32_t slot_at(int i) { return ST_SONG0 + (uint32_t)i * ST_SLOT; }
+#ifdef DMK_MOVE
+/* before 16 the Move's lists were the FM-1's: a progression's value where the longer list has it, the User ones still last */
+static uint8_t prog_moved(int v) { int i = v * 20 / 128; return choice_val(i < 16 ? i : i - 16 + PROG_PRE, PROG_N); }
+#endif
 
 DMK_SMALL static int song_pack(uint8_t *o)                        /* the song open into o: its length, or -1 too long */
 {
@@ -244,17 +279,26 @@ DMK_SMALL static int song_pack(uint8_t *o)                        /* the song op
     for (s = 0; s < DMK_SYNTHS; s++)                    /* each synth's patterns */
         for (g = 0; g < SYN_PATS; g++) {
             const pseq_t *q = &spat[s][g];
-            if (p - o + (q->used ? 3 + q->count * 5 : 1) > (int)(ST_SECTOR - ST_HDR)) return -1;   /* (checked before a
+            if (p - o + (q->used ? 3 + q->count * 5 : 1) > (int)(ST_SLOT - ST_HDR)) return -1;   /* (checked before a
                                                            byte of it: its head was written past the sector) */
             *p++ = q->used;
             if (!q->used) continue;
+#ifdef DMK_MOVE
+            *p++ = (uint8_t)(q->steps - 1); *p++ = (uint8_t)q->count; *p++ = (uint8_t)(q->count >> 8);
+#else
             *p++ = (uint8_t)(q->steps - 1); *p++ = q->count;   /* (1-256) */
+#endif
+#ifdef DMK_MOVE
+            __builtin_memcpy(p, q->n, q->count * sizeof q->n[0]);   /* (five bytes each, as below) */
+            p += q->count * sizeof q->n[0];
+#else
             for (i = 0; i < q->count; i++) {
                 const snote_t *m = &q->n[i];
                 *p++ = m->step; *p++ = m->len; *p++ = m->note; *p++ = m->vel; *p++ = m->off;
             }
+#endif
         }
-    if (p - o + SCENES * 6 + 3 + song_n * 2 + DMK_SYNTHS > (int)(ST_SECTOR - ST_HDR)) return -1;   /* (the intervals too) */
+    if (p - o + SCENES * 6 + 3 + song_n * 2 + DMK_SYNTHS > (int)(ST_SLOT - ST_HDR)) return -1;   /* (the intervals too) */
     for (g = 0; g < SCENES; g++) {                      /* the scenes */
         *p++ = scn[g].used;
         if (!scn[g].used) continue;
@@ -273,6 +317,9 @@ static int seq_unpack(pseq_t *q, const uint8_t **pp, const uint8_t *e)   /* a ro
     int st, c, i;
     if (e - p < 2) return -1;
     st = *p++; c = *p++;
+#ifdef DMK_MOVE
+    if (st_ver >= 16u) { if (e - p < 1) return -1; c |= *p++ << 8; }
+#endif
     if (st_ver >= 11u) {                                /* 11: up to 256 steps, a note 5 bytes, its 32nds its own */
         q->steps = (uint16_t)(st + 1);
         q->count = 0;
@@ -389,6 +436,12 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     theme = *p++ % DMK_THEMES;
     ui.val[0][PG_GLOBAL][3][3] = choice_val(theme, DMK_THEMES);   /* (its dots) */
     for (s = 0; s < DMK_SYNTHS; s++) { ch.follow[s] = *p++; if (ch.follow[s] >= FW_COUNT) ch.follow[s] = FW_FREE; }
+#ifdef DMK_MOVE
+    if (st_ver < 16u) for (s = 0; s < DMK_SYNTHS; s++) {   /* (the progression comes with the open scene: moved there) */
+        ui.val[s][PG_CHORD][1][1] = choice_val(ui.val[s][PG_CHORD][1][1] * 6 / 128, MO_COUNT);
+        ui.val[s][PG_CHORD][2][1] = choice_val(ui.val[s][PG_CHORD][2][1] * 8 / 128, KT_COUNT);
+    }
+#endif
     for (i = 0; i < 4; i++) {
         uprog[i].mode = *p++; uprog[i].voicing = *p++; uprog[i].n = *p++;
         if (uprog[i].n > PROG_SLOTS) uprog[i].n = 0;
@@ -405,7 +458,11 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     }
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* (each checked: a zoom past 2 divided by nothing) */
         ui.roll_cur[s] = *p++; ui.roll_view[s] = *p++; ui.roll_pen[s] = *p++; ui.roll_zoom[s] = *p++;
+#ifdef DMK_MOVE
+        if (ui.roll_view[s] < 10 || ui.roll_view[s] > 49) ui.roll_view[s] = 28;   /* (any scale's: its own is not set yet) */
+#else
         if (ui.roll_view[s] < 14 || ui.roll_view[s] > 43) ui.roll_view[s] = 28;
+#endif
         if (!ui.roll_pen[s]) ui.roll_pen[s] = 1;
         if (ui.roll_zoom[s] > 2) ui.roll_zoom[s] = 0;
     }
@@ -450,6 +507,9 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             if (e - p < 5) return -1;
             for (s = 0; s < DMK_SYNTHS; s++) scn[g].pat[s] = (uint8_t)(*p++ & (SYN_PATS - 1));
             scn[g].prog = *p++; scn[g].mute = (uint8_t)(*p++ & 7);
+#ifdef DMK_MOVE
+            if (st_ver < 16u) scn[g].prog = prog_moved(scn[g].prog);
+#endif
         }
         scn_cur = (uint8_t)(cur < SCENES && scn[cur].used ? cur : 0);
         if (e - p >= 3) {
@@ -495,6 +555,9 @@ static void songs_scan(void)                            /* which slots hold a so
         song_gen[i] = g ? g : 1;
         /* the progression's place, for the slot's name: the CHORD page's value, packed after the counts */
         song_prog[i] = st_buf[ST_HDR + 1 + PG_CHORD * 20 + 4];
+#ifdef DMK_MOVE
+        if (st_ver < 16u) song_prog[i] = prog_moved(song_prog[i]);
+#endif
         {                                               /* (synth 0's Save page, its row 1) */
             const uint8_t *v = &st_buf[ST_HDR + 1 + PG_DISCS * 20 + 5];
             nm_of(song_nm[i], v);
@@ -528,7 +591,11 @@ static int song_save(int i)
     if (st_save(slot_at(i), ST_MAGIC_SONG, (uint32_t)n, (st_gen + 1u) & 0xFFFFu)) return -1;
     st_gen = (st_gen + 1u) & 0xFFFFu;
     song_gen[i] = st_gen ? st_gen : 1;
+#ifdef DMK_MOVE
+    song_kept = st_get32(st_buf + 8) ^ (uint32_t)n;     /* (the check just written) */
+#else
     song_kept = st_crc(st_buf + ST_HDR, (uint32_t)n) ^ (uint32_t)n;   /* (what was written) */
+#endif
     song_prog[i] = ui.val[0][PG_CHORD][0][4];
     nm_of(song_nm[i], ui.val[0][PG_DISCS][1]);
     for (n = 0; n < 3; n++) song_nmv[i][n] = ui.val[0][PG_DISCS][1][n];

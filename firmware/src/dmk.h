@@ -10,7 +10,11 @@
 #define DMK_SR        44100
 #define DMK_SUB       16          /* control-rate block: envelopes, parameters, triggers */
 #define DMK_SYNTHS    3
+#ifdef DMK_MOVE
+#define DMK_VOICES    40          /* the owner's; 48 measured on the Move's worst case at 1.7 ms of its 2.4 */
+#else
 #define DMK_VOICES    12
+#endif
 #define DMK_W         240
 #define DMK_H         240
 #define DMK_FB_BYTES  (DMK_W * DMK_H / 2)   /* 4 bits a pixel, the left pixel in the high nibble */

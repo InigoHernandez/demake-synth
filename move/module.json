@@ -1,0 +1,18 @@
+{
+    "id": "demake",
+    "name": "Demake",
+    "abbrev": "DMK",
+    "version": "0.1.0",
+    "description": "Three synths on 64 recordings, a piano roll, chords and a lofi chain of effects, in time with Move",
+    "author": "Sequencist",
+    "ui": "ui.js",
+    "dsp": "dsp.so",
+    "api_version": 2,
+    "component_type": "overtake",
+    "capabilities": {
+        "audio_out": true,
+        "midi_in": true,
+        "suspend_keeps_js": true,
+        "button_passthrough": [85]
+    }
+}

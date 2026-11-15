@@ -5,17 +5,28 @@
  * own; a note sounds from its step for its length, cut at its pattern's end. With SNAP (the default) a note is on the
  * key's scale, A minor until the chord machine sets the key (phase 2). Integer only */
 
+#ifdef DMK_MOVE
+#define SEQ_NOTES 2048                                  /* the Move's: all 256 steps, a full chord each */
+typedef uint16_t seq_n_t;
+#else
 #define SEQ_NOTES 96                                    /* notes a pattern (128 would not fit the pool) */
+typedef uint8_t seq_n_t;
+#endif
 #define SEQ_STEPS 256                                   /* the longest pattern: 16 bars (the owner) */
 #define SEQ_LEN 255                                     /* the longest note */
+#ifdef DMK_MOVE
+#define SEQ_LIVE 16                                     /* notes a synth sounds from its pattern at once: of the 40 voices */
+#else
 #define SEQ_LIVE 8                                      /* notes a synth sounds from its pattern at once */
+#endif
 
 /* off: how late in its step it starts (and ends), in 32nds of a step: the micro timing a note was played with, a
  * strum's spacing (the owner: both were lost to the nearest step); 0 for a note written by hand, NUDGE moves it */
 typedef struct { uint8_t step, len, note, vel, off; } snote_t;
 typedef struct {
     snote_t n[SEQ_NOTES];
-    uint8_t count, pos;                                 /* notes, the step that sounds next */
+    seq_n_t count;                                      /* notes */
+    uint8_t pos;                                        /* the step that sounds next */
     uint16_t steps;                                     /* its length in steps */
     uint8_t live[SEQ_LIVE], left[SEQ_LIVE];             /* the notes it sounds and the steps each has left */
     uint8_t from[SEQ_LIVE];                             /* a harmony's: its lead + 1 (0: the roll's own) */
@@ -31,6 +42,15 @@ typedef struct {
 static seq_t sq[DMK_SYNTHS];
 static uint8_t seq_on, seq_rec;
 static int seq_bpm = 72;
+/* a length from the tempo: a / (the BPM * c). The Move's tempo has tenths (seq_b10, the glue's, each block), the rest
+ * of its uses (the screen, a strum's limit) the whole number nearest */
+#ifdef DMK_MOVE
+static int seq_b10 = 720;
+static uint32_t seq_per(void) { return (uint32_t)DMK_SR * 600u * 64u / (uint32_t)seq_b10; }
+#define PER_BPM(a, c) ((uint32_t)((uint64_t)(a) * 10u / ((uint32_t)seq_b10 * (uint32_t)(c))))
+#else
+#define PER_BPM(a, c) ((a) / ((uint32_t)(seq_bpm > 0 ? seq_bpm : 120) * (c)))
+#endif
 static uint8_t seq_stop_req;                            /* the song ended inside a step: stopped after it */
 static uint32_t clk_acc;                                /* MIDI out: Q8 samples into the clock's 24th of a beat */
 static uint32_t seq_frames;                             /* samples rendered: a MIDI clock in's pace is measured on it */
@@ -43,10 +63,27 @@ static uint32_t seq_per_q8(void);
 static uint32_t seq_acc, seq_ticks;                     /* Q8 samples into the step; steps since PLAY */
 
 /* the scale: the song's key and mode (the CHORD page), its degrees in semitones above the key; A Aeolian at first */
+#ifdef DMK_MOVE
+/* the Move's: the FM-1's six first, in their places (a song saved keeps its numbers), then more, of five to eight notes */
+static const uint8_t MODES[][8] = {{0, 2, 3, 5, 7, 8, 10}, {0, 2, 3, 5, 7, 9, 10}, {0, 1, 3, 5, 7, 8, 10},
+                                   {0, 2, 4, 6, 7, 9, 11}, {0, 2, 4, 5, 7, 9, 10}, {0, 2, 4, 5, 7, 9, 11},
+                                   {0, 1, 3, 5, 6, 8, 10}, {0, 2, 3, 5, 7, 8, 11}, {0, 2, 3, 5, 7, 9, 11},
+                                   {0, 2, 4, 5, 7, 8, 11}, {0, 1, 4, 5, 7, 8, 10}, {0, 2, 4, 6, 7, 9, 10},
+                                   {0, 2, 3, 6, 7, 8, 11}, {0, 1, 4, 5, 7, 8, 11},
+                                   {0, 3, 5, 7, 10}, {0, 2, 4, 7, 9}, {0, 3, 5, 6, 7, 10}, {0, 2, 3, 7, 8},
+                                   {0, 1, 5, 7, 10}, {0, 1, 5, 6, 10}, {0, 2, 5, 7, 9},
+                                   {0, 2, 4, 6, 8, 10}, {0, 2, 3, 5, 6, 8, 9, 11}};
+static const uint8_t MODE_LEN[] = {7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 5, 5, 6, 5, 5, 5, 5, 6, 8};
+#define SCALE_N MODE_LEN[seq_mode]
+#else
 static const uint8_t MODES[6][7] = {{0, 2, 3, 5, 7, 8, 10}, {0, 2, 3, 5, 7, 9, 10}, {0, 1, 3, 5, 7, 8, 10},
                                     {0, 2, 4, 6, 7, 9, 11}, {0, 2, 4, 5, 7, 9, 10}, {0, 2, 4, 5, 7, 9, 11}};
+#define SCALE_N 7
+#endif
 static uint8_t seq_key = 9, seq_mode = 0;
 #define SCALE MODES[seq_mode]
+#define VIEW_LO (2 * SCALE_N)                           /* where the roll's rows can start, by the scale's degrees */
+#define VIEW_HI (6 * SCALE_N + 1)
 #define SCALE_ROOT seq_key
 /* the chord machine (dmk_chord.c, after this file): its clock and what each synth does with it */
 static void chord_step(void);
@@ -71,7 +108,7 @@ static void chord_rest(void);
  * wait in spat[]. A synth muted plays nothing of its roll or of the chords (the keys still sound) */
 #define SYN_PATS 8                                      /* patterns a synth */
 #define SCENES 16
-typedef struct { snote_t n[SEQ_NOTES]; uint8_t count, used; uint16_t steps; } pseq_t;
+typedef struct { snote_t n[SEQ_NOTES]; seq_n_t count; uint8_t used; uint16_t steps; } pseq_t;
 static pseq_t spat[DMK_SYNTHS][SYN_PATS] POOL;
 typedef struct { uint8_t pat[DMK_SYNTHS], prog, mute, used; } scene_t;
 static scene_t scn[SCENES];
@@ -233,19 +270,19 @@ static void song_init(void) { song_n = 0; song_end = SE_LOOP; song_mode = 0; son
 
 static int snap(int n)                                  /* the scale's note at or under n */
 {
-    int rel = ((n - SCALE_ROOT) % 12 + 12) % 12, i = 6;
+    int rel = ((n - SCALE_ROOT) % 12 + 12) % 12, i = SCALE_N - 1;
     while (SCALE[i] > rel) i--;
     return n - (rel - SCALE[i]);
 }
 static int degree_of(int n)                             /* a scale note's place: 7 a octave, from A-1 (floored: a note
                                                            under it, a MIDI one, has its place too, under 0) */
 {
-    int rel = n - SCALE_ROOT + 120, o = rel / 12, i = 6;
+    int rel = n - SCALE_ROOT + 120, o = rel / 12, i = SCALE_N - 1;
     rel -= o * 12;
     while (SCALE[i] > rel) i--;
-    return (o - 10) * 7 + i;
+    return (o - 10) * SCALE_N + i;
 }
-static int note_of(int d) { d += 70; return SCALE_ROOT + (d / 7 - 10) * 12 + SCALE[d % 7]; }   /* (d from -70) */
+static int note_of(int d) { d += 10 * SCALE_N; return SCALE_ROOT + (d / SCALE_N - 10) * 12 + SCALE[d % SCALE_N]; }   /* (d from -70) */
 
 static int seq_find(int s, int step, int note)
 {
@@ -258,6 +295,9 @@ static int seq_add(int s, int step, int len, int note, int vel)
     seq_t *q = &sq[s];
     int i = seq_find(s, step, note);
     len = len < 1 ? 1 : len > SEQ_LEN ? SEQ_LEN : len;
+#ifdef DMK_MOVE
+    if (i >= 0) q->n[i].vel = (uint8_t)vel;             /* (a take over a note: its velocity too; the FM-1's are all 100) */
+#endif
     if (i >= 0) { q->n[i].len = (uint8_t)len; return i; }
     if (q->count >= SEQ_NOTES) return -1;
     i = q->count++;
@@ -385,7 +425,9 @@ static void seq_step(void)                              /* every synth one step 
     seq_ticks++;
 }
 
+#ifndef DMK_MOVE
 static uint32_t seq_per(void) { return (uint32_t)DMK_SR * 60u * 64u / (uint32_t)seq_bpm; }   /* Q8 samples a step */
+#endif
 static uint32_t seq_per_q8(void) { return seq_per(); }
 
 static void seq_play(int on)
@@ -423,7 +465,7 @@ static void lfo_sync(void)
         uint32_t n = syn[s].lsync, blocks;
         if (!syn[s].lretrig) lfo[s].poff = 0;
         if (!n) { lfo[s].rst = 0; continue; }
-        blocks = 165375u * n / ((uint32_t)(seq_bpm > 0 ? seq_bpm : 120) * 4u);   /* 44100 * 60 / 16 / 4: a sixteenth's */
+        blocks = PER_BPM(165375u * n, 4u);   /* 44100 * 60 / 16 / 4: a sixteenth's */
         lfo[s].sstep = 0xFFFFFFFFu / (blocks ? blocks : 1u);
         if (seq_on && !clock_ext) {
             uint32_t len = n << 8, want = seq_now() % len * (0xFFFFFFFFu / len), d;
@@ -440,7 +482,7 @@ static void lfo_sync(void)
     for (s = 0; s < DMK_SYNTHS; s++) {                  /* each synth's DELAY: its time a division of the tempo, halved
                                                            till its line holds it (so still in time) */
         static const uint8_t DIV24[9] = {6, 8, 9, 12, 16, 18, 24, 36, 48};   /* in 24ths of a beat (the screen's DIVS) */
-        uint32_t t = 55125u * DIV24[syn[s].ddiv < 9 ? syn[s].ddiv : 6] / (2u * (uint32_t)(seq_bpm > 0 ? seq_bpm : 120));   /* 11025 * 60 / 24 */
+        uint32_t t = PER_BPM(55125u * DIV24[syn[s].ddiv < 9 ? syn[s].ddiv : 6], 2u);   /* 11025 * 60 / 24 */
         uint32_t most = (dls[s].cur ? dls[s].cur : syn[s].dtype) == DT_PING ? DL_LEN / 2u - 2u : DL_LEN - 2u - DL_LEN / 64u;   /* (its right a
                                                            hair, or twice, later; the running type's: the one fading out
                                                            read at the new one's time, a zip) */
@@ -451,7 +493,7 @@ static void lfo_sync(void)
         uint32_t n3, blocks;
         if (syn[s].motion != FO_TREM) continue;
         n3 = TREM3[syn[s].ok[2] * TREM_N / 128];
-        blocks = 165375u * n3 / ((uint32_t)(seq_bpm > 0 ? seq_bpm : 120) * 12u);   /* a third of a sixteenth's, times n3 */
+        blocks = PER_BPM(165375u * n3, 12u);   /* a third of a sixteenth's, times n3 */
         fx[s].tstep = 0xFFFFFFFFu / (blocks ? blocks : 1u);
         if (seq_on && !clock_ext) {                     /* glided to where the bars put it (a jump would click) */
             uint32_t len = n3 << 8, want = seq_now() % len * 3u % len * (0xFFFFFFFFu / len);
@@ -481,7 +523,7 @@ static struct {
 } arp[DMK_SYNTHS];
 static int arp_on(int s) { return arp[s].mode != AR_OFF; }
 static const uint8_t ARP24[9] = {3, 4, 6, 8, 9, 12, 16, 18, 24};   /* RATE in 24ths of a beat (the screen's ARPDIVS) */
-static uint32_t arp_len(int s) { return 110250u * ARP24[arp[s].div < 9 ? arp[s].div : 2] / (uint32_t)(seq_bpm > 0 ? seq_bpm : 120); }
+static uint32_t arp_len(int s) { return PER_BPM(110250u * ARP24[arp[s].div < 9 ? arp[s].div : 2], 1u); }
 static void arp_release(int s)                          /* what it sounds, let go */
 {
     int i;
