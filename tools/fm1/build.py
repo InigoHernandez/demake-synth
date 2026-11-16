@@ -151,6 +151,8 @@ def build_loader():
     if not image or len(image) > 0x14000:
         raise SystemExit("loader: image empty or too big")
     ota = ldr_wrap(image)
+    if len(ota) - 0x20 > 0x5000 - 0x200:   # ota.c stages its body in five sectors, less 512 B (what every firmware checks)
+        raise SystemExit(f"loader: {len(ota) - 0x20} B packed, past the {0x5000 - 0x200} B a firmware stages")
     (LDR / "ota.bin").write_bytes(ota)
     print(f"loader: image {len(image)} B at {LOADER_LOAD:#x}, ota.bin {len(ota)} B")
     return ota

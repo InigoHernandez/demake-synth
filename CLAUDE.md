@@ -35,6 +35,10 @@ colour, media, motion and space effects per synth, a store of songs and sounds. 
   build), `tools/gen_font.py [--sheet build/fonts.png]`,
   `tools/gen_art.py` (the site's art, wordmark, D, icon, plate, band, seal and the screens' frames; Kiloy from
   `DMK_KILOY`).
+- The update loader's screen (`firmware/fm1/src/ldr_screen.c`) draws the update screen's word, lines and digits from
+  `firmware/fm1/gen/ldr_art.h`: after a change to the update screen (`ui_update`) or the fonts, `cc -std=c99 -O2
+  -Ifirmware/src -Ifirmware/gen -o build/host/ldr_art host/ldr_art.c && build/host/ldr_art firmware/fm1/gen/ldr_art.h`
+  (`tools/check.sh` fails until it matches); `host/ldr_screen_test.c [DIR]` draws every state as PNGs.
 - Host: `cc -std=c99 -D_DARWIN_C_SOURCE -O2 -Wall -Wextra -Wno-unused-function -Ifirmware/src -Ifirmware/gen -o
   build/host/dmk_host host/dmk_host.c`, then `build/host/dmk_host build/host/tour` (every screen as a PNG, the text
   audit over each) and `.venv/bin/python tools/montage.py build/host/tour build/screens.png 4`.

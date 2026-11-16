@@ -9,7 +9,9 @@
 #  4. the FM-1's flash driver on a simulated chip (tools/fm1/flash_test.sh under ASan + UBSan): both chips, unknown
 #     ones, slow, overrunning and stuck ones, a song saved and loaded across a power cut; with a package built
 #     (build/fm1/demake-*.fwsc), the update from the installer's release to it on each chip
-#  5. the browser build compiles
+#  5. the update loader's screen (host/ldr_screen_test.c under ASan + UBSan): every state, the word lit as the core
+#     lights it; and its pictures (firmware/fm1/gen/ldr_art.h) as host/ldr_art.c makes them from the core today
+#  6. the browser build compiles
 set -u
 B=build/check
 mkdir -p "$B"
@@ -64,6 +66,16 @@ echo "== the FM-1's flash, simulated"
 if CC="clang $SAN" sh tools/fm1/flash_test.sh > "$B/flash.log" 2>&1 && ! grep -q -E "runtime error|ERROR: AddressSanitizer" "$B/flash.log"; then
     echo "  $(grep -c '^ok' "$B/flash.log") checks ok$(sed -n 's/^the update: /, the update /p' "$B/flash.log")"
 else grep -E "FAIL|runtime error|ERROR:|error:" "$B/flash.log" | head -10; FAIL=1; fi
+
+echo "== the update loader's screen"
+H="-std=c99 -D_DARWIN_C_SOURCE -Wall -Wextra -Wno-unused-function -Ifirmware/src -Ifirmware/gen"
+if clang $H -O2 -o "$B/ldr_art" host/ldr_art.c && "$B/ldr_art" "$B/ldr_art.h" > /dev/null && cmp -s "$B/ldr_art.h" firmware/fm1/gen/ldr_art.h; then
+    echo "  its pictures as the core draws them today"
+else echo "  firmware/fm1/gen/ldr_art.h is not what host/ldr_art.c makes now: regenerate it (CLAUDE.md)"; FAIL=1; fi
+if clang $H $SAN -fno-sanitize-recover=all -o "$B/ldr_screen_test" host/ldr_screen_test.c && "$B/ldr_screen_test" > "$B/ldr.log" 2>&1 \
+   && ! grep -q -E "runtime error|ERROR: AddressSanitizer" "$B/ldr.log"; then
+    echo "  $(sed -n 's/^  \([0-9]*\) checks, 0 failed/\1/p' "$B/ldr.log") checks ok"
+else grep -E "FAIL|runtime error|ERROR:" "$B/ldr.log" | head -10; FAIL=1; fi
 
 echo "== the browser build"
 if command -v emcc >/dev/null; then sh web/build.sh > "$B/web.log" 2>&1 && echo "  web/dmk.wasm built" || { tail -5 "$B/web.log"; FAIL=1; }
