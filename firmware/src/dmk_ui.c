@@ -582,6 +582,131 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
     cur_synth = ui.synth;
 }
 
+#ifdef DMK_MOVE
+/* ---- a pattern's sound (the Move's, the owner's Phase 3): each of a synth's patterns keeps what the synth owns on
+ * its pages (the mixer's level, send and pan with them: the owner, a switch changes the mix too), its Vary and Arp, its
+ * Keys and Strum, how it follows and its harmony's interval. Global, Home's own column, the key, the Keys' type and the
+ * progression stay the song's (the progression the scene's, as before). Turning a control changes the sound of the
+ * pattern playing; a switch keeps it there and loads the next one's; a pattern that never had one (an empty one, or a
+ * song of before 18 that never kept it) takes the sound playing. At a switch while playing, the values a voice reads
+ * as it sounds (the levels, the filter, the mixes) glide there over PSND_GLIDE_MS, so nothing clicks; the rest (the
+ * recording, tune, the envelope's times, every choice) changes at once, before the bar's notes start, and a voice
+ * still sounding keeps its own recording. The effects' types already cross through silence (dmk_dsp.c) */
+#define PSND_PAGES 5
+#define PSND_ROW_VALS 5                                 /* K1..K4, ALGORITHM */
+#define PSND_PAGE_VALS (4 * PSND_ROW_VALS)
+#define PSND_VARY 4                                     /* the roll's Vary: K1..K4 (ALGORITHM's is the song's) */
+#define PSND_ARP PSND_ROW_VALS                          /* the Arp, HOLD too */
+#define PSND_CHORD 2                                    /* Keys, Strum */
+#define PSND_VALS (PSND_PAGES * PSND_PAGE_VALS + PSND_VARY + PSND_ARP + PSND_CHORD)
+#define PSND_GLIDE_MS 35
+#define PSND_GLIDE_FRAMES (DMK_SR * PSND_GLIDE_MS / 1000)
+static const uint8_t PSND_PG[PSND_PAGES] = {PG_SOUND, PG_FILTER, PG_AMP, PG_FX, PG_LFO};
+typedef struct { uint8_t set, follow, hint, v[PSND_VALS]; } psnd_t;
+static psnd_t psnd[DMK_SYNTHS][SYN_PATS];
+/* the values that glide at a switch, by page and row, a bit a knob: what a voice reads as it sounds */
+static const struct { uint8_t page, row, ks; } PSND_GLIDES[] = {
+    {PG_SOUND, 1, 1u << 0 | 1u << 3},                   /* the layer's blend and tone */
+    {PG_FILTER, 0, 1u << 0 | 1u << 1 | 1u << 2 | 1u << 3},   /* cutoff, resonance, envelope, drive */
+    {PG_AMP, 0, 1u << 2 | 1u << 4},                     /* sustain, level */
+    {PG_FX, 0, 1u << 0 | 1u << 1 | 1u << 2 | 1u << 3},  /* the reverb's amount, tone, size, its own */
+    {PG_FX, 1, 1u << 0 | 1u << 1 | 1u << 3},            /* the delay's mix, tone, regen (its time steps, as turned) */
+    {PG_FX, 2, 1u << 0 | 1u << 1 | 1u << 2 | 1u << 3},  /* the motion's knobs */
+    {PG_FX, 3, 1u << 0 | 1u << 2 | 1u << 3},            /* the send, the pan, the width */
+    {PG_LFO, 0, 1u << 0 | 1u << 1},                     /* the LFO's rate and depth */
+};
+static struct {
+    uint8_t from[PSND_VALS], to[PSND_VALS], last[PSND_VALS], on[PSND_VALS];
+    uint32_t t;                                         /* frames since the switch */
+    uint8_t any;
+} psg[DMK_SYNTHS];
+
+static uint8_t *psnd_val(int s, int i)                  /* the i-th value a pattern's sound keeps, synth s's */
+{
+    if (i < PSND_PAGES * PSND_PAGE_VALS) return &ui.val[s][PSND_PG[i / PSND_PAGE_VALS]][i / PSND_ROW_VALS % 4][i % PSND_ROW_VALS];
+    i -= PSND_PAGES * PSND_PAGE_VALS;
+    if (i < PSND_VARY) return &ui.val[s][PG_ROLL][1][i];
+    i -= PSND_VARY;
+    if (i < PSND_ARP) return &ui.val[s][PG_ROLL][2][i];
+    i -= PSND_ARP;
+    return i ? &ui.val[s][PG_CHORD][0][3] : &ui.val[s][PG_CHORD][2][0];
+}
+static int psnd_glides(int i)                           /* value i glides at a switch */
+{
+    int pg, row, k;
+    unsigned g;
+    if (i >= PSND_PAGES * PSND_PAGE_VALS) return 0;
+    pg = PSND_PG[i / PSND_PAGE_VALS]; row = i / PSND_ROW_VALS % 4; k = i % PSND_ROW_VALS;
+    if (choice_of(pg, row, k)) return 0;                /* (a list's: its steps are kinds, never a way between) */
+    for (g = 0; g < sizeof PSND_GLIDES / sizeof PSND_GLIDES[0]; g++)
+        if (PSND_GLIDES[g].page == pg && PSND_GLIDES[g].row == row) return PSND_GLIDES[g].ks >> k & 1u;
+    return 0;
+}
+static void psnd_glide_stop(int s) { psg[s].any = 0; __builtin_memset(psg[s].on, 0, sizeof psg[s].on); }
+static void psnd_take(int s, psnd_t *d)                 /* synth s's sound as it is (a glide's: where it goes) */
+{
+    int i;
+    for (i = 0; i < PSND_VALS; i++) d->v[i] = psg[s].on[i] ? psg[s].to[i] : *psnd_val(s, i);
+    d->follow = ch.follow[s]; d->hint = (uint8_t)ch.hint[s]; d->set = 1;
+}
+static void psnd_keep(int s) { psnd_take(s, &psnd[s][syn_pat(s)]); }
+static void psnd_copy(int s, int from, int to) { psnd[s][to] = psnd[s][from]; }
+static void psnd_reset(int s) { int g; for (g = 0; g < SYN_PATS; g++) psnd[s][g].set = 0; psnd_glide_stop(s); }
+static void psnd_follow(int s, int to)                  /* synth s's FOLLOW to to, its chord let go or joined */
+{
+    if (to >= FW_COUNT) to = FW_FREE;
+    if (to == ch.follow[s]) return;
+    if (ch.follow[s] == FW_PLAYS) chord_off(s);
+    ch.follow[s] = (uint8_t)to;
+    chord_join(s);
+}
+static void psnd_load(int s, int p)                     /* pattern p's sound into synth s (its roll just loaded) */
+{
+    psnd_t *d = &psnd[s][p];
+    int i, glide = seq_on;
+    if (!d->set) {                                      /* never had one: the sound playing, and a pattern without notes
+                                                           follows nothing, so an empty one is silent (the chords or
+                                                           the harmony of the last stay behind) */
+        psnd_take(s, d);
+        if (!sq[s].count) { d->follow = FW_FREE; psnd_follow(s, FW_FREE); }
+        return;
+    }
+    psnd_glide_stop(s);
+    for (i = 0; i < PSND_VALS; i++) {
+        uint8_t *v = psnd_val(s, i);
+        if (glide && *v != d->v[i] && psnd_glides(i)) {
+            psg[s].from[i] = psg[s].last[i] = *v; psg[s].to[i] = d->v[i]; psg[s].on[i] = 1; psg[s].any = 1;
+        } else *v = d->v[i];
+    }
+    psg[s].t = 0;
+    ch.hint[s] = (int8_t)(d->hint >= 0xF9u || d->hint <= 7u ? (int8_t)d->hint : 2);   /* (-7..7) */
+    psnd_follow(s, d->follow);
+    sp_sync();                                          /* (the bar's notes start after: with the new kinds) */
+}
+static void psnd_glide(int frames)                      /* each block: the glides a step on; a value turned meanwhile
+                                                           is the player's */
+{
+    int s, i, moved = 0;
+    for (s = 0; s < DMK_SYNTHS; s++) {
+        uint32_t t;
+        if (!psg[s].any) continue;
+        psg[s].t += (uint32_t)frames;
+        t = psg[s].t < PSND_GLIDE_FRAMES ? psg[s].t : PSND_GLIDE_FRAMES;
+        psg[s].any = 0;
+        for (i = 0; i < PSND_VALS; i++) {
+            uint8_t *v = psnd_val(s, i);
+            if (!psg[s].on[i]) continue;
+            if (*v != psg[s].last[i]) { psg[s].on[i] = 0; continue; }
+            *v = (uint8_t)(psg[s].from[i] + ((int)psg[s].to[i] - psg[s].from[i]) * (int)t / PSND_GLIDE_FRAMES);
+            psg[s].last[i] = *v;
+            if (t >= PSND_GLIDE_FRAMES) psg[s].on[i] = 0; else psg[s].any = 1;
+            moved = 1;
+        }
+    }
+    if (moved) sp_sync();
+}
+#endif
+
 /* the controls 0.4 added (the layer, the voice, the filter's drive, the LFO): off, and what older songs and sounds
  * load with, since none of them sounded before */
 static void roll_vary_defaults(int s)                  /* the roll's Vary: no mutation, two steps, every note, heard only */

@@ -104,7 +104,8 @@ static void chord_rest(void);
  * muted; sixteen scenes, on the white keys with HOME held. A switch waits for the bar (16 steps since PLAY), then
  * every roll and the progression start again from their beginnings; an empty scene picked starts as a copy of the one
  * playing, its patterns shared, so a variation is the scene's one pattern changed. The sounds, effects, key and tempo
- * are the song's: a switch changes the notes and the harmony, never the timbre. The open patterns are sq[]; the others
+ * are the song's: a switch changes the notes and the harmony, never the timbre (on the Move each pattern keeps its
+ * synth's sound too: psnd, dmk_ui.c). The open patterns are sq[]; the others
  * wait in spat[]. A synth muted plays nothing of its roll or of the chords (the keys still sound) */
 #define SYN_PATS 8                                      /* patterns a synth */
 #define SCENES 16
@@ -124,6 +125,14 @@ static void seq_quiet(int s);
 static void seq_quiet_from(int lead);
 static void chord_quiet(void);
 static void chord_start(void);
+#ifdef DMK_MOVE
+/* the Move's (the owner's Phase 3): each pattern keeps its synth's sound too, kept and loaded with its roll (dmk_ui.c) */
+static void psnd_keep(int s);
+static void psnd_load(int s, int p);
+static void psnd_copy(int s, int from, int to);
+static void psnd_reset(int s);
+static void psnd_glide(int frames);
+#endif
 
 static int syn_pat(int s) { return scn[scn_cur].pat[s]; }   /* the pattern synth s plays */
 static void spat_keep(int s)                            /* synth s's roll into its pattern */
@@ -132,6 +141,9 @@ static void spat_keep(int s)                            /* synth s's roll into i
     int i;
     q->count = sq[s].count; q->steps = sq[s].steps; q->used = 1;
     for (i = 0; i < sq[s].count; i++) q->n[i] = sq[s].n[i];
+#ifdef DMK_MOVE
+    psnd_keep(s);
+#endif
 }
 static uint8_t spat_gen[DMK_SYNTHS];                    /* a synth's patterns switched: counted (a key recorded across
                                                            a switch is not written into the next) */
@@ -146,6 +158,9 @@ static void spat_load(int s, int p)                     /* pattern p into synth 
     for (i = 0; i < sq[s].count; i++) sq[s].n[i] = q->n[i];
     sq[s].pos = 0;
     spat_gen[s]++;
+#ifdef DMK_MOVE
+    psnd_load(s, p & (SYN_PATS - 1));                   /* its sound with it (an empty one: the sound playing) */
+#endif
 }
 static void scn_keep(void)                              /* the scene open, its rolls into their patterns */
 {
@@ -180,6 +195,9 @@ static int spat_dup(int s)                              /* synth s's pattern cop
     if (q == SYN_PATS) return -1;
     q = (from + q) % SYN_PATS;
     spat[s][q] = spat[s][from];
+#ifdef DMK_MOVE
+    psnd_copy(s, from, q);
+#endif
     scn[scn_cur].pat[s] = (uint8_t)q;
     return q;
 }
@@ -201,6 +219,9 @@ static void pat_init(void)                              /* the first song: scene
     scn[0].used = 1;
     scn_cur = 0; scn_next = 0xFF; pat_mute = 0;
     for (s = 0; s < DMK_SYNTHS; s++) spat_next[s] = 0xFF;
+#ifdef DMK_MOVE
+    for (s = 0; s < DMK_SYNTHS; s++) psnd_reset(s);
+#endif
 }
 
 /* the song mode: the scenes arranged. A step is a scene for 1-8 bars; a song is up to 128 of them and an end. In
@@ -637,6 +658,9 @@ static void arp_clear_all(void) { int s; for (s = 0; s < DMK_SYNTHS; s++) arp_cl
 static void seq_render(int frames)
 {
     uint32_t per;
+#ifdef DMK_MOVE
+    psnd_glide(frames);                                 /* a switched sound's values on their way */
+#endif
     lfo_sync();
     seq_frames += (uint32_t)frames;
     later_tick(frames);                                 /* the strum's notes, playing or not */

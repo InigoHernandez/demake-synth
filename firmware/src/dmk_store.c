@@ -23,7 +23,8 @@
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
 #ifdef DMK_MOVE
-#define ST_VER 17u  /* the Move's alone, its songs never reach the FM-1: 17: four synths; 16: a roll's count two bytes */
+#define ST_VER 18u  /* the Move's alone, its songs never reach the FM-1: 18: each pattern its sound; 17: four synths; 16:
+                       a roll's count two bytes */
 #define ST_SYN (st_ver >= 17u ? DMK_SYNTHS : 3)        /* synths a song holds: three before 17 */
 #else
 #define ST_SYN DMK_SYNTHS
@@ -179,6 +180,9 @@ static void loop_moved(int s)
 DMK_SMALL static void sound_get(int s, const uint8_t *v, int form)   /* form 0: a sound of before 0.4, its new controls off */
 {
     int r, k;
+#ifdef DMK_MOVE
+    psnd_glide_stop(s);                                 /* (a switch's glide stops: the sound loaded is the player's) */
+#endif
     for (r = 0; r < (!form ? 9 : form < 6 ? 11 : SND_ROWS_N); r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = v[r * 5 + k];
     if (form < 6) loop_moved(s);                        /* before 0.4.22: the loop on or off; no Loop row */
     if (!form) snd_new_defaults(s);                     /* its layer, voice, drive and LFO did nothing then: off */
@@ -247,6 +251,9 @@ DMK_SMALL static void sound_init(int s)
 {
     uint8_t keep = ui.val[s][PG_SOUND][0][0];
     int r, k;
+#ifdef DMK_MOVE
+    psnd_glide_stop(s);
+#endif
     for (r = 0; r < SND_ROWS_N; r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = ui_first[s][r * 5 + k];
     ui.val[s][PG_SOUND][0][0] = keep;
     ui.val[s][PG_SOUND][1][4] = keep;                   /* its layer starts as its own recording */
@@ -269,6 +276,7 @@ static void synth_new(int s)
     ui.roll_cur[s] = 0; ui.roll_view[s] = ui_new_view[s]; ui.roll_pen[s] = 1; ui.roll_zoom[s] = 0;
     for (g = 0; g < SYN_PATS; g++) { spat[s][g].used = 0; spat[s][g].count = 0; spat[s][g].steps = 16; }
     for (g = 0; g < SCENES; g++) scn[g].pat[s] = 0;
+    psnd_reset(s);
 }
 #endif
 #ifdef DMK_MOVE
@@ -323,6 +331,18 @@ DMK_SMALL static int song_pack(uint8_t *o)                        /* the song op
     *p++ = song_n; *p++ = song_end; *p++ = song_mode;   /* the song: its steps, scenes for bars */
     for (i = 0; i < song_n; i++) { *p++ = song[i].scene; *p++ = song[i].bars; }
     for (s = 0; s < DMK_SYNTHS; s++) *p++ = (uint8_t)ch.hint[s];   /* the harmonies' intervals */
+#ifdef DMK_MOVE
+    if (p - o + DMK_SYNTHS * SYN_PATS * (int)(3 + PSND_VALS) > (int)(ST_SLOT - ST_HDR)) return -1;
+    for (s = 0; s < DMK_SYNTHS; s++)                    /* 18: each pattern's sound (the open ones kept above) */
+        for (g = 0; g < SYN_PATS; g++) {
+            const psnd_t *d = &psnd[s][g];
+            *p++ = d->set;
+            if (!d->set) continue;
+            *p++ = d->follow; *p++ = d->hint;
+            __builtin_memcpy(p, d->v, PSND_VALS);
+            p += PSND_VALS;
+        }
+#endif
     return (int)(p - o);
 }
 
@@ -540,7 +560,36 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             int h = e - p >= 1 ? (int8_t)*p++ : 2;
             ch.hint[s] = (int8_t)(h < -7 || h > 7 ? 2 : h);
         }
+#ifdef DMK_MOVE
+        if (st_ver >= 18u)                              /* each pattern's sound */
+            for (s = 0; s < ST_SYN; s++)
+                for (g = 0; g < SYN_PATS; g++) {
+                    psnd_t *d = &psnd[s][g];
+                    if (e - p < 1) return -1;
+                    d->set = *p++ ? 1 : 0;
+                    if (!d->set) continue;
+                    if (e - p < 2 + PSND_VALS) return -1;
+                    d->follow = *p++ < FW_COUNT ? p[-1] : FW_FREE; d->hint = *p++;
+                    __builtin_memcpy(d->v, p, PSND_VALS);
+                    p += PSND_VALS;
+                }
+#endif
     }
+#ifdef DMK_MOVE
+    if (st_ver < 18u)                                   /* before 18 the sound was the song's: each pattern kept takes it
+                                                           (the owner: old patterns inherit the sound), following as it
+                                                           did when picked: an empty one, other than the one open, follows
+                                                           nothing; one never kept, the sound playing when first picked */
+        for (s = 0; s < ST_SYN; s++)
+            for (g = 0; g < SYN_PATS; g++) {
+                if (!spat[s][g].used) continue;
+                psnd_take(s, &psnd[s][g]);
+                if (!spat[s][g].count && g != scn[scn_cur].pat[s]) psnd[s][g].follow = FW_FREE;
+            }
+    for (s = 0; s < DMK_SYNTHS; s++)                    /* the open ones as they are (a synth new, one never kept): an
+                                                           empty one follows nothing only when picked, never as a song opens */
+        if (!psnd[s][scn[scn_cur].pat[s]].set) psnd_take(s, &psnd[s][scn[scn_cur].pat[s]]);
+#endif
     scn[scn_cur].used = 1;
     if (!song_n) song_mode = 0;
     scn_load(scn_cur);

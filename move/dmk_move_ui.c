@@ -118,7 +118,6 @@ static struct {
     uint8_t plist, pat_sel;            /* the patterns' list (the jog's), its cursor */
     uint32_t plist_t;
     uint8_t pcur[DMK_SYNTHS];          /* each synth's pattern, as last seen */
-    uint8_t pf[DMK_SYNTHS][SYN_PATS];  /* how it followed on each: its Follow + 1, 0 not played yet */
     uint8_t sdown[16], sadded[16], sedit[16];   /* each step key: held, it placed the note, it was changed held */
     uint16_t sstep[16];
     uint32_t st0[16];
@@ -174,10 +173,11 @@ static void un_put(const un_t *u)
         sq[s].count = u->r[s].count;
         sq[s].steps = u->r[s].steps;
         if (sq[s].pos >= sq[s].steps) sq[s].pos = 0;
-        ch.follow[s] = u->follow[s];
+        psnd_follow(s, u->follow[s]);  /* (its chord let go or joined: audit I2) */
     }
     memcpy(ui.val, u->val, sizeof u->val);
     pat_mute = u->mute;
+    for (int s = 0; s < DMK_SYNTHS; s++) psnd_glide_stop(s);   /* (a switch's glide: the values put back win) */
     roll_cur_in();
     sp_sync();
 }
@@ -197,6 +197,7 @@ static void un_check(void)              /* each block */
 /* before an edit. what: 0 always a new step of Undo; else the same edit again within MV_UNDO_MS is part of the last */
 static void undo_mark(uint32_t what)
 {
+    un_check();                        /* (a switch in this block: the ring is the new patterns', audit I4) */
     if (what && what == un.what && ui.now - un.at_ms < MV_UNDO_MS && un.at == un.n) { un.at_ms = ui.now; return; }
     un.what = what;
     un.at_ms = ui.now;
@@ -208,6 +209,7 @@ static void undo_mark(uint32_t what)
 }
 static void undo_do(int redo)
 {
+    un_check();                        /* (a switch in this block: never the old patterns' rolls into the new, audit I4) */
     un.what = 0;
     if (redo) {
         if (un.at >= un.n) { notice("Nothing to redo"); return; }
@@ -724,20 +726,13 @@ static void plist_click(void)
     mc.plist = 0;
 }
 
-/* a synth's pattern switched, by the list, a scene or at the bar. A pattern plays as it was left. One not played yet
- * starts on its own roll, so an empty one is silent: the chords or the harmony the last played stay behind, and a new
- * one is a bar long */
+/* a synth's pattern switched, by the list, a scene or at the bar. A pattern plays as it was left, its sound and how it
+ * follows with it (the core's psnd: an empty one never played follows nothing, so it is silent); a new one is a bar long */
 static void pat_changed(int s)
 {
-    const int was = mc.pcur[s], now = syn_pat(s), f = ch.follow[s];
-    const int to = mc.pf[s][now] ? mc.pf[s][now] - 1 : sq[s].count ? f : FW_FREE;
-    mc.pf[s][was] = (uint8_t)(f + 1);
+    const int now = syn_pat(s);
     mc.pcur[s] = (uint8_t)now;
-    if (!sq[s].count && !mc.pf[s][now] && !spat[s][now].used) { sq[s].steps = 16; sq[s].pos %= 16; }
-    if (to == f) return;
-    if (f == FW_PLAYS) chord_off(s);
-    ch.follow[s] = (uint8_t)to;
-    chord_join(s);
+    if (!sq[s].count && !spat[s][now].used) { sq[s].steps = 16; sq[s].pos %= 16; }
 }
 
 /* the jog: a held step's pitch; the projects on Save; the sound on Sound; else, as MONO2K's, the patterns' list: a turn
@@ -786,7 +781,6 @@ static void mv_opened(void)             /* a project opened or new: what Undo an
     mc.scale_n = SCALE_N;
     mc.fset = 0;
     mc.plist = 0;
-    memset(mc.pf, 0, sizeof mc.pf);
     for (int s = 0; s < DMK_SYNTHS; s++) mc.pcur[s] = (uint8_t)syn_pat(s);
     for (int s = 0; s < DMK_SYNTHS; s++) { mc.bar[s] = 0; if (ui.preset[s] >= DMK_SAMPLES_N) ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
 }

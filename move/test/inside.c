@@ -2,7 +2,7 @@
 /* Demake on the Move from inside dsp.so's own code, for what the plugin API would take hours to reach: every pattern
  * full, saved and opened; the file of before the slots grew; every scale, chord and progression. Built as dsp.so is
  * (move/build.sh, static, so the Move can run it too: its times are the ones to read).
- *   inside DIR [OLD_STORE [V16_STORE]]   DIR is the tests' own: its store files are removed
+ *   inside DIR [OLD_STORE [V16_STORE [V17_STORE]]]   DIR is the tests' own: its store files are removed
  *   inside show FILE DIR       what a store of before holds, as the Move would open it */
 #define _GNU_SOURCE
 #include <math.h>
@@ -490,8 +490,8 @@ static void four(const char *dir, const char *v16)
         pat_mute = 8;
         check(song_save(0) == 0, "four synths saved");
         sq[3].count = 0; ui.val[3][PG_AMP][0][4] = 0; pat_mute = 0;
-        check(song_load(0) == 0 && seq_find(3, 2, 36) >= 0 && ui.val[3][PG_AMP][0][4] == 77 && (pat_mute & 8) && st_ver == 17u,
-              "and opened: synth 4's notes, level and mute (format 17)");
+        check(song_load(0) == 0 && seq_find(3, 2, 36) >= 0 && ui.val[3][PG_AMP][0][4] == 77 && (pat_mute & 8) && st_ver >= 17u,
+              "and opened: synth 4's notes, level and mute (format 17 and on)");
     }
     v2_destroy(i);
 }
@@ -609,6 +609,114 @@ static void criticals(const char *dir)
     }
 }
 
+/* ------------------------------------------------------------------------- Phase 3: each pattern its sound */
+
+static int psi(int s, int page, int row, int k)        /* where a value is in a pattern's sound */
+{
+    for (int i = 0; i < PSND_VALS; i++) if (psnd_val(s, i) == &ui.val[s][page][row][k]) return i;
+    return -1;
+}
+
+static void psounds(const char *dir, const char *v17)
+{
+    static int16_t out[256];
+    enum { S = 1 };
+    const int cut = psi(S, PG_FILTER, 0, 0), lvl = psi(S, PG_AMP, 0, 4), pan = psi(S, PG_FX, 3, 2);
+    const int A = smp_named("Scirpus"), B = (A + 5) % DMK_SAMPLES_N;
+    check(cut >= 0 && lvl >= 0 && pan >= 0 && psi(S, PG_CHORD, 0, 3) >= 0 && psi(S, PG_ROLL, 2, 4) >= 0
+          && psi(S, PG_GLOBAL, 1, 0) < 0 && psi(S, PG_CHORD, 0, 4) < 0 && psi(S, PG_ROLL, 1, 4) < 0,
+          "a pattern's sound: its pages, the mixer's three, Strum and the Arp; never Global, the progression or the song's Vary");
+    check(psnd_glides(cut) && psnd_glides(lvl) && !psnd_glides(psi(S, PG_SOUND, 0, 0)) && !psnd_glides(psi(S, PG_SOUND, 0, 3))
+          && !psnd_glides(psi(S, PG_FILTER, 0, 4)) && !psnd_glides(psi(S, PG_AMP, 0, 0)),
+          "what glides: the cutoff and the level; never the recording, tune, the filter's type or the attack");
+    /* a store of format 17 (four synths, the sound the song's: move/test/store_v17.c on the commit before) */
+    if (v17) {
+        clear_store(dir);
+        copy(v17, in(dir, SV_FILE));
+        void *j = open_at(dir);
+        check(st_ver == 17u && psnd[S][0].set && psnd[S][2].set && psnd[S][0].v[cut] == 33 && psnd[S][2].v[cut] == 33
+              && psnd[S][2].v[lvl] == 99, "a song of format 17: each pattern kept takes the song's sound");
+        check(psnd[S][3].set && psnd[S][3].follow == FW_FREE && !psnd[S][1].set,
+              "an empty one kept follows nothing; one never kept takes the sound when it is picked");
+        check(ch.follow[0] == FW_PLAYS && sq[0].count == 0, "the open one follows as it was saved (synth 1 on the chords, its roll empty)");
+        pat_pick_syn(S, 2);
+        check(ui.val[S][PG_FILTER][0][0] == 33 && ui.val[S][PG_AMP][0][4] == 99 && seq_find(S, 5, 55) >= 0,
+              "its pattern 3 picked: its notes, the same sound");
+        v2_destroy(j);
+    }
+    clear_store(dir);
+    void *i = open_at(dir);
+    seq_play(0);
+    syn_pat_set(S, 0);
+    sq[S].count = 0; seq_add(S, 0, 4, 48, 100);
+    ui.val[S][PG_FILTER][0][0] = 20; ui.val[S][PG_AMP][0][4] = 40; ui.val[S][PG_FX][3][2] = 10;
+    ui.val[S][PG_SOUND][0][0] = (uint8_t)A; sp_sync();
+    const uint8_t key = ui.val[0][PG_CHORD][1][0], tempo = ui.val[0][PG_HOME][0][4], glo = ui.val[0][PG_GLOBAL][1][0];
+    const int prog = ch.prog, f0 = ch.follow[S];
+    /* stopped: a switch is at once. An empty pattern never played: the sound playing, following nothing */
+    pat_pick_syn(S, 1);
+    check(syn_pat(S) == 1 && ui.val[S][PG_FILTER][0][0] == 20 && ui.val[S][PG_SOUND][0][0] == A && ch.follow[S] == FW_FREE,
+          "an empty pattern picked: the sound playing, following nothing (silent)");
+    seq_add(S, 0, 4, 55, 100);
+    ui.val[S][PG_FILTER][0][0] = 120; ui.val[S][PG_AMP][0][4] = 120; ui.val[S][PG_FX][3][2] = 120;
+    ui.val[S][PG_SOUND][0][0] = (uint8_t)B; sp_sync();
+    psnd_follow(S, FW_ROOT);
+    pat_pick_syn(S, 0);
+    check(ui.val[S][PG_FILTER][0][0] == 20 && ui.val[S][PG_AMP][0][4] == 40 && ui.val[S][PG_FX][3][2] == 10
+          && ui.val[S][PG_SOUND][0][0] == A && syn[S].smp == A && syn[S].cut == 40 && ch.follow[S] == f0,
+          "pattern 1 again: its own cutoff, level, pan and recording, and how it follows");
+    pat_pick_syn(S, 1);
+    check(ui.val[S][PG_FILTER][0][0] == 120 && ui.val[S][PG_AMP][0][4] == 120 && ui.val[S][PG_SOUND][0][0] == B
+          && ch.follow[S] == FW_ROOT, "pattern 2 again: its own");
+    check(ui.val[0][PG_CHORD][1][0] == key && ui.val[0][PG_HOME][0][4] == tempo && ch.prog == prog
+          && ui.val[0][PG_GLOBAL][1][0] == glo, "the key, the tempo, the progression and Global stay the song's");
+    /* playing: at the bar, the kinds at once and the rest on its way */
+    pat_pick_syn(S, 0);
+    seq_play(1);
+    pat_pick_syn(S, 1);
+    check(spat_next[S] == 1 && ui.val[S][PG_FILTER][0][0] == 20, "playing: the switch waits for the bar");
+    for (int k = 0; k < 4000 && syn_pat(S) != 1; k++) v2_render(i, out, 128);
+    const int now_b = ui.val[S][PG_SOUND][0][0] == B && syn[S].smp == B;
+    v2_render(i, out, 128); v2_render(i, out, 128);
+    const int c1 = ui.val[S][PG_FILTER][0][0], l1 = ui.val[S][PG_AMP][0][4];
+    check(syn_pat(S) == 1 && now_b, "at the bar: the recording at once, before the bar's notes start");
+    check(c1 > 20 && c1 < 120 && l1 > 40 && l1 < 120, "the cutoff and the level on their way, no jump");
+    psnd_keep(S);
+    check(psnd[S][1].v[cut] == 120 && psnd[S][1].v[lvl] == 120, "kept on the way: where it goes, not where it is");
+    ui.val[S][PG_FILTER][0][0] = 64;
+    for (int k = 0; k < 20; k++) v2_render(i, out, 128);
+    check(ui.val[S][PG_FILTER][0][0] == 64 && ui.val[S][PG_AMP][0][4] == 120 && ui.val[S][PG_FX][3][2] == 120,
+          "a value turned on the way stays the player's; the rest there within 58 ms");
+    seq_play(0);
+    ui.val[S][PG_FILTER][0][0] = 120;
+    /* a pattern copied: its sound with it */
+    {
+        const int q = spat_dup(S);
+        check(q >= 0 && syn_pat(S) == q && psnd[S][q].set && psnd[S][q].v[cut] == 120 && psnd[S][q].follow == FW_ROOT,
+              "a pattern copied: its sound and how it follows with it");
+        syn_pat_set(S, 1);
+    }
+    /* format 18: every pattern's sound saved and opened */
+    check(song_save(0) == 0, "patterns with sounds of their own saved");
+    psnd[S][0].v[cut] = 1; psnd[S][1].v[cut] = 2; psnd[S][0].follow = FW_FREE; ui.val[S][PG_FILTER][0][0] = 3;
+    check(song_load(0) == 0 && st_ver == 18u && psnd[S][0].v[cut] == 20 && psnd[S][1].v[cut] == 120 && psnd[S][0].follow == f0
+          && psnd[S][1].follow == FW_ROOT && ui.val[S][PG_FILTER][0][0] == 120 && syn_pat(S) == 1,
+          "and opened (format 18): each pattern's sound, how each follows, the open one's playing");
+    pat_pick_syn(S, 0);
+    check(ui.val[S][PG_FILTER][0][0] == 20 && ui.val[S][PG_AMP][0][4] == 40, "and pattern 1's back on it");
+    /* Undo in the block of a switch, before the ring's own check (audit I4) */
+    {
+        undo_mark(0);
+        seq_add(S, 3, 1, 60, 100);
+        syn_pat_set(S, 1);
+        const int n = sq[S].count;
+        undo_do(0);
+        check(syn_pat(S) == 1 && sq[S].count == n && seq_find(S, 3, 60) < 0 && seq_find(S, 0, 55) >= 0 && seq_find(S, 0, 48) < 0,
+              "Undo in the block of a switch: nothing of the old pattern into the new (audit I4)");
+    }
+    v2_destroy(i);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 3 && !strcmp(argv[1], "show")) { show(argv[2], argv[3]); return 0; }
@@ -623,6 +731,7 @@ int main(int argc, char **argv)
     voices(argv[1]);
     criticals(argv[1]);
     four(argv[1], argc > 3 ? argv[3] : NULL);
+    psounds(argv[1], argc > 4 ? argv[4] : NULL);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

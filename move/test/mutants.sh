@@ -55,7 +55,7 @@ core() {   # what it breaks, the file, the change, the bench (none: inside)
         else
             gcc $G -static -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         fi
-        out=$(timeout 300 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks build/move/proof/v16/projects.dmks 2>&1); code=$?
+        out=$(timeout 300 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks build/move/proof/v16/projects.dmks build/move/proof/v17/projects4.dmks 2>&1); code=$?
     else
         gcc $G -fPIC -shared -fvisibility=hidden -pthread -o /tmp/mut2/x.so /tmp/mut2/move/dmk_move.c || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         if [ "$4" = hash ]; then
@@ -98,9 +98,7 @@ one "a chord pad forgotten" $UI "s#pen_take(s, ui.key_ch\[p\], ui.key_nch\[p\], 
 one "a pad held does not take the step" $UI "s#const int picked = pad_held();#const int picked = 0;#" ctl
 one "a step moved by Follow" $UI "s#if (ch.follow\[s\] == FW_FREE || mc.fset >> s \& 1u) return;#return;#" ctl
 one "the jog still turns the sound" $UI "s#if (mc.page != MP_SOUND) {#if (0) {#" ctl
-one "an empty pattern keeps the chords" $UI "s#sq\[s\].count ? f : FW_FREE;#f;#" ctl
 one "the list moves one synth" $UI "s#for (int s = 0; s < DMK_SYNTHS; s++) pat_pick_syn(s, p);#pat_pick_syn(vsyn(), p);#" ctl
-one "the chords do not come back" $UI "s#^    chord_join(s);#    ;#" ctl
 one "Rec and Play do not wait" $GLUE "s#if (seq_on || !seq_rec || song_row()) return 0;#return 0;#" clock
 one "a chord pad starts nothing" $UI "s#if (p >= 16 \&\& stopped_rec \&\& ui.page#if (p >= 16 \&\& !seq_on \&\& seq_rec \&\& ui.page#" clock
 one "a take off the steps of Move" $UI "s#if (ready) ck_take_start();#;#" clock
@@ -112,6 +110,8 @@ one "a save never reaches the file" dmk_move.c "s#if (ok) ok = rename(tmp, path)
 one "a project reopened empty" dmk_move.c "s#if (mv.dir\[0\]) { store_load();#if (0) { store_load();#" "save /tmp/mut_save"
 one "closing loses the last edits" dmk_move.c "s#mv.save_on_close \&\& store_on() \&\& song_changed()#0#" "save /tmp/mut_save"
 SEQ=firmware/src/dmk_seq.c; ST=firmware/src/dmk_store.c; CH=firmware/src/dmk_chord.c; FUI=firmware/src/dmk_ui.c
+core "an empty pattern keeps the chords" $FUI "s#if (!sq\[s\].count) { d->follow = FW_FREE;#if (0) { d->follow = FW_FREE;#" ctl
+core "the chords do not come back" $FUI "s#^    chord_join(s);#    ;#" ctl
 core "a pattern stops at 96 notes" $SEQ "s#if (q->count >= SEQ_NOTES) return -1;#if (q->count >= 96) return -1;#"
 core "a slot just short of four synths full" $ST "s#define ST_SLOT 0x60000u#define ST_SLOT 0x50000u#"
 core "a count saved in one byte" $ST "s#\*p++ = (uint8_t)q->count; \*p++ = (uint8_t)(q->count >> 8);#*p++ = (uint8_t)q->count; *p++ = 0;#"
@@ -155,6 +155,17 @@ core "the tempo on Home knob 4 again" move/dmk_move_ui.c "s#    return i == 0 \\
 core "no Harmony of 4" $CH "s#define FW_HARM_LAST FW_HARM4#define FW_HARM_LAST FW_HARM3#"
 core "four synths in a 256 KiB slot" $ST "s#define ST_SLOT 0x60000u#define ST_SLOT 0x40000u#"
 core "the three synth file skipped" move/dmk_move.c "s#    {\"projects.dmks\", ST_SONG0 + ST_SONGS \\* 0x40000u, 0x40000u},##"
+core "a switch jumps, no glide" $FUI "s#int i, glide = seq_on;#int i, glide = 0;#"
+core "a pattern keeps no sound" $FUI "s#^static void psnd_keep(int s) { psnd_take(s, \&psnd\[s\]\[syn_pat(s)\]); }#static void psnd_keep(int s) { (void)s; }#"
+core "the recording glides" $FUI "s#if (choice_of(pg, row, k)) return 0;#if (i < PSND_PAGE_VALS) return 1; if (choice_of(pg, row, k)) return 0;#"
+core "a turn on the way overwritten" $FUI "s#if (\*v != psg\[s\].last\[i\]) { psg\[s\].on\[i\] = 0; continue; }#;#"
+core "kept on the way where it is" $FUI "s#d->v\[i\] = psg\[s\].on\[i\] ? psg\[s\].to\[i\] : \*psnd_val(s, i);#d->v[i] = *psnd_val(s, i);#"
+core "the sounds not read back" $ST "s#if (st_ver >= 18u)                              /\* each pattern#if (st_ver >= 19u)                              /* each pattern#"
+core "old songs patterns without the sound" $ST "s#psnd_take(s, \&psnd\[s\]\[g\]);#continue;#"
+core "an old empty pattern on the chords" $ST "s#if (!spat\[s\]\[g\].count \&\& g != scn\[scn_cur\].pat\[s\]) psnd\[s\]\[g\].follow = FW_FREE;#;#"
+core "the open one off the chords" $ST "s#if (!spat\[s\]\[g\].count \&\& g != scn\[scn_cur\].pat\[s\])#if (!spat[s][g].count)#"
+core "a copy without its sound" $SEQ "s#^    psnd_copy(s, from, q);#    ;#"
+core "Undo before the check (I4)" move/dmk_move_ui.c "s#^    un_check();                        /\* (a switch in this block: never#    ;                        /* (a switch in this block: never#"
 one "Keys still on track 4" $UI "s#if (mc.shift \\&\\& !mc.mute \\&\\& !mc.copy \\&\\& !mc.del) {#if (0) {#" ctl
 exit $bad
 '

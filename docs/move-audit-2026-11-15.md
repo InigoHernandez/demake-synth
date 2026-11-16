@@ -20,9 +20,9 @@ Lines are as of the Phase 1 commit. Only the critical ones are fixed in this pha
 | # | Where | What | Suggested fix |
 |---|---|---|---|
 | I1 | `move/dmk_move_ui.c:628`, `:776` | A fast turn of a list knob (over 16 steps in one message; the Sound jog over 8) does nothing at all | clamp to 16 / 8 instead of skipping |
-| I2 | `move/dmk_move_ui.c:169` `un_put` | Undo restores Follow without `chord_off` / `chord_join`: a synth silent until the next chord, or chord notes left sounding on a Free synth (a slot can be 8 bars) | as `pat_changed` does |
+| I2 | `move/dmk_move_ui.c:169` `un_put` | Undo restores Follow without `chord_off` / `chord_join`: a synth silent until the next chord, or chord notes left sounding on a Free synth (a slot can be 8 bars) | as `pat_changed` does. **Fixed in Phase 3** (`psnd_follow`) |
 | I3 | `move/dmk_move_ui.c:169` | Undo puts back the whole of `ui.val`, so it also reverts the tempo, the arp hold and the Save page's values, none recorded; `ui.preset` left stale | snapshot only what an edit recorded; recompute `ui.preset` |
-| I4 | `move/dmk_move_ui.c:190` `un_check` | An Undo in the block right after a pattern or scene switch writes the old pattern into the new (rare, data loss) | `un_check()` first in `undo_do` and `undo_mark` |
+| I4 | `move/dmk_move_ui.c:190` `un_check` | An Undo in the block right after a pattern or scene switch writes the old pattern into the new (rare, data loss) | `un_check()` first in `undo_do` and `undo_mark`. **Fixed in Phase 3**, with a test and a mutant |
 | I5 | `move/dmk_move_ui.c:628` (core `dmk_ui.c` `roll_held`, the chord slot hold) | A pad held on Roll or Chord turns every knob, Shift + jog and Loop into edits of the held note or chord slot, while the screen shows the normal names | only knobs 1-4 edit the held note; show its fields |
 | I6 | `move/dmk_move_ui.c:948` | Rec off while Ready under Move's clock: Move plays, Demake stays stopped until Move stops | start on Move's nearest step, or keep Ready |
 | I7 | `move/dmk_move_ui.c:401` `held_note` | The chord row on a held step adds or removes each note (shared notes disappear), silently | clear the held step once and write the chord |
