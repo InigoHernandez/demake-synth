@@ -23,8 +23,8 @@
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
 #ifdef DMK_MOVE
-#define ST_VER 18u  /* the Move's alone, its songs never reach the FM-1: 18: each pattern its sound; 17: four synths; 16:
-                       a roll's count two bytes */
+#define ST_VER 19u  /* the Move's alone, its songs never reach the FM-1: 19: eleven progressions more; 18: each pattern
+                       its sound; 17: four synths; 16: a roll's count two bytes */
 #define ST_SYN (st_ver >= 17u ? DMK_SYNTHS : 3)        /* synths a song holds: three before 17 */
 #else
 #define ST_SYN DMK_SYNTHS
@@ -282,6 +282,12 @@ static void synth_new(int s)
 #ifdef DMK_MOVE
 /* before 16 the Move's lists were the FM-1's: a progression's value where the longer list has it, the User ones still last */
 static uint8_t prog_moved(int v) { int i = v * 20 / 128; return choice_val(i < 16 ? i : i - 16 + PROG_PRE, PROG_N); }
+/* 16-18: forty-five presets and the User ones; the new ones go in before the User ones */
+static uint8_t prog_moved19(int v)
+{
+    int i = v * (PROG_PRE_18 + 4) / 128;
+    return choice_val(i < PROG_PRE_18 ? i : i - PROG_PRE_18 + PROG_PRE, PROG_N);
+}
 #endif
 
 DMK_SMALL static int song_pack(uint8_t *o)                        /* the song open into o: its length, or -1 too long */
@@ -547,6 +553,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
             scn[g].prog = *p++; scn[g].mute = (uint8_t)(*p++ & ((1u << ST_SYN) - 1u));
 #ifdef DMK_MOVE
             if (st_ver < 16u) scn[g].prog = prog_moved(scn[g].prog);
+            else if (st_ver < 19u) scn[g].prog = prog_moved19(scn[g].prog);
 #endif
         }
         scn_cur = (uint8_t)(cur < SCENES && scn[cur].used ? cur : 0);

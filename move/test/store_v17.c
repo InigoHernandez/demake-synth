@@ -2,7 +2,8 @@
 /* A store as the Move's builds before each pattern kept its sound wrote it (format 17: four synths, the sound the
  * song's): proof.sh builds this file against commit 982fde6's move/ and firmware/ (git archive), for
  * move/test/inside.c to open. Synth 2: notes on its patterns 1 and 3, its pattern 4 kept empty, cutoff 33 and level
- * 99; synth 1 on the chords with its roll empty.
+ * 99; synth 1 on the chords with its roll empty; scene 1 on User 2, scene 2 on Bell tower (the progressions' list as
+ * it was: forty-five presets).
  *   store_v17 DIR */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -26,6 +27,8 @@ int main(int argc, char **argv)
     for (int t = 0; t < 8; t++) seq_add(1, t, 2, 60 + t % 5, 90);
     ui.val[1][PG_FILTER][0][0] = 33; ui.val[1][PG_AMP][0][4] = 99;
     ch.follow[0] = FW_PLAYS; sq[0].count = 0;
+    pat_prog_put(choice_val(PROG_PRE + 1, PROG_N));     /* scene 1 on User 2, scene 2 on Bell tower (the 45th) */
+    scn_keep(); scn[1] = scn[0]; scn[1].prog = choice_val(44, PROG_N);
     if (song_save(0)) { puts("store_v17: not saved"); return 1; }
     for (int k = 0; k < 400 && !atomic_load(&sv.done); k++) { v2_render(i, out, 128); usleep(2000); }
     v2_destroy(i);

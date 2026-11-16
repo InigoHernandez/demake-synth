@@ -93,14 +93,14 @@ one "a held step takes no pads" $UI "s#if (p < 16) held_pad(p, note + ui.octave 
 one "Shift + steps not the scenes" $UI "s#if (mc.shift || song_row()) { if (mc.shift) mc.used = 1; scene_key(k); return; }#;#" ctl
 one "Capture writes nothing" $UI "s#if (roll_strum(s, a, a + held, c->note, c->vel, 0, 1, 0) < 0) { roll_full(); break; }#;#" ctl
 one "a pad velocity lost" $UI "s#mv_kvel\[p\] = mv_vel;#mv_kvel[p] = 100;#" ctl
-one "the chord row plays single notes" $UI "s#mv_kchord\[p\] = p >= 16;#mv_kchord[p] = 0;#" ctl
+one "the chord row plays single notes" $UI "s#mv_kchord\[p\] = p >= 16 || cm;#mv_kchord[p] = cm;#" ctl
 one "a chord pad forgotten" $UI "s#pen_take(s, ui.key_ch\[p\], ui.key_nch\[p\], p);#;#" ctl
 one "a pad held does not take the step" $UI "s#const int picked = pad_held();#const int picked = 0;#" ctl
 one "a step moved by Follow" $UI "s#if (ch.follow\[s\] == FW_FREE || mc.fset >> s \& 1u) return;#return;#" ctl
 one "the jog still turns the sound" $UI "s#if (mc.page != MP_SOUND) {#if (0) {#" ctl
 one "the list moves one synth" $UI "s#for (int s = 0; s < DMK_SYNTHS; s++) pat_pick_syn(s, p);#pat_pick_syn(vsyn(), p);#" ctl
 one "Rec and Play do not wait" $GLUE "s#if (seq_on || !seq_rec || song_row()) return 0;#return 0;#" clock
-one "a chord pad starts nothing" $UI "s#if (p >= 16 \&\& stopped_rec \&\& ui.page#if (p >= 16 \&\& !seq_on \&\& seq_rec \&\& ui.page#" clock
+one "a chord pad starts nothing" $UI "s#if ((p >= 16 || cm) \&\& stopped_rec \&\& ui.page#if ((p >= 16 || cm) \&\& !seq_on \&\& seq_rec \&\& ui.page#" clock
 one "a take off the steps of Move" $UI "s#if (ready) ck_take_start();#;#" clock
 one "a click loads no pattern" $UI "s#if (mc.plist) { plist_click(); return; }#if (mc.plist) { mc.plist = 0; return; }#" ctl
 one "a page without its picture" $UI "s#case MP_LFO: pic_lfo(p); break;#case MP_LFO: break;#" "draw /tmp/mut_save"
@@ -116,7 +116,7 @@ core "a pattern stops at 96 notes" $SEQ "s#if (q->count >= SEQ_NOTES) return -1;
 core "a slot just short of four synths full" $ST "s#define ST_SLOT 0x60000u#define ST_SLOT 0x50000u#"
 core "a count saved in one byte" $ST "s#\*p++ = (uint8_t)q->count; \*p++ = (uint8_t)(q->count >> 8);#*p++ = (uint8_t)q->count; *p++ = 0;#"
 core "a song of before read with two" $ST "s#if (st_ver >= 16u) { if (e - p < 1) return -1;#if (st_ver >= 1u) { if (e - p < 1) return -1;#"
-core "a scene of before keeps its place" $ST "s#if (st_ver < 16u) scn\[g\].prog = prog_moved(scn\[g\].prog);#;#"
+core "a scene of before keeps its place" $ST "s#if (st_ver < 16u) scn\[g\].prog = prog_moved(scn\[g\].prog);#if (0) scn[g].prog = prog_moved(scn[g].prog);#"
 core "a User progression moved a place out" $ST "s#return choice_val(i < 16 ? i : i - 16 + PROG_PRE, PROG_N);#return choice_val(i < 16 ? i : i - 15 + PROG_PRE, PROG_N);#"
 core "a scale of before keeps its place" $ST "s#ui.val\[s\]\[PG_CHORD\]\[1\]\[1\] = choice_val(ui.val\[s\]\[PG_CHORD\]\[1\]\[1\] \* 6 / 128, MO_COUNT);#;#"
 core "the keys type of before keeps its place" $ST "s#ui.val\[s\]\[PG_CHORD\]\[2\]\[1\] = choice_val(ui.val\[s\]\[PG_CHORD\]\[2\]\[1\] \* 8 / 128, KT_COUNT);#;#"
@@ -160,12 +160,24 @@ core "a pattern keeps no sound" $FUI "s#^static void psnd_keep(int s) { psnd_tak
 core "the recording glides" $FUI "s#if (choice_of(pg, row, k)) return 0;#if (i < PSND_PAGE_VALS) return 1; if (choice_of(pg, row, k)) return 0;#"
 core "a turn on the way overwritten" $FUI "s#if (\*v != psg\[s\].last\[i\]) { psg\[s\].on\[i\] = 0; continue; }#;#"
 core "kept on the way where it is" $FUI "s#d->v\[i\] = psg\[s\].on\[i\] ? psg\[s\].to\[i\] : \*psnd_val(s, i);#d->v[i] = *psnd_val(s, i);#"
-core "the sounds not read back" $ST "s#if (st_ver >= 18u)                              /\* each pattern#if (st_ver >= 19u)                              /* each pattern#"
+core "the sounds not read back" $ST "s#if (st_ver >= 18u)                              /\* each pattern#if (st_ver >= 99u)                              /* each pattern#"
 core "old songs patterns without the sound" $ST "s#psnd_take(s, \&psnd\[s\]\[g\]);#continue;#"
 core "an old empty pattern on the chords" $ST "s#if (!spat\[s\]\[g\].count \&\& g != scn\[scn_cur\].pat\[s\]) psnd\[s\]\[g\].follow = FW_FREE;#;#"
 core "the open one off the chords" $ST "s#if (!spat\[s\]\[g\].count \&\& g != scn\[scn_cur\].pat\[s\])#if (!spat[s][g].count)#"
 core "a copy without its sound" $SEQ "s#^    psnd_copy(s, from, q);#    ;#"
 core "Undo before the check (I4)" move/dmk_move_ui.c "s#^    un_check();                        /\* (a switch in this block: never#    ;                        /* (a switch in this block: never#"
+core "the next eight of a style unread" move/dmk_move_ui.c "s#const int n = style_progs(mc.style, list), at = mc.spage \* CM_PADS + i;#const int n = style_progs(mc.style, list), at = i;#"
+core "row 4 the same chord" $CH "s#col = (code - 1) % CM_VAR, var = (code - 1) / CM_VAR;#col = (code - 1) % CM_VAR, var = 0;#"
+core "nothing that can come next" $CH "s#for (i = 0; i < 9 \&\& n < CM_PADS; i++) {#for (i = 0; i < 0 \&\& n < CM_PADS; i++) {#"
+core "what comes next repeats the progression" $CH "s#^        if (dup) continue;#        (void)dup;#"
+core "every chord a tonic" $CH "s#\& 1u ? F\[root\] : CF_BORROWED;#\& 1u ? CF_TONIC : CF_BORROWED;#"
+core "a borrowed chord by its root" $CH "s#\& 1u ? F\[root\] : CF_BORROWED;#\& 1u ? F[root] : F[root];#"
+core "chord mode deaf to the key" $CH "s#root = 48 + (seq_key + pads\[col\].root) % 12 + oct \* 12;#root = 48 + pads[col].root % 12 + oct * 12;#"
+core "row 2 plays the chords in the key in chord mode" move/dmk_move_ui.c "s#if (chord_mode() \&\& p >= CM_ROW2) { prog_pad(p - CM_ROW2); return; }#if (0) { prog_pad(p - CM_ROW2); return; }#"
+core "Keys on not chord mode" move/dmk_move_ui.c "s#return mc.page == MP_CHORD || (ch.keys >> vsyn() \& 1u);#return mc.page == MP_CHORD;#"
+core "old songs on the wrong progression" $ST "s#else if (st_ver < 19u) scn\[g\].prog = prog_moved19(scn\[g\].prog);#;#"
+core "REC writes the chord in the key" $FUI "s#(mv_kcm\[k\] ? cm_write(mv_kcm\[k\]) : slot_write(n))#(slot_write(n))#"
+core "a held step takes one note" move/dmk_move_ui.c "s#^        if (cm) held_cm(cm);#        if (0) held_cm(cm);#"
 one "Keys still on track 4" $UI "s#if (mc.shift \\&\\& !mc.mute \\&\\& !mc.copy \\&\\& !mc.del) {#if (0) {#" ctl
 exit $bad
 '

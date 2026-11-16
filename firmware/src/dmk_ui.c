@@ -135,7 +135,8 @@ static const char *const PROGS[PROG_N] = {"First snow", "Last train", "Fogbound"
     "Cold platform", "Ice road", "Harbour lamps", "Far signal", "Cable car", "Ghost market", "Late ferry", "Wet asphalt",
     "Rooftop", "Soft arcade", "Drift ice", "Open water", "Paper lantern", "Stone garden", "Shrine steps", "Slow rust",
     "Mirror hall", "Neon rain", "Long shadows", "Tidewater", "Old projector", "Snow globe", "Empty mall", "Street lamp",
-    "Dust storm", "Salt flats", "Red desert", "Sun temple", "Bell tower",
+    "Dust storm", "Salt flats", "Red desert", "Sun temple", "Bell tower", "Basement", "Tram depot", "Steam pipes",
+    "Signal box", "Velvet chair", "Corner store", "Hill road", "Old tale", "Andalusia", "Home again", "Four winds",
 #endif
     "User 1", "User 2", "User 3", "User 4"};
 static uint8_t choice_val(int i, int n) { return (uint8_t)(i * 128 / n + 64 / n); }   /* a choice's place, its middle */
@@ -296,9 +297,16 @@ static void sp_sync(void);
 static const choice_t *choice_of(int page, int row, int k);
 static int choice_index(const choice_t *c, int v);
 /* the progression stepped: its own mode and voicing come with it (CHORD's ALGORITHM, Arrange's Chords) */
+#ifdef DMK_MOVE
+static void prog_to(int p);
+static void prog_step(int d) { prog_to(wrap(choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]) + (d > 0 ? 1 : -1), PROG_N)); }
+static void prog_to(int p)                              /* the progression p (the Move's row 2 picks one by its place) */
+{
+#else
 static void prog_step(int d)
 {
     int p = wrap(choice_index(choice_of(PG_CHORD, 0, 4), ui.val[0][PG_CHORD][0][4]) + (d > 0 ? 1 : -1), PROG_N);
+#endif
     const prog_t *pr;
     pr = p < PROG_PRE ? &PROG[p] : &uprog[p - PROG_PRE];
     ui.val[0][PG_CHORD][0][4] = choice_val(p, PROG_N);
@@ -3600,7 +3608,11 @@ DMK_SMALL static void ui_key(int k, int down)
             ui.key_slot[k] = 0;
             if (!seq_on && seq_rec && ui.page != PG_ROLL) {   /* stopped, REC armed: the chord into the slot at the cursor */
                 int was = ch.prog;
+#ifdef DMK_MOVE
+                ui.key_slot[k] = (uint8_t)((mv_kcm[k] ? cm_write(mv_kcm[k]) : slot_write(n)) + 1);
+#else
                 ui.key_slot[k] = (uint8_t)(slot_write(n) + 1);
+#endif
                 if (!ui.key_slot[k]) notice(ch.prog < PROG_PRE ? "User 1-4 are full" : "Eight chords at most");
                 else if (was < PROG_PRE && ch.prog >= PROG_PRE) {   /* a preset written to: its copy, said (it was silent) */
                     char t[32];
@@ -3609,7 +3621,11 @@ DMK_SMALL static void ui_key(int k, int down)
                 }
                 ui.val[0][PG_CHORD][0][4] = choice_val(ch.prog, PROG_N);
             }
+#ifdef DMK_MOVE
+            ui.key_nch[k] = (uint8_t)(mv_kcm[k] ? cm_chord(mv_kcm[k], ui.octave, ui.key_ch[k]) : chord_key(n, ui.octave, ui.key_ch[k]));
+#else
             ui.key_nch[k] = (uint8_t)chord_key(n, ui.octave, ui.key_ch[k]);
+#endif
             if (ui.key_slot[k]) ch_shown = ui.key_slot[k] - 1;
             strike(s, ui.key_ch[k], ui.key_nch[k], k);
             ui.key_roll[k] = seq_on && seq_rec && !song_rec ? 2 : 0;   /* (a song's take records the switches only) */

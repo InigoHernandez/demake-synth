@@ -126,6 +126,7 @@ static struct {
     uint8_t aud[8], naud, aud_s;       /* the notes a held step sounds, stopped; their synth */
     uint8_t base[sizeof ui.val];       /* the values as opened: Delete + a knob */
     uint8_t lit[16];                   /* notes sounding on the synth in view, a bit each */
+    uint8_t style, spage, lprog;       /* chord mode: the style row 2 shows, which eight of it; the progression seen */
 } mc;
 
 static void mv_turn(kref_t r, int d);
@@ -434,6 +435,47 @@ static void held_chord(int note)        /* the chord row: every note of that cho
     pen_take(vsyn(), t, n, 0xFF);
 }
 
+/* ------------------------------------------------------------------- chord mode (the owner's Phase 5) */
+
+/* the Chord page in view, or Keys on for the synth in view: row 2 picks the progression (Shift: its style), row 3 plays
+ * it in order and then what can come next, row 4 each of those another way (dmk_chord.c's cm_*) */
+static int chord_mode(void) { return mc.page == MP_CHORD || (ch.keys >> vsyn() & 1u); }
+#define CM_ROW2 16                     /* row 2's first pad; row 3's is 8, row 4's 0 */
+#define CM_MORE 7                      /* Shift + row 2's last pad: the style's next eight */
+static void style_of_prog(void)        /* the style row 2 shows: the progression's, at its eight */
+{
+    uint8_t list[PROG_N];
+    mc.style = (uint8_t)(ch.prog < PROG_PRE ? PROG_STYLE[ch.prog] : PS_USER);
+    const int n = style_progs(mc.style, list);
+    for (int i = 0; i < n; i++) if (list[i] == ch.prog) mc.spage = (uint8_t)(i / CM_PADS);
+}
+static void prog_pad(int i)            /* row 2 in chord mode: a progression; Shift: a style, or its next eight */
+{
+    uint8_t list[PROG_N];
+    if (mc.shift) {
+        mc.used = 1;
+        if (i < PS_COUNT) { mc.style = (uint8_t)i; mc.spage = 0; notice(PSTYLES[i]); }
+        else if (i == CM_MORE) {
+            const int n = style_progs(mc.style, list);
+            if (n > CM_PADS) mc.spage = (uint8_t)((mc.spage + 1) % ((n + CM_PADS - 1) / CM_PADS));
+        }
+        return;
+    }
+    const int n = style_progs(mc.style, list), at = mc.spage * CM_PADS + i;
+    if (at >= n) return;
+    undo_mark(0);
+    prog_to(list[at]);
+    notice(PROGS[list[at]]);
+}
+static void held_cm(int code)          /* steps held, a chord-mode pad: its chord on them */
+{
+    uint8_t t[8];
+    const int n = cm_chord(code, ui.octave, t);
+    undo_mark(0);
+    for (int i = 0; i < n; i++) held_note(t[i]);
+    pen_take(vsyn(), t, n, 0xFF);
+}
+
 /* a held step's knobs: Move, Pitch, Length, Nudge, on each of its notes (the FM-1's held note, a chord's whole). The
  * velocity on Shift + jog */
 static void held_turn(int k, int d)
@@ -577,7 +619,7 @@ static void mv_pad(int p, int vel, int down)
         mc.pkind[p] = PK_NONE;
         if (kind == PK_KEY) {
             const int sy = ui.key_sy[p], note = ui.key_note[p];
-            if (p >= 16 || ui.key_nch[p] > 0) { for (int j = 0; j < ui.key_nch[p]; j++) cap_off(ui.key_ch[p][j], sy); }
+            if (p >= 16 || mv_kcm[p] || ui.key_nch[p] > 0) { for (int j = 0; j < ui.key_nch[p]; j++) cap_off(ui.key_ch[p][j], sy); }
             else cap_off(note, sy);
             dmk_key(p, 0);
         }
@@ -586,17 +628,27 @@ static void mv_pad(int p, int vel, int down)
     }
     if (mc.pkind[p]) return;           /* (a note on twice) */
     int note;
-    if (p >= 16) note = note_of(degree_of(snap(key_root())) + (p - 16));
+    uint8_t cm = 0;                    /* chord mode's rows 3 and 4: the pad's code */
+    if (chord_mode() && p >= CM_ROW2) { prog_pad(p - CM_ROW2); return; }
+    if (chord_mode()) {
+        cpad_t pads[CM_PADS];
+        const int n = cm_pads(pads), col = p % CM_PADS;
+        if (col >= n) return;
+        cm = (uint8_t)(1 + col + (p < CM_PADS ? CM_VAR : 0));
+        note = 48 + (seq_key + pads[col].root) % 12;   /* (its root: what the key is known by) */
+    } else if (p >= 16) note = note_of(degree_of(snap(key_root())) + (p - 16));
     else note = pad_note(p);
     if (note < 0) return;
     mv_vel = (uint8_t)clampi(vel, 1, 127);
     if (steps_held()) {
-        if (p < 16) held_pad(p, note + ui.octave * 12); else held_chord(note + ui.octave * 12);
+        if (cm) held_cm(cm);
+        else if (p < 16) held_pad(p, note + ui.octave * 12); else held_chord(note + ui.octave * 12);
         return;
     }
     mv_kvel[p] = mv_vel;
     mv_knote[p] = (uint8_t)note;
-    mv_kchord[p] = p >= 16;
+    mv_kchord[p] = p >= 16 || cm;
+    mv_kcm[p] = cm;
     const int ready = ui.rec_ready && !seq_on && seq_rec;   /* this pad ends the wait: dmk_key starts it, recording */
     if (ready) ck_take_start();
     if (ready || (seq_on && seq_rec)) undo_mark(0x200u);
@@ -604,7 +656,7 @@ static void mv_pad(int p, int vel, int down)
     if (stopped_rec && ui.page == PG_ROLL) undo_mark(0);
     /* the chord row, stopped, REC lit: the FM-1 writes a progression on its Chord page alone */
     const uint8_t rec = seq_rec;
-    if (p >= 16 && stopped_rec && ui.page != PG_CHORD && ui.page != PG_ROLL) seq_rec = 0;
+    if ((p >= 16 || cm) && stopped_rec && ui.page != PG_CHORD && ui.page != PG_ROLL) seq_rec = 0;
     dmk_key(p, 1);
     seq_rec = rec;
     mc.pkind[p] = PK_KEY;
@@ -782,6 +834,7 @@ static void mv_opened(void)             /* a project opened or new: what Undo an
     mc.fset = 0;
     mc.plist = 0;
     for (int s = 0; s < DMK_SYNTHS; s++) mc.pcur[s] = (uint8_t)syn_pat(s);
+    style_of_prog();
     for (int s = 0; s < DMK_SYNTHS; s++) { mc.bar[s] = 0; if (ui.preset[s] >= DMK_SAMPLES_N) ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
 }
 
@@ -999,6 +1052,7 @@ static void mv_tick(void)
     if (mc.touch >= 0) mc.focus = mc.touch;
     if (mc.plist && ui.now - (mc.plist_t & ~1u) > MV_LIST_MS) mc.plist = 0;
     for (int s = 0; s < DMK_SYNTHS; s++) if (syn_pat(s) != mc.pcur[s]) pat_changed(s);
+    if (ch.prog != mc.lprog) { mc.lprog = ch.prog; style_of_prog(); }   /* (a knob or a scene changed it) */
 }
 
 static void mv_ctl_init(void)
@@ -1205,6 +1259,25 @@ static void mv_leds(mv_view_t *v)
         l->pad[p] = mc.pkind[p] || on ? L_WHITE : p == mc.pen[s].pad ? L_BLUE : (n % 12 == seq_key) ? L_ROSE : p < 8 || mc.in_key ? L_KEY : L_DARK;
     }
     for (int p = 16; p < 24; p++) l->pad[p] = mc.pkind[p] ? L_WHITE : p == mc.pen[s].pad ? L_BLUE : L_VIOLET;
+    if (chord_mode()) {                /* rows 3 and 4 by function (tonic blue, subdominant rose, dominant pink, borrowed
+                                          violet; row 4 dimmer), the chord sounding white; row 2 the style's eight, the
+                                          one playing white (Shift: the styles, the one shown white; the next eight blue) */
+        static const uint8_t FN[4] = {L_BLUE, L_ROSE, L_PINK, L_VIOLET}, FN_DIM[4] = {L_DBLUE, L_DROSE, L_DPINK, L_VIOLET};
+        cpad_t pads[CM_PADS];
+        uint8_t list[PROG_N];
+        const int n = cm_pads(pads), np = style_progs(mc.style, list);
+        for (int p = 0; p < 16; p++) {
+            const int col = p % CM_PADS, f = col < n ? cm_function(pads[col].root) : 0;
+            const int playing = p >= CM_PADS && seq_on && ch_shown == col && !pads[col].next;
+            l->pad[p] = col >= n ? L_OFF : mc.pkind[p] || playing ? L_WHITE : p >= CM_PADS ? FN[f] : FN_DIM[f];
+        }
+        for (int i = 0; i < CM_PADS; i++) {
+            const int at = mc.spage * CM_PADS + i;
+            uint8_t c = at < np ? (list[at] == ch.prog ? L_WHITE : L_VIOLET) : L_OFF;
+            if (mc.shift) c = i < PS_COUNT ? (i == mc.style ? L_WHITE : L_VIOLET) : i == CM_MORE && np > CM_PADS ? L_BLUE : L_OFF;
+            l->pad[CM_ROW2 + i] = c;
+        }
+    }
     for (int i = 0; i < MP_SAVE; i++) l->pad[24 + i] = i == mc.page ? PAGE_LIT[i] : PAGE_DIM[i];
     for (int t = 0; t < DMK_SYNTHS; t++)
         l->trk[t] = mc.shift ? (ch.keys >> t & 1u ? L_WHITE : L_OFF) : t == s ? L_WHITE : pat_mute >> t & 1u ? L_OFF : L_DARK;

@@ -642,6 +642,8 @@ static void psounds(const char *dir, const char *v17)
         pat_pick_syn(S, 2);
         check(ui.val[S][PG_FILTER][0][0] == 33 && ui.val[S][PG_AMP][0][4] == 99 && seq_find(S, 5, 55) >= 0,
               "its pattern 3 picked: its notes, the same sound");
+        check(ch.prog == PROG_PRE + 1 && scn[1].used && scn[1].prog * PROG_N / 128 == 44,
+              "and its progressions where they were: User 2, Bell tower (the list eleven longer, format 19)");
         v2_destroy(j);
     }
     clear_store(dir);
@@ -699,9 +701,9 @@ static void psounds(const char *dir, const char *v17)
     /* format 18: every pattern's sound saved and opened */
     check(song_save(0) == 0, "patterns with sounds of their own saved");
     psnd[S][0].v[cut] = 1; psnd[S][1].v[cut] = 2; psnd[S][0].follow = FW_FREE; ui.val[S][PG_FILTER][0][0] = 3;
-    check(song_load(0) == 0 && st_ver == 18u && psnd[S][0].v[cut] == 20 && psnd[S][1].v[cut] == 120 && psnd[S][0].follow == f0
+    check(song_load(0) == 0 && st_ver >= 18u && psnd[S][0].v[cut] == 20 && psnd[S][1].v[cut] == 120 && psnd[S][0].follow == f0
           && psnd[S][1].follow == FW_ROOT && ui.val[S][PG_FILTER][0][0] == 120 && syn_pat(S) == 1,
-          "and opened (format 18): each pattern's sound, how each follows, the open one's playing");
+          "and opened (format 18 and on): each pattern's sound, how each follows, the open one's playing");
     pat_pick_syn(S, 0);
     check(ui.val[S][PG_FILTER][0][0] == 20 && ui.val[S][PG_AMP][0][4] == 40, "and pattern 1's back on it");
     /* Undo in the block of a switch, before the ring's own check (audit I4) */
@@ -714,6 +716,136 @@ static void psounds(const char *dir, const char *v17)
         check(syn_pat(S) == 1 && sq[S].count == n && seq_find(S, 3, 60) < 0 && seq_find(S, 0, 55) >= 0 && seq_find(S, 0, 48) < 0,
               "Undo in the block of a switch: nothing of the old pattern into the new (audit I4)");
     }
+    v2_destroy(i);
+}
+
+/* ------------------------------------------------------------------- Phase 5: chord mode */
+
+static int pcs(const uint8_t *t, int n) { int m = 0; for (int i = 0; i < n; i++) m |= 1 << (t[i] % 12); return m; }
+static int pcs_of(int root, int q) { int m = 0; for (int i = 0; QI[q][i] >= 0; i++) m |= 1 << ((root + QI[q][i]) % 12); return m; }
+static int find_prog(const char *name) { for (int i = 0; i < PROG_N; i++) if (!strcmp(PROGS[i], name)) return i; return -1; }
+
+static void to_page(int i) { if (mc.page != i) mv_page(i); }   /* the Move's page, and the core's with it */
+
+static void chordmode(const char *dir)
+{
+    clear_store(dir);
+    void *i = open_at(dir);
+    /* the list: at least 24, every preset a style, each style four or more; the brief's own progressions there */
+    {
+        uint8_t list[PROG_N];
+        int every = 1, each = 1, total = 0;
+        for (int p = 0; p < PROG_PRE; p++) every &= PROG_STYLE[p] < PS_USER && PROGS[p] && !strcmp(PROGS[p], PROG[p].name);
+        for (int st = 0; st < PS_USER; st++) { const int n = style_progs(st, list); each &= n >= 4; total += n; }
+        check(PROG_PRE == 56 && sizeof PROGS / sizeof PROGS[0] == PROG_N && every && each && total == PROG_PRE && total >= 24
+              && style_progs(PS_USER, list) == 4 && list[0] == PROG_PRE,
+              "56 progressions in six styles, four or more each, the four User ones their own");
+        const prog_t *v = &PROG[find_prog("Velvet chair")], *a = &PROG[find_prog("Andalusia")], *h = &PROG[find_prog("Home again")];
+        const prog_t *t = &PROG[find_prog("Old tale")], *d = &PROG[find_prog("Hill road")], *b = &PROG[find_prog("Basement")];
+        check(v->s[0].root == 2 && v->s[0].q == Q_M9 && v->s[1].root == 7 && v->s[1].q == Q_13 && v->s[2].q == Q_MAJ9
+              && a->s[1].root == 10 && a->s[2].root == 8 && a->s[3].root == 7 && a->s[3].q == Q_MAJ
+              && h->s[0].root == 2 && h->s[1].root == 7 && h->s[2].root == 0 && t->s[1].root == 8 && t->s[3].root == 10
+              && d->mode == MO_DOR && d->s[1].q == Q_7 && b->s[0].root == 0 && b->s[1].root == 0
+              && PROG_STYLE[find_prog("Tower beacon")] == PS_MODAL && PROG[find_prog("Tower beacon")].mode == MO_PHRY,
+              "the brief's: ii9 V13 Imaj9, the Andalusian fall, ii V I, i VI III VII, Dorian i7 IV7, a dub vamp, Phrygian");
+    }
+    /* outside chord mode: row 2 the chords in the key, rows 3 and 4 the piano, as before */
+    to_page(MP_HOME); mc.shift = 0;
+    for (int s = 0; s < DMK_SYNTHS; s++) ch.keys &= (uint8_t)~(1u << s);
+    check(!chord_mode(), "Home, Keys off: not chord mode");
+    /* the Chord page: row 2 the style's eight, Shift + row 2 the styles */
+    to_page(MP_CHORD);
+    check(chord_mode() && ui.page == PG_CHORD, "the Chord page: chord mode");
+    {
+        uint8_t list[PROG_N];
+        mc.shift = 1; mv_pad(CM_ROW2 + PS_CLASSIC, 100, 1); mv_pad(CM_ROW2 + PS_CLASSIC, 0, 0); mc.shift = 0;
+        const int n = style_progs(PS_CLASSIC, list);
+        mv_pad(CM_ROW2 + 3, 100, 1); mv_pad(CM_ROW2 + 3, 0, 0);
+        check(mc.style == PS_CLASSIC && n > 3 && ch.prog == list[3] && !mc.pkind[CM_ROW2 + 3],
+              "Shift + row 2's fifth: Classic; then its fourth pad: that progression, nothing sounding");
+        mc.shift = 1; mv_pad(CM_ROW2 + PS_LOFI, 100, 1); mv_pad(CM_ROW2 + PS_LOFI, 0, 0);
+        const int nl = style_progs(PS_LOFI, list);
+        mv_pad(CM_ROW2 + CM_MORE, 100, 1); mv_pad(CM_ROW2 + CM_MORE, 0, 0); mc.shift = 0;
+        mv_pad(CM_ROW2 + 1, 100, 1); mv_pad(CM_ROW2 + 1, 0, 0);
+        check(nl > 9 && mc.spage == 1 && ch.prog == list[9], "Lo-fi's next eight (Shift + row 2's last): its tenth on pad 2");
+    }
+    /* rows 3 and 4: Four winds (I V vi IV) in C major */
+    prog_to(find_prog("Four winds"));
+    ui.val[0][PG_CHORD][1][0] = choice_val(0, 12); sp_sync();
+    {
+        cpad_t pads[CM_PADS];
+        uint8_t t[8], u[8];
+        const int n = cm_pads(pads);
+        int order = 1, nodup = 1;
+        for (int c = 0; c < 4; c++) order &= pads[c].root == PROG[ch.prog].s[c].root && pads[c].q == PROG[ch.prog].s[c].q && !pads[c].next;
+        for (int c = 4; c < n; c++) for (int k = 0; k < c; k++) nodup &= !(pads[c].root == pads[k].root && pads[c].q == pads[k].q);
+        check(n == CM_PADS && order && nodup && pads[4].next, "row 3: the progression in order, then four that can come next, none twice");
+        mv_pad(CM_PADS + 1, 100, 1);
+        const int m = ui.key_nch[CM_PADS + 1];
+        memcpy(t, ui.key_ch[CM_PADS + 1], (size_t)m);
+        mv_pad(CM_PADS + 1, 0, 0);
+        check(m >= 3 && pcs(t, m) == pcs_of(7, Q_MAJ), "row 3's second pad: the V, G B D");
+        mv_pad(1, 100, 1);
+        const int m2 = ui.key_nch[1];
+        memcpy(u, ui.key_ch[1], (size_t)m2);
+        mv_pad(1, 0, 0);
+        check(m2 >= 3 && (pcs(u, m2) >> 7 & 1) && (pcs(u, m2) != pcs(t, m) || u[0] % 12 != t[0] % 12),
+              "row 4's second pad: the V another way (richer, or inverted), its root still in it");
+        static mv_view_t vw;
+        mv_leds(&vw);
+        const uint8_t *lp = vw.led.pad;
+        check(lp[CM_PADS + 0] == L_BLUE && lp[CM_PADS + 1] == L_PINK && lp[CM_PADS + 2] == L_BLUE && lp[CM_PADS + 3] == L_ROSE
+              && lp[0] == L_DBLUE && lp[1] == L_DPINK,
+              "by function: I and vi blue, V pink, IV rose; row 4 the same dimmer");
+        int borrowed = 0;
+        for (int c = 4; c < n; c++) if (!(pc_scale() >> ((seq_key + pads[c].root) % 12) & 1u)) borrowed |= lp[CM_PADS + c] == L_VIOLET;
+        check(borrowed, "a borrowed chord (off the scale) violet");
+        /* the key moved: every chord with it */
+        ui.val[0][PG_CHORD][1][0] = choice_val(2, 12); sp_sync();
+        mv_pad(CM_PADS + 1, 100, 1);
+        const int m3 = ui.key_nch[CM_PADS + 1];
+        const int moved = pcs(ui.key_ch[CM_PADS + 1], m3) == pcs_of(9, Q_MAJ);
+        mv_pad(CM_PADS + 1, 0, 0);
+        check(moved, "the key to D: row 3's V is A major");
+        ui.val[0][PG_CHORD][1][0] = choice_val(0, 12); sp_sync();
+    }
+    /* Home again (ii7 V7 Imaj7) holds V7, the first that can come next in a major key: not shown twice */
+    {
+        cpad_t pads[CM_PADS];
+        const int was = ch.prog;
+        prog_to(find_prog("Home again"));
+        const int n = cm_pads(pads);
+        int twice = 0;
+        for (int c = 0; c < n; c++) for (int k = 0; k < c; k++) twice += pads[c].root == pads[k].root && pads[c].q == pads[k].q;
+        check(n == CM_PADS && !twice && pads[1].root == 7 && pads[1].q == Q_7, "Home again: its V7 once, what comes next after it");
+        prog_to(was);
+    }
+    /* stopped, REC lit, on the Chord page: a pad's chord written into a User progression */
+    {
+        const int was = ch.prog;
+        seq_play(0); seq_rec = 1; ch_cur = 0;
+        mv_pad(CM_PADS + 1, 100, 1); mv_pad(CM_PADS + 1, 0, 0);
+        seq_rec = 0;
+        const prog_t *u = cur_prog();
+        check(ch.prog >= PROG_PRE && u->n >= 1 && u->s[0].root == 7 && u->s[0].q == Q_MAJ, "stopped, REC: the pad's chord written (V) into a User one");
+        prog_to(was);
+    }
+    /* a step held + a chord-mode pad: that chord on it */
+    {
+        const int s = vsyn();
+        sq[s].count = 0;
+        mc.sdown[2] = 1; mc.sstep[2] = 2;
+        mv_pad(CM_PADS + 3, 100, 1); mv_pad(CM_PADS + 3, 0, 0);
+        mc.sdown[2] = 0;
+        int m = 0;
+        for (int k = 0; k < sq[s].count; k++) if (sq[s].n[k].step == 2) m |= 1 << (sq[s].n[k].note % 12);
+        check(m == pcs_of(5, Q_MAJ), "a step held, row 3's fourth pad: the IV on it");
+    }
+    /* Keys on, Home: chord mode too; off again: the piano */
+    to_page(MP_HOME);
+    ch.keys |= (uint8_t)(1u << vsyn());
+    check(chord_mode(), "Keys on (Home): chord mode");
+    ch.keys &= (uint8_t)~(1u << vsyn());
     v2_destroy(i);
 }
 
@@ -732,6 +864,7 @@ int main(int argc, char **argv)
     criticals(argv[1]);
     four(argv[1], argc > 3 ? argv[3] : NULL);
     psounds(argv[1], argc > 4 ? argv[4] : NULL);
+    chordmode(argv[1]);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

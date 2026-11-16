@@ -64,7 +64,8 @@ typedef struct { uint8_t root, q, half, pedal; } cslot_t;
 #define PROG_SLOTS 8
 typedef struct { const char *name; uint8_t mode, voicing, n; cslot_t s[PROG_SLOTS]; } prog_t;
 #ifdef DMK_MOVE
-#define PROG_PRE 45                                     /* the presets; the FM-1's sixteen first, in their places */
+#define PROG_PRE 56                                     /* the presets; the FM-1's sixteen first, in their places */
+#define PROG_PRE_18 45                                  /* (before 19: forty-five) */
 #else
 #define PROG_PRE 16
 #endif
@@ -115,9 +116,37 @@ static const prog_t PROG[PROG_PRE] = {
     {"Salt flats", MO_LDOM, VO_WIDE, 3, {{0, Q_7S11, 4, 0}, {2, Q_9, 2, 0}, {10, Q_MAJ7S5, 2, 0}}},
     {"Red desert", MO_HUNG, VO_OPEN, 4, {{0, Q_MMAJ7, 2, 0}, {8, Q_MAJ7, 2, 0}, {2, Q_7B5, 2, 0}, {7, Q_MAJ7, 2, 0}}},
     {"Sun temple", MO_DHARM, VO_CLOSE, 4, {{0, Q_MAJ7, 2, 0}, {1, Q_MAJ7, 2, 0}, {5, Q_MMAJ7, 2, 0}, {1, Q_MAJ7, 2, 0}}},
-    {"Bell tower", MO_IWATO, VO_QUART, 3, {{0, Q_QRT3, 4, 0}, {1, Q_QRT3, 2, 0}, {5, Q_QRT3, 2, 0}}}
+    {"Bell tower", MO_IWATO, VO_QUART, 3, {{0, Q_QRT3, 4, 0}, {1, Q_QRT3, 2, 0}, {5, Q_QRT3, 2, 0}}},
+    /* Phase 5 (the owner's brief): the styles the list was thin in. Dub techno: minor nines that move little, one
+     * chord's colours; lo-fi and neo-soul: ii9 V13 Imaj9 and its minor; modal: Dorian i7 IV7; classic: i VI III VII,
+     * the Andalusian fall, ii V I, I V vi IV */
+    {"Basement", MO_DOR, VO_OPEN, 2, {{0, Q_M9, 4, 0}, {0, Q_M11, 4, 0}}},
+    {"Tram depot", MO_AEOL, VO_SHELL, 2, {{0, Q_M9, 4, 0}, {7, Q_M7, 4, 0}}},
+    {"Steam pipes", MO_DOR, VO_CLOSE, 4, {{0, Q_M7, 2, 0}, {0, Q_M9, 2, 0}, {0, Q_M11, 2, 0}, {0, Q_M9, 2, 0}}},
+    {"Signal box", MO_AEOL, VO_OPEN, 2, {{0, Q_M9, 4, 0}, {8, Q_MAJ9, 4, 0}}},
+    {"Velvet chair", MO_ION, VO_SHELL, 3, {{2, Q_M9, 2, 0}, {7, Q_13, 2, 0}, {0, Q_MAJ9, 4, 0}}},
+    {"Corner store", MO_HMIN, VO_SHELL, 3, {{2, Q_M7B5, 2, 0}, {7, Q_7B9, 2, 0}, {0, Q_M9, 4, 0}}},
+    {"Hill road", MO_DOR, VO_OPEN, 2, {{0, Q_M7, 4, 0}, {5, Q_7, 4, 0}}},
+    {"Old tale", MO_AEOL, VO_CLOSE, 4, {{0, Q_M, 2, 0}, {8, Q_MAJ, 2, 0}, {3, Q_MAJ, 2, 0}, {10, Q_MAJ, 2, 0}}},
+    {"Andalusia", MO_AEOL, VO_CLOSE, 4, {{0, Q_M, 2, 0}, {10, Q_MAJ, 2, 0}, {8, Q_MAJ, 2, 0}, {7, Q_MAJ, 2, 0}}},
+    {"Home again", MO_ION, VO_CLOSE, 3, {{2, Q_M7, 2, 0}, {7, Q_7, 2, 0}, {0, Q_MAJ7, 4, 0}}},
+    {"Four winds", MO_ION, VO_OPEN, 4, {{0, Q_MAJ, 2, 0}, {7, Q_MAJ, 2, 0}, {9, Q_M, 2, 0}, {5, Q_MAJ, 2, 0}}}
 #endif
 };
+#ifdef DMK_MOVE
+/* each preset's style (the owner's six, for the Move's chord mode: row 2 shows a style's eight at a time) */
+enum { PS_DUB, PS_AMBIENT, PS_LOFI, PS_MODAL, PS_CLASSIC, PS_COLOUR, PS_USER, PS_COUNT };
+static const char *const PSTYLES[PS_COUNT] = {"Dub techno", "Ambient", "Lo-fi & neo-soul", "Modal", "Classic", "Colour scales",
+                                              "User"};
+static const uint8_t PROG_STYLE[PROG_PRE] = {
+    PS_AMBIENT, PS_LOFI, PS_AMBIENT, PS_LOFI, PS_LOFI, PS_DUB, PS_MODAL, PS_MODAL, PS_AMBIENT, PS_CLASSIC,   /* First snow.. */
+    PS_DUB, PS_AMBIENT, PS_AMBIENT, PS_AMBIENT, PS_LOFI, PS_LOFI, PS_CLASSIC, PS_COLOUR, PS_LOFI, PS_MODAL,  /* Embers.. */
+    PS_MODAL, PS_COLOUR, PS_LOFI, PS_DUB, PS_LOFI, PS_LOFI, PS_COLOUR, PS_AMBIENT, PS_COLOUR, PS_COLOUR,     /* Cable car.. */
+    PS_COLOUR, PS_CLASSIC, PS_COLOUR, PS_COLOUR, PS_AMBIENT, PS_MODAL, PS_LOFI, PS_AMBIENT, PS_AMBIENT, PS_COLOUR,   /* Shrine.. */
+    PS_MODAL, PS_COLOUR, PS_COLOUR, PS_COLOUR, PS_COLOUR,                                                    /* Dust storm.. */
+    PS_DUB, PS_DUB, PS_DUB, PS_DUB, PS_LOFI, PS_LOFI, PS_MODAL, PS_CLASSIC, PS_CLASSIC, PS_CLASSIC, PS_CLASSIC,   /* Basement.. */
+};
+#endif
 
 /* the four USER progressions (plan 4.4): written from the keys on CHORD, stopped, with REC armed; a preset's first
  * edit copies it into the first empty one */
@@ -692,6 +721,111 @@ static int chord_key(int n, int oct, uint8_t *notes)
     }
     return c;
 }
+
+#ifdef DMK_MOVE
+/* ---- the Move's chord mode (the owner's Phase 5): with the Chord page in view or Keys on, row 2 picks the progression
+ * (Shift: its style), row 3 plays its chords in order and then what can come next (a dominant back, the borrowed and
+ * substituted chords), row 4 each of them another way (an extension richer, another inversion). Every root is in
+ * semitones above the key, so they follow the key and its scale as they change; voiced as the progression is, in its
+ * register (an octave a press of Up or Down), so a chord written from a pad plays back as it sounded */
+#define CM_PADS 8                                       /* a row */
+#define CM_VAR 8                                        /* a pad's code: 1 + its column, + 8 on row 4 */
+enum { CF_TONIC, CF_SUB, CF_DOM, CF_BORROWED };
+typedef struct { uint8_t root, q, pedal, next; } cpad_t;
+/* what can come next, most useful first: in a minor key V7b9, bVI, iv, the Neapolitan, the backdoor bVII9, the relative
+ * major, V of iv, V of V, the major tonic; in a major one V7, the borrowed iv and bVI, bVII9, V of V, V of vi, the
+ * tritone's bII, V of ii, the minor tonic */
+static const uint8_t CM_NEXT[2][9][2] = {
+    {{7, Q_7}, {5, Q_M7}, {8, Q_MAJ7}, {10, Q_9}, {2, Q_7}, {4, Q_7}, {1, Q_MAJ7}, {9, Q_7}, {0, Q_M9}},
+    {{7, Q_7B9}, {8, Q_MAJ7}, {5, Q_M9}, {1, Q_MAJ7}, {10, Q_9}, {3, Q_MAJ7}, {0, Q_7}, {2, Q_7}, {0, Q_MAJ9}},
+};
+/* each quality's other way: an extension up (or a near colour where there is none) */
+static const uint8_t CM_RICH[Q_COUNT] = {
+    [Q_M] = Q_MADD9, [Q_MAJ] = Q_ADD9, [Q_M7] = Q_M9, [Q_MAJ7] = Q_MAJ9, [Q_7] = Q_9, [Q_M7B5] = Q_M9B5, [Q_MADD9] = Q_M9,
+    [Q_SUS2] = Q_SUS24, [Q_M9] = Q_M11, [Q_MAJ9] = Q_MAJ7S11, [Q_6] = Q_69, [Q_M11] = Q_M13, [Q_ADD9] = Q_69,
+    [Q_MMAJ7] = Q_MMAJ9, [Q_M6] = Q_M69, [Q_7SUS4] = Q_9SUS4, [Q_9] = Q_13, [Q_DIM] = Q_DIM7, [Q_69] = Q_MAJ9,
+    [Q_M69] = Q_M9, [Q_SUS4] = Q_7SUS4, [Q_AUG] = Q_7S5, [Q_5] = Q_OPEN5, [Q_MAJ7S11] = Q_MAJ13, [Q_13] = Q_7S11,
+    [Q_MADD11] = Q_M7ADD11, [Q_ADD11] = Q_MAJ9, [Q_DIM7] = Q_7B9, [Q_M13] = Q_M11, [Q_MAJ13] = Q_MAJ9, [Q_MMAJ9] = Q_MMAJ7,
+    [Q_9SUS4] = Q_7SUS4, [Q_7B9] = Q_7S9, [Q_7S9] = Q_7B13, [Q_7S11] = Q_13, [Q_7B13] = Q_7B9, [Q_7B5] = Q_7S5,
+    [Q_7S5] = Q_7B5, [Q_MAJ7S5] = Q_MAJ7, [Q_MAJ7SUS2] = Q_MAJ9, [Q_M7ADD11] = Q_M11, [Q_M9B5] = Q_M7B5,
+    [Q_SUSB2] = Q_7SUSB9, [Q_7SUSB9] = Q_SUSB2, [Q_MADDB9] = Q_M, [Q_SUS24] = Q_SUS2, [Q_QRT3] = Q_QRT4, [Q_QRT4] = Q_QRT5,
+    [Q_QRT5] = Q_QRT3, [Q_OPEN5] = Q_5, [Q_SHM7] = Q_M9, [Q_SHMAJ7] = Q_MAJ9, [Q_SH7] = Q_9,
+};
+static int cm_minor(void) { uint16_t m = pc_scale(); return (m >> ((seq_key + 3) % 12) & 1u) && !(m >> ((seq_key + 4) % 12) & 1u); }
+static int cm_pads(cpad_t *o)                           /* row 3, left to right: the progression in order, then what can
+                                                           come next (none of it twice): how many */
+{
+    const prog_t *pr = cur_prog();
+    int n = 0, i, k, mi = cm_minor();
+    for (i = 0; i < pr->n && n < CM_PADS; i++, n++) {
+        o[n].root = (uint8_t)(pr->s[i].root % 12); o[n].q = (uint8_t)(pr->s[i].q < Q_COUNT ? pr->s[i].q : 0);
+        o[n].pedal = pr->s[i].pedal; o[n].next = 0;
+    }
+    for (i = 0; i < 9 && n < CM_PADS; i++) {
+        int dup = 0;
+        for (k = 0; k < n; k++) dup |= o[k].root == CM_NEXT[mi][i][0] && o[k].q == CM_NEXT[mi][i][1];
+        if (dup) continue;
+        o[n].root = CM_NEXT[mi][i][0]; o[n].q = CM_NEXT[mi][i][1]; o[n].pedal = 0; o[n].next = 1;
+        n++;
+    }
+    return n;
+}
+static int cm_function(int root)                        /* a chord's function by its root: borrowed when off the scale */
+{
+    static const uint8_t F[12] = {CF_TONIC, CF_DOM, CF_SUB, CF_TONIC, CF_TONIC, CF_SUB, CF_DOM, CF_DOM, CF_TONIC, CF_TONIC,
+                                  CF_DOM, CF_DOM};
+    root %= 12;
+    return pc_scale() >> ((seq_key + root) % 12) & 1u ? F[root] : CF_BORROWED;
+}
+static int cm_chord(int code, int oct, uint8_t *notes)  /* a pad's chord (its code: 1 + column, + CM_VAR on row 4) */
+{
+    cpad_t pads[CM_PADS];
+    const int n = cm_pads(pads), col = (code - 1) % CM_VAR, var = (code - 1) / CM_VAR;
+    int c, root, q, inv = ch.invert, pn = ch_pn, i;
+    if (code < 1 || col >= n) return 0;
+    q = var ? CM_RICH[pads[col].q] : pads[col].q;
+    root = 48 + (seq_key + pads[col].root) % 12 + oct * 12;
+    if (var) ch.invert = (uint8_t)(ch.invert <= 1 ? 2 : 1);   /* another inversion: the first, or as built */
+    ch_pn = 0;
+    c = voice_x(root, QI[q], pads[col].pedal, notes, 0);
+    ch.invert = (uint8_t)inv; ch_pn = (uint8_t)pn;
+    if (!seq_on) {                                      /* stopped, the page shows it, as a key's */
+        ch_name[0] = 0;
+        chord_name(ch_name, root, q);
+        ch_shown = -2; ch_root = (uint16_t)root; ch_q = (uint8_t)q; ch_cmask = 0;
+        for (i = 0; i < c; i++) ch_cmask |= (uint16_t)(1u << (notes[i] % 12));
+    }
+    return c;
+}
+static prog_t *edit_prog(void);
+static int cm_write(int code)                           /* stopped, REC lit: a pad's chord into the slot at the cursor */
+{
+    cpad_t pads[CM_PADS];
+    const int n = cm_pads(pads), col = (code - 1) % CM_VAR, var = (code - 1) / CM_VAR;
+    prog_t *p;
+    int at = ch_cur;
+    if (code < 1 || col >= n) return -1;
+    p = edit_prog();
+    if (!p) return -1;
+    if (at > p->n) at = p->n;
+    if (at >= PROG_SLOTS) return -1;
+    if (at == p->n) p->n++;
+    p->s[at].root = pads[col].root;
+    p->s[at].q = var ? CM_RICH[pads[col].q] : pads[col].q;
+    p->s[at].half = ch_len;
+    p->s[at].pedal = pads[col].pedal;
+    p->mode = seq_mode;
+    p->voicing = ch.voicing;
+    return at;
+}
+static int style_progs(int st, uint8_t *out)            /* a style's progressions, in the list's order: how many */
+{
+    int n = 0, i;
+    if (st == PS_USER) { for (i = 0; i < 4; i++) out[n++] = (uint8_t)(PROG_PRE + i); return n; }
+    for (i = 0; i < PROG_PRE; i++) if (PROG_STYLE[i] == st) out[n++] = (uint8_t)i;
+    return n;
+}
+#endif
 
 /* ---- writing your own (plan 4.4): a USER progression to write in, the preset copied into it the first time */
 static prog_t *edit_prog(void)                          /* 0: the four are full */

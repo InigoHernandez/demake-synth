@@ -358,6 +358,7 @@ static void note_on_vel(int sy, int n, int src, int vel)
                                                            goes down and in its key's roll; each key's note, any pitch;
                                                            the chord row's keys */
 static uint8_t mv_vel = VEL_KEY, mv_kvel[DMK_KEYS], mv_knote[DMK_KEYS], mv_kchord[DMK_KEYS];
+static uint8_t mv_kcm[DMK_KEYS];                        /* a chord-mode pad's code (dmk_chord.c's cm_chord), 0 none */
 #define KEY_VEL mv_vel
 #define KEY_VEL_OF(k) mv_kvel[k]
 #define KEY_NOTE(k) mv_knote[k]
