@@ -22,7 +22,26 @@ function describe(id) {
 }
 
 let midi = null, busy = false, pkg = null, stock = null;
-const say = (t, cls) => { const s = $("say"); s.textContent = t; s.className = "log" + (cls ? " " + cls : ""); };
+const M = window.dmk || { swap: (e, k, f) => f(), shake() {} };
+/* the page's line: a new one swaps in, an error shakes; quiet (the meter's share, the check's count) writes at once */
+const say = (t, cls, quiet) => {
+  const line = $("say"), w = $("say-t"), key = t + "|" + (cls || "");
+  const set = () => { w.textContent = t; line.className = "log" + (cls ? " " + cls : ""); if (cls === "err") M.shake(w); };
+  if (!quiet) { M.swap(w, key, set); return; }
+  w._key = key; w._apply = set;
+  if (!w._out) set();
+};
+const put = (id, t) => { const e = $(id); M.swap(e, t, () => { e.textContent = t; }); };
+/* the steps, a stepper: the one to do now lit, its action the step's one lit button (the other in outline), the
+ * ones done checked; never back */
+let reached = 0;
+const lead = (b, on) => { b.classList.toggle("lit", on); b.classList.toggle("pill", !on); };
+const stepAt = (n) => {
+  reached = Math.max(reached, n);
+  [$("s-connect"), $("s-install")].forEach((s, i) => { s.classList.toggle("done", reached > i); s.classList.toggle("now", reached === i); });
+  lead($("connect"), reached === 0);
+  lead($("install"), reached >= 1);
+};
 const lock = (on) => {
   busy = on;
   $("connect").disabled = on;
@@ -41,9 +60,10 @@ async function access() {
 }
 
 function show(id) {
-  $("st-link").textContent = id ? "Connected" : "Not found";
-  $("st-runs").textContent = id ? describe(id) : "–";
-  $("st-id").textContent = id ? id.text : "–";
+  const link = $("st-link"), on = id ? "on" : "no";
+  M.swap(link, on, () => { link.textContent = id ? "Connected" : "Not found"; link.dataset.link = on; });
+  put("st-runs", id ? describe(id) : "–");
+  put("st-id", id ? id.text : "–");
 }
 
 $("connect").addEventListener("click", async () => {
@@ -52,17 +72,18 @@ $("connect").addEventListener("click", async () => {
   try {
     const up = new Updater(await access(), (m) => console.log(m));
     say("Asking the FM-1…");
-    $("connect-sub").textContent = "Asking the FM-1…";
+    put("connect-sub", "Asking the FM-1…");
     const dev = await up.find();
     if (!dev) {
       show(null);
-      $("connect-sub").textContent = "Not found: try again";
+      put("connect-sub", "Not found: try again");
       say("No FM-1 answered. Check the cable, close DAWs and other tabs, try again.", "err");
       return;
     }
     dev.link.close();
     show(dev.id);
-    $("connect-sub").textContent = `Connected · ${dev.id.text}`;
+    put("connect-sub", `Connected · ${dev.id.text}`);
+    stepAt(1);
     const what = describe(dev.id);
     if (/^ota-/i.test(dev.id.model)) say(`${what}. Press Install to finish it.`);
     else say(`It runs ${what}. ` + (pkg ? `Press Install for ${pkg.label}.` : "Choose a .fwsc in step 02, then Install."), "ok");
@@ -77,7 +98,7 @@ function takePackage(raw, label) {
   if (!new TextDecoder("latin1").decode(raw).includes("FELUCCA-LOADER-1"))
     throw new Error("no update loader this page can drive (M-VAVE's own? Use Back to V15)");
   pkg = { product, image: logicalImage(raw), label };
-  $("install-sub").textContent = `${label} · ${product}`;
+  put("install-sub", `${label} · ${product}`);
   $("install").disabled = busy;
 }
 
@@ -92,13 +113,13 @@ function takePackage(raw, label) {
     if (meta.sha256 && await sha256hex(raw) !== meta.sha256) throw new Error(`${meta.file} does not match its fingerprint`);
     if (productOf(raw) !== meta.product) throw new Error(`${meta.file} is not ${meta.product}`);
     takePackage(raw, `Demake ${meta.version}`);
-    $("st-pkg").textContent = `${meta.version}, ${meta.date}`;
-    $("pkg-note").textContent = `Ready to install: ${(raw.length / 1024).toFixed(0)} KB.`;
+    put("st-pkg", `${meta.version}, ${meta.date}`);
+    put("pkg-note", `Ready to install: ${(raw.length / 1024).toFixed(0)} KB.`);
   } catch (e) {
-    $("st-pkg").textContent = "Not published yet";
-    $("pkg-note").textContent = e.message === "none"
+    put("st-pkg", "Not published yet");
+    put("pkg-note", e.message === "none"
       ? "A package is published here once it has run on an FM-1. Connect works already, and a test build installs from a file in step 02."
-      : `The package could not be read: ${e.message}.`;
+      : `The package could not be read: ${e.message}.`);
   }
 })();
 
@@ -107,7 +128,7 @@ $("file").addEventListener("change", async (ev) => {
   if (!f) return;
   try {
     takePackage(new Uint8Array(await f.arrayBuffer()), f.name);
-    $("pkg-note").textContent = `Ready: ${f.name}, identity ${pkg.product}. Press Install, then leave the cable in until it says done.`;
+    put("pkg-note", `Ready: ${f.name}, identity ${pkg.product}. Press Install, then leave the cable in until it says done.`);
     say(`${f.name} is ready to install.`, "ok");
   } catch (e) { say(`${f.name}: ${e.message}`, "err"); }
 });
@@ -142,18 +163,20 @@ async function write(p, verb, look) {
     if (!inst.isOpen()) inst.open({ ...look, total });
     inst.step(k, a);
     if (k === "done") inst.finish(`Done: your FM-1 runs ${a === p.product && look.ran ? look.ran : runs(a)}.`, true);
-    if (k === "start") say(`Found ${a}. ${verb}: do not unplug.`);
-    else if (k === "verify") say(`Checking the package (${a})…`);
+    if (k === "start") { say(`Found ${a}. ${verb}: do not unplug.`); if (!look.out) stepAt(1); }
+    else if (k === "verify") say(`Checking the package (${a})…`, "", true);
     else if (k === "loader") say("The FM-1 restarts into its update mode…");
-    else if (k === "write") { const v = Math.min(99, Math.round(a * 100 / total)); progress(v); say(`Writing, ${v} %`); }
+    else if (k === "write") { const v = Math.min(99, Math.round(a * 100 / total)); progress(v); say(`Writing, ${v} %`, "", true); }
     else if (k === "reboot") { progress(100); say("Written. The FM-1 starts again…"); }
     else if (k === "done") { say(`Done: the FM-1 runs ${describe({ model: "FM-1", version: parseInt(a.split("_")[1], 10), text: a })}.`, "ok");
+      if (!look.out) stepAt(2);
       show({ model: "FM-1", text: a, version: parseInt(a.split("_")[1], 10) }); }
   };
   try {
     const up = new Updater(await access(), (m) => console.log(m));
     if (await up.resume(p.image, step, p.product)) {
       say(`That finished an update cut short: the FM-1 runs ${p.product}.`, "ok");
+      if (!look.out) stepAt(2);
       inst.finish(`That finished an update cut short: your FM-1 runs ${look.ran || runs(p.product)}.`, true);
       return;
     }
@@ -176,9 +199,9 @@ $("stock-file").addEventListener("change", async (ev) => {
   if (!f) return;
   try {
     stock = await validateStockPackage(new Uint8Array(await f.arrayBuffer()));
-    $("stock-sub").textContent = "Official V15, checked";
+    put("stock-sub", "Official V15, checked");
     say("The official V15 file checks out.", "ok");
-  } catch (e) { $("stock-sub").textContent = "Not the official V15 file"; say(`${f.name}: ${e.message}`, "err"); }
+  } catch (e) { put("stock-sub", "Not the official V15 file"); say(`${f.name}: ${e.message}`, "err"); }
   lock(false);
 });
 

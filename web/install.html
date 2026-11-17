@@ -12,7 +12,7 @@
   <title>Demake installer</title>
   <meta name="description" content="Install Demake on the M-VAVE FM-1 over USB, from the browser, and go back to the official firmware.">
   <link rel="icon" href="img/icon.png">
-  <link rel="stylesheet" href="style.css?v=36">
+  <link rel="stylesheet" href="style.css?v=37">
 </head>
 <body>
 <main class="canvas hxp">
@@ -48,12 +48,12 @@
       <p class="tt"><b>Demake for the FM&#8209;1</b><span id="st-pkg">Looking…</span></p>
       <p class="note" id="pkg-note">Looking for the package…</p>
     </div>
-    <p class="log" id="say" role="status" aria-live="polite">Not connected.</p>
+    <p class="log" id="say" role="status" aria-live="polite"><span id="say-t">Not connected.</span></p>
     <span class="ticks bar" id="bar" hidden aria-label="Written"></span>
   </section>
 
-  <!-- 01 connect -->
-  <section class="g strip say"><span class="no">01</span><span class="lb">Plug it in, switch it on, press Connect.</span></section>
+  <!-- 01 connect (a stepper: the step to do now lit, one done checked; install.js) -->
+  <section class="g strip say now" id="s-connect"><span class="no"><span class="nn">01</span><svg class="ok" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M7.5 12.5l3 3 6-6.5"/></svg></span><span class="lb">Plug it in, switch it on, press Connect.</span></section>
   <section class="g step one">
     <p class="body">A cable that carries data. Allow MIDI when the browser asks.</p>
     <button class="act a1 lit" id="connect">Connect</button>
@@ -61,10 +61,10 @@
   </section>
 
   <!-- 02 install -->
-  <section class="g strip say"><span class="no">02</span><span class="lb">Press Install, then wait until it says done.</span></section>
+  <section class="g strip say" id="s-install"><span class="no"><span class="nn">02</span><svg class="ok" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11"/><path d="M7.5 12.5l3 3 6-6.5"/></svg></span><span class="lb">Press Install, then wait until it says done.</span></section>
   <section class="g step list">
     <p class="body">About a minute. It writes only its own slot and data: MONO2K's saves stay.</p>
-    <button class="act a1 lit" id="install" disabled>Install</button>
+    <button class="act a1 pill" id="install" disabled>Install</button>
     <p class="sub b1" id="install-sub">Not available yet</p>
     <label class="act a2 pill" id="local">Choose a .fwsc<input type="file" id="file" accept=".fwsc"></label>
     <p class="sub b2"><span>A test build, from <code>tools/fm1/build.py</code></span></p>
@@ -117,7 +117,8 @@
     <button class="lit inst-close" id="inst-close" hidden>Close</button>
   </div>
 </div>
-<script src="app.js?v=44"></script>
-<script type="module" src="install.js?v=4"></script>
+<script src="motion.js?v=1"></script>
+<script src="app.js?v=45"></script>
+<script type="module" src="install.js?v=5"></script>
 </body>
 </html>

@@ -27,9 +27,22 @@
     blocks.reverse().forEach((el) => { if (el && el.offsetHeight) el.style.minHeight = Math.ceil(el.offsetHeight / M - 0.01) * M + "px"; });
   }
 
+  /* a page arriving slides in from the side it comes from: the next from the right, the one before from the left
+   * (style.css, .enter; nothing when the reader asks for less motion) */
+  let at = -1;
+  const enter = (a, dir) => {
+    a.style.setProperty("--dir", dir);
+    a.classList.remove("enter");
+    void a.offsetWidth;
+    a.classList.add("enter");
+    a.addEventListener("animationend", () => a.classList.remove("enter"), { once: true });
+  };
+
   function show(id, scroll) {
     const i = Math.max(0, arts.findIndex((a) => a.id === id));
     arts.forEach((a, j) => a.classList.toggle("on", j === i));
+    if (at >= 0 && at !== i) enter(arts[i], i > at ? 1 : -1);
+    at = i;
     $$("a", side).forEach((l) => { if (l.getAttribute("href") === "#" + arts[i].id) l.setAttribute("aria-current", "page"); else l.removeAttribute("aria-current"); });
     const link = (a, cls, what) => a ? `<a class="${cls}" href="#${a.id}"><small>${what}</small><b>${esc($("h1", a).textContent)}</b></a>` : "<span></span>";
     pager.innerHTML = link(arts[i - 1], "prev", "Previous") + link(arts[i + 1], "next", "Next");
@@ -50,7 +63,10 @@
   window.addEventListener("hashchange", () => fromHash(true));
   fromHash(false);
   side.open = !narrow();
-  side.addEventListener("toggle", rows);
+  /* the contents fold and unfold in --duration-fast (style.css): whole rows again once they have */
+  const FOLD_MS = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--duration-fast")) || 0;
+  side.addEventListener("toggle", () => { rows(); setTimeout(rows, FOLD_MS + 50); });
+  requestAnimationFrame(() => requestAnimationFrame(() => side.classList.add("ready")));
   $("summary", side).addEventListener("click", (e) => { if (!narrow()) e.preventDefault(); });   /* folds on a phone only */
   const wide = () => { if (!narrow()) side.open = true; rows(); };
   window.addEventListener("resize", wide);

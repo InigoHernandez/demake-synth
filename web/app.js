@@ -310,7 +310,7 @@
   for (const r of [24, 12]) for (let k = 0; k < 6; k++) new Image().src = `img/bits/ring${r}_${k}.png`;
   for (let k = 0; k < 6; k++) { new Image().src = `img/bits/spark_${k}.png`; new Image().src = `img/bits/glint_${k}.png`; }
   const glinted = [...document.querySelectorAll(".nav, .foot a, .mside a, .mpager a")], here = document.querySelector(".nav[aria-current]");
-  const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .tiles .on, .page")];
+  const sprites = [...document.querySelectorAll(".bits")], ringed = [...document.querySelectorAll(".lit, .pill, .page")];
   const visible = new Set();
   const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting ? visible.add(e.target) : visible.delete(e.target)));
   [...sprites, ...ringed].forEach((el) => io.observe(el));
@@ -327,12 +327,27 @@
     if (f >= 16) { i++; f = 0; }
     LI[v] = Math.min(i, 9); LF[v] = f;
   }
+  /* the first time a piece comes into view it develops: its cells take their tones as the dither's threshold passes
+   * them, out of the ground (Libraries.dev's image loader, a mosaic settling into the picture, in the screen's 8-bit) */
+  const FULL = 16, DEV_MS = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--duration-very-slow")) || 500;
+  const develop = (h) => {
+    const t0 = performance.now();
+    const f = (now) => { const p = Math.min(1, (now - t0) / DEV_MS); h.dev = FULL * (1 - Math.pow(1 - p, 5)); draw(h); if (p < 1) requestAnimationFrame(f); };
+    requestAnimationFrame(f);
+  };
+  const seen = new IntersectionObserver((es) => es.forEach((e) => {
+    if (!e.isIntersecting) return;
+    seen.unobserve(e.target);
+    const h = heats.find((x) => x.cv === e.target);
+    if (h) develop(h);
+  }));
   const heats = [...document.querySelectorAll("canvas.heat")].map((cv) => {
-    const h = { cv, ctx: cv.getContext("2d"), img: new Image(), w: 0, h: 0, idx: null, frac: null, data: null, pat: 0 };
+    const h = { cv, ctx: cv.getContext("2d"), img: new Image(), w: 0, h: 0, idx: null, frac: null, data: null, pat: 0, dev: still ? FULL : 0 };
     h.img.onload = () => size(h);
     h.img.src = cv.dataset.heat;
     new ResizeObserver(() => size(h)).observe(cv.parentElement);
     io.observe(cv);
+    if (!still) seen.observe(cv);
     return h;
   });
   function size(h) {
@@ -353,11 +368,12 @@
   }
   function draw(h) {
     if (!h.data) return;
-    const d = h.data.data, m = B6[h.pat];
+    const d = h.data.data, m = B6[h.pat], dev = B6[0], developing = h.dev < FULL;
     for (let y = 0, j = 0; y < h.h; y++)
       for (let x = 0; x < h.w; x++, j++) {
         let i = h.idx[j];
         if (h.frac[j] > m[(y & 3) * 4 + (x & 3)] && i < 9) i++;
+        if (developing && dev[(y & 3) * 4 + (x & 3)] >= h.dev) i = 0;   /* (not yet: the ground) */
         const c = TONES[i];
         d[j * 4] = c[0]; d[j * 4 + 1] = c[1]; d[j * 4 + 2] = c[2]; d[j * 4 + 3] = 255;
       }
@@ -392,6 +408,9 @@
   const main = document.querySelector(".main"), live = document.getElementById("live"), ih = document.querySelector(".ih span");
   if (!shown || !live) return;
   const lctx = live.getContext("2d");
+  const M = window.dmk || { swap: (e, k, f) => f(), dissolve: (i, s) => { i.src = s; }, tabs() {} };
+  const SCREEN_CELL = 2;                                /* (the pictures are the screen at 2x) */
+  M.tabs(document.getElementById("pages"));
   let liveOn = false, pictured = false;
   const frame = () => new Promise((res) => { const f = () => { window.removeEventListener("demake-frame", f); res(); }; window.addEventListener("demake-frame", f); setTimeout(f, 4000); });
   window.addEventListener("demake-frame", () => {
@@ -403,8 +422,8 @@
   pages.forEach((p) => { new Image().src = p.dataset.src; p.addEventListener("click", async () => {
     const E = window.demakeLive;
     pages.forEach((q) => q.classList.toggle("on", q === p));
-    shown.src = p.dataset.src; shown.alt = p.dataset.name;
-    name.innerHTML = `<b>${p.dataset.name}</b> ${p.dataset.say}`;
+    M.dissolve(shown, p.dataset.src, SCREEN_CELL); shown.alt = p.dataset.name;
+    M.swap(name, p.dataset.name, () => { name.innerHTML = `<b>${p.dataset.name}</b> ${p.dataset.say}`; });
     main.classList.toggle("home", p === pages[0]);
     pictured = p.dataset.b === undefined;               /* the night theme: its picture */
     if (!E || pictured) { if (liveOn) { live.hidden = true; shown.hidden = false; } return; }

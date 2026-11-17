@@ -64,6 +64,14 @@
   el("rect", { x: LCD[0] - 9, y: LCD[1] - 9, width: LCD[2] + 18, height: LCD[2] + 18, rx: 16, class: "hscr" });
   const shot = el("image", { x: LCD[0], y: LCD[1], width: LCD[2], height: LCD[2], href: S("01_home"), class: "hshot" });
   shot.style.imageRendering = "pixelated";
+  /* over it while one page dissolves into the next (motion.js's mix): a canvas of the pictures' size */
+  const SHOT_PX = 480, SHOT_CELL = 2;                   /* (the pictures are the screen at 2x) */
+  const fade = el("foreignObject", { x: LCD[0], y: LCD[1], width: LCD[2], height: LCD[2], "pointer-events": "none" });
+  const fcv = document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
+  fcv.width = fcv.height = SHOT_PX;
+  fcv.style.cssText = "display: block; width: 100%; height: 100%; image-rendering: pixelated";
+  fade.appendChild(fcv);
+  fade.style.display = "none";
   el("line", { x1: 46, y1: 316, x2: 858, y2: 316, class: "hline" });
   const ctl = {};                                       /* "b3", "e1", "k12": its shape and its light */
   KEYR.forEach(([x, y, w, h], k) => {
@@ -89,20 +97,26 @@
   /* the list: a button a control */
   list.innerHTML = G.map((c, i) => `<button type="button" class="page hb${i}" data-i="${i}"><b>${c.t}</b><span>${c.r}</span></button>`).join("");
   const btns = [...list.children];
-  for (const c of G) new Image().src = S(c.img);
+  const M = window.dmk || { swap: (e, k, f) => f(), tabs() {} };
+  M.tabs(list);
+  const pics = {};
+  for (const c of G) if (!pics[c.img]) { pics[c.img] = new Image(); pics[c.img].src = S(c.img); }
   const of = (c) => [...(c.b || []).map((b) => "b" + b), ...(c.e || []).map((e) => "e" + e), ...(c.k || []).map((k) => "k" + k)];
   const owner = {};
   G.forEach((c, i) => of(c).forEach((id) => { owner[id] = i; }));
-  let cur = -1;
+  let cur = -1, was = "01_home";
   function pick(i) {
     if (i === cur || !G[i]) return;
     cur = i;
     const c = G[i], on = new Set(of(c));
     for (const id in ctl) ctl[id].g.classList.toggle("on", on.has(id));
     btns.forEach((b, j) => b.classList.toggle("on", j === i));
-    say.innerHTML = `<b>${c.t}${c.r && c.r !== c.t ? " · " + c.r : ""}</b> <span>${c.say}</span>`;
-    key.textContent = "In the emulator: " + c.key;
-    shot.setAttribute("href", S(c.img));
+    M.swap(say, c.t, () => { say.innerHTML = `<b>${c.t}${c.r && c.r !== c.t ? " · " + c.r : ""}</b> <span>${c.say}</span>`; });
+    M.swap(key, c.key, () => { key.textContent = "In the emulator: " + c.key; });
+    if (!M.mix || !M.moving() || !pics[was] || was === c.img) shot.setAttribute("href", S(c.img));
+    else M.mix(fcv, pics[was], pics[c.img], SHOT_CELL, () => { fade.style.display = ""; shot.setAttribute("href", S(c.img)); })
+      .then((r) => { if (r !== false) { fade.style.display = "none"; shot.setAttribute("href", S(c.img)); } });
+    was = c.img;
   }
   /* pointing: the drawing or the list; a tap does the same */
   let touched = false;

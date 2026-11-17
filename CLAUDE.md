@@ -45,6 +45,10 @@ colour, media, motion and space effects per synth, a store of songs and sounds. 
   change, run `tools/site_audit.js` in the browser on each page at 24, 16 and 7 modules (1280, 900 and 375 px): no
   text on text, none past its cell or over a box, every item on the 48 px lines, about one row of air after each
   section.
+  The site's motion is `web/motion.js` (swap, shake, tabs, reveal, dissolve, mix) on transitions.dev's scale, the
+  tokens in `style.css`'s `:root` (spacing `--m2 --m4 --m8 --in --mk`, corners `--r1..3`, `--duration-* --ease-*
+  --distance-* --blur-*`): pick a token by what the motion does; everything moves only under `html.motion` (scripts,
+  no wish for less motion). For the audit, let the reveals go first (`.rv` off).
 - Checks: `sh tools/check.sh`: warnings, the soft-float symbol check on armv7m, ASan + UBSan over the self-test and
   the tour with its text audit, the browser build.
 - The FM-1: `.venv/bin/python tools/fm1/build.py [--diag] [--bench] [--release X.Y.Z]` makes `build/fm1/demake*.fwsc`

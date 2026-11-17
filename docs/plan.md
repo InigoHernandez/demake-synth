@@ -845,6 +845,13 @@ hairlines, and a product maker's index; it replaced the specimen table and the o
   same dither (about 2.3 s).
 - **On a phone, Kiloy stacks** after its specimen (WORD over TYPE): the wordmark "dem / ake" and the plate "ambi /
   ent", the letters as big as the 7 modules allow, the rows edge to edge (`gen_art.py`, `stack`).
+- **Components and motion** (2026-11-17, after shadcn/ui, transitions.dev and Libraries.dev, their rules in this
+  look): named tokens for the air inside a module, the corners and the motion; one lit action a step (the installer
+  a stepper: the step to do now lit with its button, the others in outline, one done a drawn check; the link a badge
+  dot); a list of pages with one light that slides to the page shown; a line that changes swaps through a blur; a
+  section's rule draws and its parts rise as it comes into view; an error shakes; a manual page slides in from its
+  side; the screens dissolve into the next by the screen's ordered dither and the art develops out of the ground the
+  first time it is seen (`web/motion.js`). Nothing moves without scripts or when the reader asks for less motion.
 - **The rhythm** (the owner, 2026-10-24: "a lot of spacing or too close"): a section's content starts a row under its
   strip and ends a row above the next; a statement and its detail are one block (the detail 12 px under it); blocks a
   row apart. Short copy: a sentence a card, a line a caption. `tools/site_audit.js` checks it in the browser (text on
