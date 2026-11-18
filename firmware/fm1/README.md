@@ -59,7 +59,8 @@ Charles Vestal ([fm1-velocity](https://github.com/charlesvestal/fm1-velocity)); 
 `LICENSES/CS-1-LICENSING.md`; carried and changed by MONO2K (the owner's). The package builder
 `tools/fm1/fm1pkg_make.py` and `lz4blk.py`: Felucca's, unchanged; `tools/fm1/build.py` follows MONO2K's and CS-1's.
 Third party: the Terminus font (`gen/felucca_font.h`, the platform's crash and rescue screens, SIL OFL 1.1,
-`LICENSES/Terminus-OFL-1.1.txt`); the JieLi AC79 SDK's `uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin`, read from the
+`LICENSES/Terminus-OFL-1.1.txt`; one bit a pixel since 2026-11-18, `tools/fm1/font_1bit.py`: 7.6 KB of flash
+back, the same pixels); the JieLi AC79 SDK's `uboot.boot`, `cfg_tool.bin`, `eq_cfg_hw.bin`, read from the
 SDK at build time into the package (Apache-2.0, `LICENSES/Apache-2.0.txt`; none of them are in this tree).
 
 M-VAVE and FM-1 are their owners' marks; Demake is not made or endorsed by M-VAVE.

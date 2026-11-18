@@ -55,7 +55,9 @@ colour, media, motion and space effects per synth, a store of songs and sounds. 
   (identity FM-1_969 for every build since 0.4.8; `--release` sets only the version shown at boot and the file's name)
   with JieLi's toolchain in a linux/amd64 container (see
   `firmware/fm1/README.md`). The platform (`firmware/fm1/{hal,loader,src}`) is CS-1's as MONO2K carries it, GPL-3.0,
-  its headers kept; `dmk_fm1.c` is the glue.
+  its headers kept; `dmk_fm1.c` is the glue. The app slot is 581,564 B and full of samples: the build prints the
+  image's size; keep room for `--diag` and `--bench` (about 1.6 KB more), and build all three after a change. The
+  platform's Terminus font is one bit a pixel (`tools/fm1/font_1bit.py`, from the four-bit header gen_font.py writes).
 
 ## The screen
 

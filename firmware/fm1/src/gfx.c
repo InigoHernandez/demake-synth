@@ -8,7 +8,7 @@ typedef struct {               /* proportional, see tools/gen_font.py */
     uint8_t pad;               /* bitmap starts this many pixels left of the pen */
     uint8_t first, last;
     const uint8_t *adv;        /* advance per glyph */
-    const uint8_t *bw;         /* bitmap width per glyph (starts FONT_PAD left of the pen) */
+    const uint8_t *bw;         /* bitmap width per glyph (starts pad left of the pen) */
     const uint16_t *off;       /* byte offset of each glyph */
     const uint8_t *data;
 } felucca_font_t;
@@ -134,26 +134,18 @@ static uint32_t glyph(const felucca_font_t *f, uint32_t ch)
     return ch - f->first;
 }
 
-/* text, alpha-blended onto black with colour c; returns the end x */
+/* text in colour c; returns the end x. The glyphs are one bit a pixel, the leftmost the top bit (Terminus is a
+ * bitmap font: felucca_font.h, packed by tools/fm1/font_1bit.py; the four-bit ramp it replaced drew the same pixels
+ * in c, at 6 times the bytes) */
 static int32_t cv_text(int32_t x, int32_t y, const felucca_font_t *f, const char *s, uint16_t c)
 {
-    uint16_t ramp[16];
-    uint32_t r = c >> 11, g = (c >> 5) & 63u, b = c & 31u, a;
-    for (a = 0; a < 16u; a++)
-        ramp[a] = (uint16_t)(((r * a / 15u) << 11) | ((g * a / 15u) << 5) | (b * a / 15u));
     for (; *s; s++) {
-        uint32_t gi = glyph(f, (uint8_t)*s), gx, gy, w, bpr;
-        const uint8_t *gd;
-        w = f->bw[gi];
-        bpr = (w + 1u) / 2u;
-        gd = f->data + f->off[gi];
+        uint32_t gi = glyph(f, (uint8_t)*s), gx, gy, w = f->bw[gi], bpr = (w + 7u) / 8u;
+        const uint8_t *gd = f->data + f->off[gi];
         for (gy = 0; gy < f->h; gy++)
-            for (gx = 0; gx < w; gx++) {
-                uint32_t v = gd[gy * bpr + gx / 2u];
-                v = (gx & 1u) ? (v & 15u) : (v >> 4);
-                if (v)
-                    cv_pset(x - f->pad + (int32_t)gx, y + (int32_t)gy, ramp[v]);
-            }
+            for (gx = 0; gx < w; gx++)
+                if (gd[gy * bpr + gx / 8u] >> (7u - gx % 8u) & 1u)
+                    cv_pset(x - f->pad + (int32_t)gx, y + (int32_t)gy, c);
         x += f->adv[gi];
     }
     return x;
