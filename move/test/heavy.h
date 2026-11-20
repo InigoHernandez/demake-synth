@@ -93,8 +93,29 @@ static void jam(int variant)
 
 static void first_song(void) { dmk_init(7); seq_play(1); }
 
+/* the YM2612 (move/dmk_ym.c) on the last synth, its six channels full: the jam with it on the chord machine, and the
+ * worst voices with it among them */
+static void with_fm(void) { V(DMK_SYNTHS - 1, PG_SOUND, 0, 0) = DMK_SAMPLES_N; }
+static void jam_fm(void)
+{
+    jam(0);
+    with_fm();
+    sp_sync();
+    for (int n = 0; n < 6; n++) note_on_s(DMK_SYNTHS - 1, 48 + n * 5);   /* (and six held: the chip full however the chords go) */
+}
+static void worst_fm(void)
+{
+    heavy_base();
+    layer_all(90, 6);
+    filt_all(FT_LP24, 100, 100);
+    lfo_all(LT_PITCH, 60);
+    with_fm();
+    sp_sync();
+    notes12(72, 2);
+}
+
 /* case i into the core; its name (0: no such case). The heavy ones first, the sweep of every type after */
-#define HC_HEAVY 6                      /* the ones the device's CPU is read on */
+#define HC_HEAVY 8                      /* the ones the device's CPU is read on */
 static const char *heavy_case(int i)
 {
     static char nm[48];
@@ -107,6 +128,8 @@ static const char *heavy_case(int i)
     case 3: jam(2); return "jam on low samples";
     case 4: worst(-1); return "worst voices";
     case 5: worst(31); return "worst voices, Ailanthus";
+    case 6: jam_fm(); return "jam + YM2612, six notes";
+    case 7: worst_fm(); return "worst voices + YM2612";
     }
     k -= HC_HEAVY;
     if (k < SP_N) { heavy_base(); glob(FC_LOSSY, k, FM_VHS); heavy_go(); return NM("Space", k); }

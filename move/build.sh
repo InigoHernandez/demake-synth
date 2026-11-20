@@ -10,7 +10,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 
-IMAGE=demake-move-build:bookworm      # debian:bookworm-slim (arm64) + gcc 12; its glibc is 2.36, the Move's 2.35
+IMAGE=demake-move-build:bookworm-cxx  # debian:bookworm-slim (arm64) + gcc 12, g++ for ymfm; its glibc is 2.36, the Move's 2.35
 OPT=${OPT:--O2}
 OUT=build/move
 MOD=$OUT/modules/overtake/demake
@@ -29,23 +29,27 @@ done
 if [ "${MOVE_NATIVE:-0}" != 1 ] && ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     docker build --platform linux/arm64 -t "$IMAGE" - <<'DOCKER'
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev binutils file && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ libc6-dev binutils file && rm -rf /var/lib/apt/lists/*
 DOCKER
 fi
 
 rm -rf build/move/modules build/move/demake-module.tar.gz
 mkdir -p "$MOD"
 cp move/module.json move/ui.js "$MOD/"
+cp move/vendor/ymfm/LICENSE "$MOD/LICENSE-ymfm"   # (ymfm's BSD-3-Clause notice goes with the binary)
 
 INNER='
     [ "$(uname -m)" = aarch64 ] || { echo "not an aarch64 container"; exit 1; }
     # one unit (the core is a unity build); only move_plugin_init_v2 is exported, so nothing of the core can bind to
     # another module'"'"'s symbols or theirs to ours; -mtune keeps the ISA plain ARMv8-A. -fsigned-char: an aarch64 char
     # is unsigned by default, a Mac'"'"'s and the FM-1'"'"'s signed; -fwrapv: the same bits wherever a sum runs over
+    # the YM2612 (move/dmk_ymfm.cpp, ymfm in C++): no exceptions, RTTI or asserts, its own memory; the chips Demake does
+    # not use dropped at each link (--gc-sections), so nothing of the C++ library or the system is reached
+    g++ -std=c++14 $OPT -mtune=cortex-a72 -fPIC -fno-exceptions -fno-rtti -fno-threadsafe-statics -fvisibility=hidden -ffunction-sections -fdata-sections -DNDEBUG -w -c move/dmk_ymfm.cpp -o "$OUT/ymfm.o"
     gcc -std=gnu11 $OPT -mtune=cortex-a72 -DDMK_MOVE=1 -fsigned-char -fwrapv -fPIC -shared -fvisibility=hidden \
         -Wall -Wextra -Wno-unused-function -Wno-sign-compare -Wno-type-limits -Wno-implicit-fallthrough -Ifirmware/src -Ifirmware/gen \
         -Wl,-z,defs -Wl,-z,now -Wl,--as-needed -s \
-        -o "$MOD/dsp.so" move/dmk_move.c
+        -Wl,--gc-sections -o "$MOD/dsp.so" move/dmk_move.c "$OUT/ymfm.o"
     file -b "$MOD/dsp.so"
 
     # the Move has glibc 2.35: every versioned symbol must be at or under it
@@ -71,10 +75,10 @@ INNER='
 
     # the render timed on the device (move/cpu.sh): static, so it runs on the Move as it is
     gcc -std=gnu11 $OPT -mtune=cortex-a72 -DDMK_MOVE=1 -fsigned-char -fwrapv -static -Ifirmware/src -Ifirmware/gen -Imove/test \
-        -Wno-unused-function -s -o "$OUT/demake-cpu" move/test/cpu.c
+        -Wno-unused-function -s -Wl,--gc-sections -o "$OUT/demake-cpu" move/test/cpu.c "$OUT/ymfm.o"
     # what the plugin API cannot reach: every pattern full, the file of before, every scale, chord and progression
     gcc -std=gnu11 $OPT -mtune=cortex-a72 -DDMK_MOVE=1 -fsigned-char -fwrapv -static -Ifirmware/src -Ifirmware/gen \
-        -Wno-unused-function -pthread -o "$OUT/demake-inside" move/test/inside.c -lm
+        -Wno-unused-function -pthread -Wl,--gc-sections -o "$OUT/demake-inside" move/test/inside.c "$OUT/ymfm.o" -lm
 
     tar --owner=0 --group=0 --sort=name -czf "$OUT/$PKG" -C "$OUT/modules/overtake" demake
     tar -tzvf "$OUT/$PKG"

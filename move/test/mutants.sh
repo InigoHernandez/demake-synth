@@ -10,7 +10,7 @@ if [ -z "${DOCKER_CONFIG:-}" ] && [ -d "$HOME/.jieli/docker" ]; then
     DOCKER_CONFIG="$HOME/.jieli/docker"
     export DOCKER_CONFIG
 fi
-docker run --rm --platform linux/arm64 -v "$ROOT":/w -w /w demake-move-build:bookworm sh -eu -c '
+docker run --rm --platform linux/arm64 -v "$ROOT":/w -w /w demake-move-build:bookworm-cxx sh -eu -c '
 ulimit -c 0                                   # (a broken copy that crashes leaves no core file in the repo)
 F="-std=gnu11 -O2 -mtune=cortex-a72 -DDMK_MOVE=1 -fsigned-char -fwrapv -fPIC -shared -fvisibility=hidden -w -Ifirmware/src -Ifirmware/gen"
 W=/tmp/mut
@@ -23,7 +23,7 @@ one() {   # what it breaks, the file, the change, the bench that must catch it
     cp -r move/. $W/move/
     sed -i "$3" "$W/move/$2"
     if cmp -s "$W/move/$2" "move/$2"; then echo "  $1: THE CHANGE DID NOT APPLY"; bad=1; return; fi
-    gcc $F -o $W/x.so $W/move/dmk_move.c -pthread
+    gcc $F -Wl,--gc-sections -o $W/x.so $W/move/dmk_move.c build/move/ymfm.o -pthread
     set +e
     mkdir -p /tmp/mut_save
     if [ "$4" = hash ]; then
@@ -50,14 +50,14 @@ core() {   # what it breaks, the file, the change, the bench (none: inside)
     set +e
     if [ "${4:-}" = "" ] || [ "${4:-}" = san ]; then
         if [ "${4:-}" = san ]; then                         # (a memory fault: only the sanitizer is sure to see it)
-            gcc $G -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm ||
+            gcc $G -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -pthread -Wl,--gc-sections -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c build/move/ymfm.o -lm ||
                 { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         else
-            gcc $G -static -pthread -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c -lm || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
+            gcc $G -static -pthread -Wl,--gc-sections -o /tmp/mut2/inside /tmp/mut2/move/test/inside.c build/move/ymfm.o -lm || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         fi
         out=$(timeout 300 /tmp/mut2/inside /tmp/mut_in build/move/proof/old/demake.dmks build/move/proof/v16/projects.dmks build/move/proof/v17/projects4.dmks 2>&1); code=$?
     else
-        gcc $G -fPIC -shared -fvisibility=hidden -pthread -o /tmp/mut2/x.so /tmp/mut2/move/dmk_move.c || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
+        gcc $G -fPIC -shared -fvisibility=hidden -pthread -Wl,--gc-sections -o /tmp/mut2/x.so /tmp/mut2/move/dmk_move.c build/move/ymfm.o || { echo "  $1: DOES NOT BUILD"; bad=1; set -e; return; }
         if [ "$4" = hash ]; then
             got=$($W/bench /tmp/mut2/x.so hash | awk "{print \$NF}")
             out=""; code=0
@@ -86,7 +86,7 @@ one "the clock not steered to Move" $GLUE "s#^    ck_steer();#    ;#" clock
 one "the tempo whole, no tenths" $GLUE "s#seq_b10 = (int)(b \* 10 + 0.5);#seq_b10 = (int)(b + 0.5) * 10;#" clock
 UI=dmk_move_ui.c
 one "Filter Amp: knob 5 on the filter" $UI "s#KR(FILTER, 0, 3), KR(AMP, 0, 0)#KR(FILTER, 0, 3), KR(FILTER, 0, 0)#" ctl
-one "a page pad does not change rows" $UI "s#mc.row\[i\] = (uint8_t)((mp_row() + 1) % MP\[i\].rows);#;#" ctl
+one "a page pad does not change rows" $UI "s#mc.row\[i\] = (uint8_t)((mp_row() + 1) % mp_of()->rows);#;#" ctl
 one "Undo puts nothing back" $UI "s#^    memcpy(ui.val, u->val, sizeof u->val);#    ;#" ctl
 one "a quick tap keeps its notes" $UI "s#ui.now - mc.st0\[k\] < MV_TAP_MS#0#" ctl
 one "a held step takes no pads" $UI "s#if (p < 16) held_pad(p, note + ui.octave \* 12); else#if (0) ; else#" ctl
@@ -179,5 +179,13 @@ core "old songs on the wrong progression" $ST "s#else if (st_ver < 19u) scn\[g\]
 core "REC writes the chord in the key" $FUI "s#(mv_kcm\[k\] ? cm_write(mv_kcm\[k\]) : slot_write(n))#(slot_write(n))#"
 core "a held step takes one note" move/dmk_move_ui.c "s#^        if (cm) held_cm(cm);#        if (0) held_cm(cm);#"
 one "Keys still on track 4" $UI "s#if (mc.shift \\&\\& !mc.mute \\&\\& !mc.copy \\&\\& !mc.del) {#if (0) {#" ctl
+# Phase 4, the YM2612 (move/dmk_ym.c, in the unity build of the core): fm() in move/test/inside.c must catch each
+YM=move/dmk_ym.c
+core "Bright never on the chip" $YM "s#else { mul = clampi(mul + ratio, 0, YM_MUL_MAX); tl = clampi(tl - bright, 0, YM_TL_MAX); }#else { mul = clampi(mul + ratio, 0, YM_MUL_MAX); tl = clampi(tl, 0, YM_TL_MAX); }#"
+core "a stolen channel keeps its voice" $YM "s#        v->stage = 0; v->ych = 0; v->lastv = 0;#        v->lastv = 0;#"
+core "the chip never asleep" $YM "s#        if (ym.idle >= YM_IDLE) return;#        if (0) return;#"
+core "each pattern without its FM values" $FUI "s#    return \&ymv\[s\]\[i - PSND_CHORD\];#    return \&ymv[0][0];#"
+core "two synths on the chip" $FUI "s#n = DMK_SAMPLES_N + (o < 0 || o == ui.synth ? YM_PATCHES : 0);#n = DMK_SAMPLES_N + YM_PATCHES;#"
+core "Delete leaves an FM value" move/dmk_move_ui.c "s#    ymv\[s\]\[ymk_at(r, k)\] = t\[ymk_at(r, k)\];#    (void)t;#"
 exit $bad
 '

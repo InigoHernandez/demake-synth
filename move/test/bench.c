@@ -1131,6 +1131,26 @@ static int do_draw(const char *d)
     }
     A_set("play", "0");
     blocks(600);
+    /* the Sound page of a synth on the YM2612 (Phase 4): synth 4 (its track button), Sound turned on past the
+     * recordings to the first patch, its six rows, a knob held */
+    tap(40);
+    page(MP_SOUND);
+    while (view_row() != 0) page(MP_SOUND);
+    for (int t = 0; t < 2 * 80 && vint("pic") != PIC_FM; t++) { A_set("in", "K 0 1"); blocks(2); }
+    check(vint("pic") == PIC_FM, "synth 4's Sound past the recordings: the YM2612's first patch, its picture");
+    for (int r = 0; r < 6; r++) {
+        if (r) page(MP_SOUND);
+        blocks(600);
+        snprintf(nm, sizeof nm, "fm%d", r);
+        snap_scr(d, nm);
+        char say[80];
+        snprintf(say, sizeof say, "the FM page, row %d: its picture, on the stage", r + 1);
+        check(vint("pic") == PIC_FM && view_row() == r && lit_rows(10, 52) > 40, say);
+    }
+    page(MP_SOUND);
+    A_set("in", "T 3 1"); snap_scr(d, "fm_knob"); A_set("in", "T 3 0");
+    for (int t = 0; t < 2 * 80 && vint("pic") == PIC_FM; t++) { A_set("in", "K 0 -1"); blocks(2); }   /* (back to a recording) */
+    tap(43);
     page(MP_ROLL);
     while (view_row() != 0) page(MP_ROLL);
     step(2, 1); blocks(120); snap_scr(d, "held"); step(2, 0); A_render();

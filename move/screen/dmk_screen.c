@@ -274,6 +274,23 @@ static void ms_chord(uint8_t *o, const mv_pic_t *p)
 }
 
 /* the sound's shape: its outline, mirrored, dots in it; the loop's ends and its start tall lines, a voice a solid one */
+/* an FM sound: each operator's level a bar from the floor, the ones heard filled, the ones that colour them a rim; its
+ * number under it, the one whose row is in view marked */
+static void ms_fm(uint8_t *o, const mv_pic_t *p)
+{
+    enum { FM_X0 = 10, FM_STEP = 29, FM_BW = 17, FM_TOP = 21, FM_BOT = 43, FM_LBL = 45, FM_MARK = 51 };
+    ms_title(o, p);
+    for (int i = 0; i < 4; i++) {
+        const int x = FM_X0 + i * FM_STEP, h = 1 + p->p[i] * (FM_BOT - FM_TOP - 1) / 127;
+        if (p->p[4] >> i & 1) ms_rect(o, x, FM_BOT - h, FM_BW, h, 1);
+        else if (h > 2) ms_frame(o, x, FM_BOT - h, FM_BW, h);
+        else ms_rect(o, x, FM_BOT - 1, FM_BW, 1, 1);
+        const char d[2] = {(char)('1' + i), 0};
+        ms_text(o, x + FM_BW / 2 - 2, FM_LBL, 8, d, 1, 1);
+        if (p->cur == i) ms_rect(o, x, FM_MARK, FM_BW, 1, 1);
+    }
+}
+
 static void ms_sound(uint8_t *o, const mv_pic_t *p)
 {
     const int mid = 36, w = 124, x0 = 2;
@@ -666,6 +683,7 @@ static void ms_stage(uint8_t *o, const mv_view_t *v)
     case PIC_MEDIA: ms_media(o, v); break;
     case PIC_PROJECTS: case PIC_SOUNDS: ms_list(o, p); break;
     case PIC_PATS: ms_pats(o, v); break;
+    case PIC_FM: ms_fm(o, p); break;
     default: break;
     }
 }

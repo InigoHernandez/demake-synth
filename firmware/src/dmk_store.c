@@ -23,8 +23,9 @@
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
 #ifdef DMK_MOVE
-#define ST_VER 19u  /* the Move's alone, its songs never reach the FM-1: 19: eleven progressions more; 18: each pattern
-                       its sound; 17: four synths; 16: a roll's count two bytes */
+#define ST_VER 20u  /* the Move's alone, its songs never reach the FM-1: 20: the YM2612's values in each pattern's
+                       sound (the open one's are the sound playing); 19: eleven progressions more; 18: each pattern its sound; 17: four
+                       synths; 16: a roll's count two bytes */
 #define ST_SYN (st_ver >= 17u ? DMK_SYNTHS : 3)        /* synths a song holds: three before 17 */
 #else
 #define ST_SYN DMK_SYNTHS
@@ -256,7 +257,11 @@ DMK_SMALL static void sound_init(int s)
 #endif
     for (r = 0; r < SND_ROWS_N; r++) for (k = 0; k < 5; k++) ui.val[s][SND_ROWS[r][0]][SND_ROWS[r][1]][k] = ui_first[s][r * 5 + k];
     ui.val[s][PG_SOUND][0][0] = keep;
+#ifdef DMK_MOVE
+    ui.val[s][PG_SOUND][1][4] = keep < DMK_SAMPLES_N ? keep : 0;   /* its layer starts as its own recording (an FM sound: the first) */
+#else
     ui.val[s][PG_SOUND][1][4] = keep;                   /* its layer starts as its own recording */
+#endif
     ui.val[s][PG_SOUND][1][0] = 0;                      /* (the layer off) */
     for (r = 0; r < 3; r++) ui.val[s][PG_FX][r][4] = 0;
     ui.val[s][PG_FX][3][0] = SP_SEND_INIT; ui.val[s][PG_FX][3][1] = 0;   /* (its send to the Space; K2: none) */
@@ -277,6 +282,7 @@ static void synth_new(int s)
     for (g = 0; g < SYN_PATS; g++) { spat[s][g].used = 0; spat[s][g].count = 0; spat[s][g].steps = 16; }
     for (g = 0; g < SCENES; g++) scn[g].pat[s] = 0;
     psnd_reset(s);
+    __builtin_memset(ymv[s], 0, sizeof ymv[s]);
 }
 #endif
 #ifdef DMK_MOVE
@@ -395,6 +401,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     arp_clear_all();                                    /* (the last project's arps: their pools went on in this one) */
     for (s = 0; s < ST_SYN; s++) ch.hint[s] = 2;    /* (before 4 none were kept: the last project's stayed) */
 #ifdef DMK_MOVE
+    __builtin_memset(ymv, 0, sizeof ymv);              /* (a song before 20 has no FM values: none of the last's stay) */
     for (s = ST_SYN; s < DMK_SYNTHS; s++) synth_new(s);   /* a synth the song did not have (the fourth, before 17): new */
 #endif
     for (s = 0; s < ST_SYN; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
@@ -575,10 +582,15 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
                     if (e - p < 1) return -1;
                     d->set = *p++ ? 1 : 0;
                     if (!d->set) continue;
-                    if (e - p < 2 + PSND_VALS) return -1;
+                    if (e - p < 2) return -1;
                     d->follow = *p++ < FW_COUNT ? p[-1] : FW_FREE; d->hint = *p++;
-                    __builtin_memcpy(d->v, p, PSND_VALS);
-                    p += PSND_VALS;
+                    {
+                        const int nv = st_ver >= 20u ? PSND_VALS : PSND_VALS_19;   /* (before 20: no FM values) */
+                        if (e - p < nv) return -1;
+                        __builtin_memcpy(d->v, p, (size_t)nv);
+                        __builtin_memset(d->v + nv, 0, (size_t)(PSND_VALS - nv));
+                        p += nv;
+                    }
                 }
 #endif
     }
@@ -602,7 +614,11 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     scn_load(scn_cur);
     for (s = 0; s < ST_SYN; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
     for (s = 0; s < ST_SYN; s++) {
+#ifdef DMK_MOVE
+        if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N + YM_PATCHES) ui.val[s][PG_SOUND][0][0] = 0;   /* (the YM2612's kept) */
+#else
         if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N) ui.val[s][PG_SOUND][0][0] = 0;
+#endif
     }
     chord_quiet();
     chord_start();

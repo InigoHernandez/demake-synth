@@ -454,6 +454,9 @@ static void four(const char *dir, const char *v16)
         check(notes, "a store of format 16 (three synths, 256 KiB a song): every note of its three back");
         check(ui.val[3][PG_SOUND][0][0] == smp_named("Scirpus") && sq[3].count == 0 && ch.follow[3] == FW_KEY,
               "and its fourth synth new");
+        ui.val[3][PG_SOUND][0][0] = 5; seq_add(3, 0, 4, 60, 100); ch.follow[3] = FW_FREE;   /* synth 4 played on */
+        check(song_load(0) == 0 && ui.val[3][PG_SOUND][0][0] == smp_named("Scirpus") && sq[3].count == 0 && ch.follow[3] == FW_KEY,
+              "opened again over a fourth synth played on: new again, nothing of it left");
         v2_destroy(i);
         check(access(in(dir, SV_FILE), F_OK) != 0, "nothing written until a save");
     }
@@ -849,6 +852,212 @@ static void chordmode(const char *dir)
     v2_destroy(i);
 }
 
+/* the YM2612 (move/dmk_ym.c): a synth set to one of its patches plays it, each note on a channel of its own, read
+ * apart; the pitch; six at once, a seventh taking the oldest; the chip asleep once nothing sounds; its page (the owner's
+ * layout): every knob end to end and into the chip, Delete back to the patch, Undo; each pattern's FM sound and the
+ * song's, saved and opened (format 20); one synth at a time on the chip */
+static void ym_sine(int s)                              /* a pure sine: one carrier, the others silent, no decay */
+{
+    uint8_t *v = ymv[s];
+    v[YV_ALG] = 7; v[YV_FB] = 0;
+    for (int o = 0; o < 4; o++) {
+        uint8_t *w = &v[YV_OP + o * YO_N];
+        w[YO_MUL] = 1; w[YO_DT] = 0; w[YO_TL] = o == 3 ? 0 : YM_TL_MAX; w[YO_AR] = YM_RATE_MAX; w[YO_D1R] = 0;
+        w[YO_D2R] = 0; w[YO_SL] = 0; w[YO_RR] = YM_RR_MAX; w[YO_KS] = 0;
+    }
+    v[YV_BRIGHT] = YM_BRIGHT_MID; v[YV_RATIO] = YM_RATIO_MID; v[YV_DETUNE] = 0; v[YV_DECAY] = YM_DECAY_MID;
+    v[YV_RELEASE] = YM_REL_MID;
+    sp_sync();
+}
+static void fm(const char *dir)
+{
+    enum { FM_SY = DMK_SYNTHS - 1, FM_RUN = 128, FM_SEC = DMK_SR / FM_RUN, FM_TURNS = 200, OP4_TL = 0x40 + 12 };
+    static int16_t out[FM_RUN * 2];
+    clear_store(dir);
+    void *in = open_at(dir);
+    ui.val[FM_SY][PG_SOUND][0][0] = DMK_SAMPLES_N;      /* synth 4: the first patch */
+    sp_sync();
+    check(syn[FM_SY].ym == 1 && ym_owner() == FM_SY && ymv[FM_SY][YV_FROM] == 1 && ymv[FM_SY][YV_ALG] == YM_PATCH[0].alg
+          && ym.reg[0][0xB0] == (YM_PATCH[0].fbk << 3 | YM_PATCH[0].alg),
+          "a synth set past the recordings plays the YM2612's first patch, its values loaded and on the chip");
+    ym_sine(FM_SY);
+    note_on_vel(FM_SY, 69, SRC_KEY, 127);
+    int v = -1;
+    for (int i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == FM_SY) v = i;
+    const int ch = v >= 0 ? vc[v].ych - 1 : -1;
+    int64_t e[YM_CH] = {0};
+    int ups = 0, prev = 0;
+    for (int r = 0; r < FM_SEC; r++) {
+        dmk_render(out, FM_RUN);
+        for (int i = 0; i < FM_RUN; i++) {
+            for (int k = 0; k < YM_CH; k++) e[k] += (int64_t)ym_buf[k][i] * ym_buf[k][i];
+            if (ch >= 0 && r >= FM_SEC / 4) { const int x = ym_buf[ch][i]; ups += prev < 0 && x >= 0; prev = x; }
+        }
+    }
+    int alone = ch >= 0 && e[ch] > 0;
+    for (int k = 0; k < YM_CH; k++) if (k != ch) alone &= e[k] * 1000 < e[ch];
+    check(alone, "a note on its channel alone, the other five silent (each read apart)");
+    char what[160];
+    snprintf(what, sizeof what, "A4 on the chip: %d Hz", ups * 4 / 3);
+    check(ups * 4 / 3 >= 436 && ups * 4 / 3 <= 444, what);
+    for (int n = 0; n < 6; n++) note_on_vel(FM_SY, 60 + n * 2, SRC_KEY, 100);
+    dmk_render(out, FM_RUN);
+    int used = 0, fmv = 0;
+    for (int i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == FM_SY && vc[i].ych) { used |= 1 << (vc[i].ych - 1); fmv++; }
+    check(used == 0x3F && fmv == 6, "six notes on six channels (the first stolen for the sixth)");
+    note_on_vel(FM_SY, 80, SRC_KEY, 100);
+    fmv = 0;
+    int has80 = 0, has60 = 0;
+    for (int i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == FM_SY && vc[i].ych) { fmv++; has80 |= vc[i].note == 80; has60 |= vc[i].note == 60; }
+    check(fmv == 6 && has80 && !has60, "a seventh takes the oldest's channel");
+    for (int i = 0; i < DMK_VOICES; i++) if (vc[i].on && vc[i].sy == FM_SY) note_off_src(FM_SY, vc[i].note, vc[i].src);
+    for (int r = 0; r < FM_SEC * 4; r++) dmk_render(out, FM_RUN);
+    const uint32_t made = ym.made;
+    dmk_render(out, FM_RUN);
+    check(ym.idle == YM_IDLE && ym.made == made, "nothing sounding: the chip asleep (no sample made)");
+
+    /* its page: the synth in view on it, the Sound pad */
+    ui.synth = FM_SY;
+    ui.val[FM_SY][PG_SOUND][0][0] = DMK_SAMPLES_N + 4;  /* Haze: loaded fresh */
+    sp_sync();
+    to_page(MP_SOUND);
+    check(mp_of() == &MP_FM && mp_of()->rows == 6 && ymv[FM_SY][YV_FROM] == 5, "the Sound page of an FM synth: its six rows");
+    {
+        char bad[600] = "";
+        int all = 1, knobs = 0;
+        static mv_knob_t o;
+        for (int row = 0; row < MP_FM.rows; row++) {
+            mc.row[MP_SOUND] = (uint8_t)row;
+            for (int k = 0; k < 8; k++) {
+                const kref_t r = mp_knob(k);
+                if (r.pg != PG_YM) continue;
+                int top = 0, bottom = 127;
+                for (int t = 0; t < FM_TURNS; t++) { mv_knob(k, 1); knob_view(&o, r, k); if (o.raw > top) top = o.raw; }
+                for (int t = 0; t < FM_TURNS; t++) { mv_knob(k, -1); knob_view(&o, r, k); if (o.raw < bottom) bottom = o.raw; }
+                knobs++;
+                if (top != 127 || bottom != 0 || !o.name[0] || !o.val[0]) {
+                    char one[48];
+                    snprintf(one, sizeof one, " %s/%s %d..%d", MP_FM.rname[row], o.name, bottom, top);
+                    if (strlen(bad) + strlen(one) < sizeof bad) strcat(bad, one);
+                    all = 0;
+                }
+            }
+        }
+        snprintf(what, sizeof what, "every FM knob end to end, named, %d of them%s%s", knobs, all ? "" : ": not", bad);
+        check(all && knobs == 7 + 4 * 8 + 5, what);
+    }
+    ym_vals_of(ymv[FM_SY], 4);                          /* (Haze again, as loaded) */
+    sp_sync();
+    for (int r = 0; r < FM_SEC; r++) dmk_render(out, FM_RUN);   /* (the sweep's writes drained, as the Move's blocks do) */
+    mc.row[MP_SOUND] = YR_MAIN;
+    mv_knob(1, 2);                                      /* Algorithm up two */
+    const int alg = ymv[FM_SY][YV_ALG], car = YM_CARRIERS[alg];
+    mv_knob(3, 8);                                      /* Bright +8: the modulators louder */
+    dmk_render(out, FM_RUN);
+    const int mod = !(car & 1) ? 0 : !(car & 2) ? 1 : !(car & 4) ? 2 : -1;   /* (a modulator, if any) */
+    const int modtl = mod < 0 ? 0 : ymv[FM_SY][YV_OP + mod * YO_N + YO_TL] - 8;
+    check(alg == YM_PATCH[4].alg + 2 && (ym.reg[0][0xB0] & 7) == alg && ymv[FM_SY][YV_BRIGHT] == YM_BRIGHT_MID + 8
+          && (mod < 0 || ym.reg[0][0x40 + YM_OPR[mod]] == clampi(modtl, 0, YM_TL_MAX)),
+          "Algorithm and Bright turned: the chip has them (Bright on the modulators' levels)");
+    mc.row[MP_SOUND] = YR_OP4;
+    mv_knob(0, -10);                                    /* operator 4's level down ten */
+    dmk_render(out, FM_RUN);
+    check(ymv[FM_SY][YV_OP + 3 * YO_N + YO_TL] == YM_PATCH[4].op[3].tl + 10 && ym.reg[0][OP4_TL] == YM_PATCH[4].op[3].tl + 10,
+          "an operator's level turned down: its attenuation up, on the chip");
+    mc.del = 1; mv_touch(0, 1); mv_touch(0, 0); mc.del = 0;
+    check(ymv[FM_SY][YV_OP + 3 * YO_N + YO_TL] == YM_PATCH[4].op[3].tl, "Delete + the knob: the patch's own level again");
+    undo_mark(0);
+    mv_knob(0, -20);
+    undo_do(0);
+    check(ymv[FM_SY][YV_OP + 3 * YO_N + YO_TL] == YM_PATCH[4].op[3].tl, "Undo: the FM value back");
+    mc.row[MP_SOUND] = YR_CHIP;
+    mv_knob(0, 1);
+    check(ymv[FM_SY][YV_GRIT] == 1 && ym.grit == 1, "the Chip row: Grit on the chip");
+
+    /* each pattern its FM sound; the song's, saved and opened */
+    seq_play(0);
+    syn_pat_set(FM_SY, 0);
+    sq[FM_SY].count = 0; seq_add(FM_SY, 0, 4, 48, 100);
+    const uint8_t a0 = ymv[FM_SY][YV_ALG];
+    pat_pick_syn(FM_SY, 1);
+    seq_add(FM_SY, 0, 4, 55, 100);
+    ui.val[FM_SY][PG_SOUND][0][0] = DMK_SAMPLES_N + 12; /* Bell on pattern 2 */
+    sp_sync();
+    const uint8_t a1 = ymv[FM_SY][YV_ALG];
+    pat_pick_syn(FM_SY, 0);
+    check(ui.val[FM_SY][PG_SOUND][0][0] == DMK_SAMPLES_N + 4 && ymv[FM_SY][YV_ALG] == a0 && ymv[FM_SY][YV_GRIT] == 1
+          && a1 == YM_PATCH[12].alg, "pattern 1 again: its FM sound as edited (Haze, its algorithm, Grit)");
+    check(song_save(0) == 0, "a song with FM sounds saved");
+    memset(ymv, 0, sizeof ymv);
+    ui.val[FM_SY][PG_SOUND][0][0] = 0;
+    check(song_load(0) == 0 && st_ver == 20u && ui.val[FM_SY][PG_SOUND][0][0] == DMK_SAMPLES_N + 4 && ymv[FM_SY][YV_ALG] == a0
+          && ymv[FM_SY][YV_GRIT] == 1 && syn[FM_SY].ym == 5, "and opened (format 20): the FM sound playing as it was");
+    pat_pick_syn(FM_SY, 1);
+    check(ui.val[FM_SY][PG_SOUND][0][0] == DMK_SAMPLES_N + 12 && ymv[FM_SY][YV_ALG] == a1, "and pattern 2's FM sound with it");
+    pat_pick_syn(FM_SY, 0);
+
+    /* one synth at a time: another's list ends at the recordings; the jog too */
+    ui.synth = 0;
+    ui.val[0][PG_SOUND][0][0] = DMK_SAMPLES_N - 1;
+    sp_sync();
+    mc.page = MP_SOUND; ui.page = PG_SOUND; mc.row[MP_SOUND] = 0;
+    mv_knob(0, 1);
+    check(ui.val[0][PG_SOUND][0][0] == 0 && !syn[0].ym && ym_owner() == FM_SY,
+          "synth 1 past its last recording: its first again, the chip synth 4's");
+    ui.val[0][PG_SOUND][0][0] = DMK_SAMPLES_N - 1; ui.preset[0] = DMK_SAMPLES_N - 1;
+    jog_sound(1);
+    check(!syn[0].ym && (ui.val[0][PG_SOUND][0][0] == 0 || ui.preset[0] >= DMK_SAMPLES_N), "and the jog: past the patches");
+    ui.val[FM_SY][PG_SOUND][0][0] = 0;                  /* synth 4 back to a recording: the chip free */
+    sp_sync();
+    ui.val[0][PG_SOUND][0][0] = DMK_SAMPLES_N - 1; ui.preset[0] = DMK_SAMPLES_N - 1;
+    jog_sound(1);
+    check(syn[0].ym == 1 && ui.preset[0] < DMK_SAMPLES_N, "the chip free: the jog goes on into the first patch");
+    note_on_vel(0, 60, SRC_KEY, 100);
+    int rec = 1;
+    for (int i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == FM_SY && vc[i].on) rec &= !vc[i].ych;
+    check(rec && ym_owner() == 0, "synth 4 back to a recording, synth 1 on the chip");
+    v2_destroy(in);
+}
+
+/* every knob's meter: turned all the way up it reaches the end, all the way down the start, wherever its value is
+ * kept (the owner, 2026-11-18: Sound at its 64th recording drew its meter only to the middle) */
+static void meters(const char *dir)
+{
+    clear_store(dir);
+    void *in = open_at(dir);
+    enum { MT_SONG = 4, MT_TURNS = 400 };              /* a song to step through; detents: past any knob's whole range */
+    song_n = MT_SONG;                                   /* (Step and Scene place things in a song: an empty one has none) */
+    for (int t = 0; t < MT_SONG; t++) { song[t].scene = (uint8_t)t; song[t].bars = 1; }
+    char bad[1024] = "";
+    int knobs = 0, all = 1;
+    for (int pg = 0; pg < MP_SAVE; pg++)
+        for (int row = 0; row < MP[pg].rows; row++) {
+            to_page(pg);
+            mc.row[pg] = (uint8_t)row;
+            mc.shift = 0;
+            for (int k = 0; k < 8; k++) {
+                const kref_t r = mp_knob(k);
+                if (r.pg < 0 || is_tempo(k)) continue;
+                static mv_knob_t o;
+                int top = 0, bottom = 127;
+                for (int t = 0; t < MT_TURNS; t++) { mv_knob(k, 1); knob_view(&o, r, k); if (o.raw > top) top = o.raw; }
+                for (int t = 0; t < MT_TURNS; t++) { mv_knob(k, -1); knob_view(&o, r, k); if (o.raw < bottom) bottom = o.raw; }
+                knobs++;
+                if (top != 127 || bottom != 0) {
+                    char one[64];
+                    snprintf(one, sizeof one, " %s/%s/%s %d..%d", MP[pg].name, MP[pg].rname[row], o.name, bottom, top);
+                    if (strlen(bad) + strlen(one) < sizeof bad) strcat(bad, one);
+                    all = 0;
+                }
+            }
+        }
+    char what[1200];
+    snprintf(what, sizeof what, "every knob's meter from its start to its end, %d knobs on every page%s%s", knobs,
+             all ? "" : ": not", bad);
+    check(all, what);
+    v2_destroy(in);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 3 && !strcmp(argv[1], "show")) { show(argv[2], argv[3]); return 0; }
@@ -865,6 +1074,8 @@ int main(int argc, char **argv)
     four(argv[1], argc > 3 ? argv[3] : NULL);
     psounds(argv[1], argc > 4 ? argv[4] : NULL);
     chordmode(argv[1]);
+    meters(argv[1]);
+    fm(argv[1]);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

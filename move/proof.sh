@@ -14,7 +14,7 @@ set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 SEC=${1:-20}
-IMAGE=demake-move-build:bookworm
+IMAGE=demake-move-build:bookworm-cxx
 DSP=build/move/modules/overtake/demake/dsp.so
 P=build/move/proof
 FM1_SHA=b496d0efdfc403dba0d447a7987331cd7dbe2a5dbc8908cafbc2154f72f584da
@@ -28,7 +28,9 @@ mkdir -p "$P/mac" "$P/linux" "$P/screens" "$P/save" "$P/old" "$P/inside"
 FL="-O2 -fsigned-char -fwrapv -Wno-unused-function -Ifirmware/src -Ifirmware/gen -Imove/test"
 echo "== the Mac: $(uname -m), $(cc --version | head -1)"
 cc -std=gnu11 $FL -o "$P/mac/render_hash" move/test/render_hash.c
-cc -std=gnu11 $FL -DDMK_MOVE=1 -o "$P/mac/render_move" move/test/render_hash.c
+c++ -std=c++14 -O2 -fno-exceptions -fno-rtti -DNDEBUG -w -c move/dmk_ymfm.cpp -o "$P/mac/ymfm.o"   # (the YM2612's chip)
+cc -std=gnu11 $FL -DDMK_MOVE=1 -c -o "$P/mac/render_move.o" move/test/render_hash.c
+c++ -Wl,-dead_strip -o "$P/mac/render_move" "$P/mac/render_move.o" "$P/mac/ymfm.o"
 "$P/mac/render_move" 1 > "$P/mac/hash_move.txt"
 cc -std=gnu11 $FL -o "$P/mac/old_store" move/test/old_store.c
 # a store of format 16 (three synths, 256 KiB a song), written by the commit before four synths: its code, this generator
@@ -57,7 +59,7 @@ docker run --rm --platform linux/arm64 -v "$ROOT":/w -w /w -e P="$P" -e DSP="$DS
         -o $L/store_v17 build/move/v17src/move/test/store_v17.c -lm && $L/store_v17 $P/v17 > /dev/null
     build/move/demake-inside $P/inside $P/old/demake.dmks $P/v16/projects.dmks $P/v17/projects4.dmks > $L/dsp_inside.txt || true
     gcc -std=gnu11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -DDMK_MOVE=1 \
-        -fsigned-char -fwrapv -Ifirmware/src -Ifirmware/gen -w -pthread -o $L/inside_san move/test/inside.c -lm
+        -fsigned-char -fwrapv -Ifirmware/src -Ifirmware/gen -w -pthread -Wl,--gc-sections -o $L/inside_san move/test/inside.c build/move/ymfm.o -lm
     $L/inside_san $P/inside $P/old/demake.dmks $P/v16/projects.dmks $P/v17/projects4.dmks > $L/dsp_inside_san.txt 2>&1 || true
     $L/bench $DSP draw $P/screens > $L/dsp_draw.txt || true
     $L/bench $DSP time $SEC > $L/dsp_time.txt

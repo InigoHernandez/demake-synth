@@ -436,6 +436,10 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
         const dmk_sample_t *sm;
         int v;
         p->smp = (uint8_t)(VS(s, PG_SOUND, 0, 0) < DMK_SAMPLES_N ? VS(s, PG_SOUND, 0, 0) : 0);
+#ifdef DMK_MOVE
+        v = VS(s, PG_SOUND, 0, 0) - DMK_SAMPLES_N;      /* the Sound list's YM2612 patches, after the recordings */
+        p->ym = (uint8_t)(v >= 0 && v < YM_PATCHES ? v + 1 : 0);
+#endif
         sm = &DMK_SAMPLES[p->smp];
         p->start = (uint16_t)(VS(s, PG_SOUND, 0, 1) * ((sm->loops ? sm->loop0 : sm->blocks) / 2) / 127);
         p->loops = (uint8_t)choice_index(choice_of(PG_SOUND, 0, 2), VS(s, PG_SOUND, 0, 2));   /* off, the recording's, set */
@@ -588,6 +592,9 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
         if (VS(s, PG_CHORD, 2, 0) * 2 / 128) ch.keys |= (uint8_t)(1u << s);
     ch.ktype = (uint8_t)(VS(0, PG_CHORD, 2, 1) * KT_COUNT / 128);
     cur_synth = ui.synth;
+#ifdef DMK_MOVE
+    ym_sync();                                          /* the YM2612's registers as the FM sound now is */
+#endif
 }
 
 #ifdef DMK_MOVE
@@ -606,7 +613,8 @@ DMK_SMALL static void sp_sync(void)                /* (on a control turned: for 
 #define PSND_VARY 4                                     /* the roll's Vary: K1..K4 (ALGORITHM's is the song's) */
 #define PSND_ARP PSND_ROW_VALS                          /* the Arp, HOLD too */
 #define PSND_CHORD 2                                    /* Keys, Strum */
-#define PSND_VALS (PSND_PAGES * PSND_PAGE_VALS + PSND_VARY + PSND_ARP + PSND_CHORD)
+#define PSND_VALS_19 (PSND_PAGES * PSND_PAGE_VALS + PSND_VARY + PSND_ARP + PSND_CHORD)   /* (a song's before 20) */
+#define PSND_VALS (PSND_VALS_19 + YV_N)                 /* and the FM values (20: the YM2612, move/dmk_ym.c) */
 #define PSND_GLIDE_MS 35
 #define PSND_GLIDE_FRAMES (DMK_SR * PSND_GLIDE_MS / 1000)
 static const uint8_t PSND_PG[PSND_PAGES] = {PG_SOUND, PG_FILTER, PG_AMP, PG_FX, PG_LFO};
@@ -637,7 +645,8 @@ static uint8_t *psnd_val(int s, int i)                  /* the i-th value a patt
     i -= PSND_VARY;
     if (i < PSND_ARP) return &ui.val[s][PG_ROLL][2][i];
     i -= PSND_ARP;
-    return i ? &ui.val[s][PG_CHORD][0][3] : &ui.val[s][PG_CHORD][2][0];
+    if (i < PSND_CHORD) return i ? &ui.val[s][PG_CHORD][0][3] : &ui.val[s][PG_CHORD][2][0];
+    return &ymv[s][i - PSND_CHORD];
 }
 static int psnd_glides(int i)                           /* value i glides at a switch */
 {
@@ -766,6 +775,9 @@ static int smp_named(const char *n)
 
 DMK_SMALL static void ui_init(void)
 {
+#ifdef DMK_MOVE
+    __builtin_memset(ymv, 0, sizeof ymv);              /* (no FM sound yet: one picked loads its patch) */
+#endif
     /* the three synths' first sounds: a pad, keys, a pluck; [sample, attack, decay, sustain, release, cutoff, reso,
      * env, level, tape, wow, reverb (its amount), echo (its send to the shared one, now its tape echo), pan] */
 #ifdef DMK_MOVE
@@ -929,6 +941,9 @@ DMK_SMALL static void val_text(char *o, int page, int row, int k)   /* (words, n
     if (page == PG_SOUND && row == 3 && k < 2) { str_cat(fmt_int(o, v * 100 / 127), "%"); return; }   /* the loop's
                                                            region: a share of the recording */
     if (page == PG_SOUND && row == 0 && k == 0) {       /* the sound's number; its card under it has the name */
+#ifdef DMK_MOVE
+        if (v >= DMK_SAMPLES_N) { fmt_int(str_cat(o, "FM "), v - DMK_SAMPLES_N + 1); return; }   /* the YM2612's */
+#endif
         if (v < 9) *o++ = '0';
         fmt_int(o, v + 1);
         return;
@@ -3519,6 +3534,20 @@ DMK_SMALL static void ui_encoder(int e, int d)
     if (ui.page == PG_SOUND && r == 3 && k < 2)         /* the loop's region turned: the loop set, heard at once */
         ui.val[ui.synth][PG_SOUND][0][2] = choice_val(2, 3);
     if (ui.page == PG_SOUND && ((r == 0 && k == 0) || (r == 1 && k == 4))) {   /* a recording: a step a detent */
+#ifdef DMK_MOVE
+        if (r == 0) {                                   /* the Move's: the recordings, then the YM2612's patches while no
+                                                           other synth plays the chip (one at a time: the owner's) */
+            const int o = ym_owner(), n = DMK_SAMPLES_N + (o < 0 || o == ui.synth ? YM_PATCHES : 0);
+            if (n == DMK_SAMPLES_N && ((d > 0 && *v == DMK_SAMPLES_N - 1) || (d < 0 && !*v))) {
+                char t[24];
+                fmt_int(str_cat(t, "FM is on synth "), o + 1);
+                notice(t);
+            }
+            *v = (uint8_t)wrap((*v < n ? *v : DMK_SAMPLES_N - 1) + (d > 0 ? 1 : -1), n);
+            sp_sync();
+            return;
+        }
+#endif
         *v = (uint8_t)wrap(*v + (d > 0 ? 1 : -1), DMK_SAMPLES_N);
         sp_sync();
         return;

@@ -44,11 +44,12 @@
 typedef struct { int8_t pg, row, k; } kref_t;
 #define KR(p, r, c) {PG_##p, r, c}
 #define KN {-1, 0, 0}
+#define MP_ROWS 6                      /* a page's rows at most (the FM sound's: Main, the four operators, Chip) */
 typedef struct {
     const char *name;
     uint8_t core, rows;
-    const char *rname[3];
-    kref_t k[3][8], jog[3];
+    const char *rname[MP_ROWS];
+    kref_t k[MP_ROWS][8], jog[MP_ROWS];
 } mpage_t;
 enum { MP_HOME, MP_ROLL, MP_CHORD, MP_SOUND, MP_FILTAMP, MP_LFO, MP_FX, MP_GLOBAL, MP_SAVE, MP_N };
 _Static_assert(DMK_SYNTHS == MV_SYNTHS, "the view (dmk_move_view.h) and the core count the synths alike");
@@ -92,6 +93,20 @@ static const mpage_t MP[MP_N] = {
      {KR(DISCS, 0, 4), KR(DISCS, 0, 4), KN}},
 };
 
+/* the Sound page of a synth playing the YM2612 (move/dmk_ym.c; the owner's layout, 2026-11-18): Main its sound and the
+ * macros over the patch, a row each operator, the Chip row. Its own knobs (PG_YM) turn the FM values (ymv) here; Sound,
+ * Tune and Fine stay the core's */
+#define PG_YM PG_COUNT                 /* (a page of the Move's alone: never the core's) */
+#define YK(r, c) {PG_YM, r, c}
+static const mpage_t MP_FM = {"Sound", PG_SOUND, 6, {"Main", "Op 1", "Op 2", "Op 3", "Op 4", "Chip"},
+    {{KR(SOUND, 0, 0), YK(0, 1), YK(0, 2), YK(0, 3), YK(0, 4), YK(0, 5), YK(0, 6), YK(0, 7)},
+     {YK(1, 0), YK(1, 1), YK(1, 2), YK(1, 3), YK(1, 4), YK(1, 5), YK(1, 6), YK(1, 7)},
+     {YK(2, 0), YK(2, 1), YK(2, 2), YK(2, 3), YK(2, 4), YK(2, 5), YK(2, 6), YK(2, 7)},
+     {YK(3, 0), YK(3, 1), YK(3, 2), YK(3, 3), YK(3, 4), YK(3, 5), YK(3, 6), YK(3, 7)},
+     {YK(4, 0), YK(4, 1), YK(4, 2), YK(4, 3), YK(4, 4), YK(4, 5), YK(4, 6), YK(4, 7)},
+     {YK(5, 0), YK(5, 1), KR(SOUND, 0, 3), KR(SOUND, 0, 4), YK(5, 4), YK(5, 5), YK(5, 6), KN}},
+    {KN, KN, KN, KN, KN, KN}};
+
 /* the pad in each column of the top row, and each page's colours lit and dim: the song blue, the sound rose, the mix pink */
 static const uint8_t PAGE_LIT[MP_SAVE] = {L_BLUE, L_BLUE, L_BLUE, L_ROSE, L_ROSE, L_ROSE, L_PINK, L_PINK};
 static const uint8_t PAGE_DIM[MP_SAVE] = {L_DBLUE, L_DBLUE, L_DBLUE, L_DROSE, L_DROSE, L_DROSE, L_DPINK, L_DPINK};
@@ -131,8 +146,10 @@ static struct {
 
 static void mv_turn(kref_t r, int d);
 static void mv_save_request(void);
+static void ascii(char *o, const char *s, int n);
+static void jog_sound(int dir);
 
-static const mpage_t *mp_of(void) { return &MP[mc.page]; }
+static const mpage_t *mp_of(void) { return mc.page == MP_SOUND && syn[ui.synth].ym ? &MP_FM : &MP[mc.page]; }
 static int mp_row(void) { return mc.row[mc.page] < mp_of()->rows ? mc.row[mc.page] : 0; }
 static kref_t mp_knob(int i) { return mp_of()->k[mp_row()][i]; }
 static int song_row(void) { return mc.page == MP_HOME && mp_row() == 2; }
@@ -148,6 +165,7 @@ static int vsyn(void) { return ui.synth; }
 typedef struct {
     struct { snote_t n[SEQ_NOTES]; seq_n_t count; uint16_t steps; } r[DMK_SYNTHS];
     uint8_t val[sizeof ui.val], mute, follow[DMK_SYNTHS];
+    uint8_t ymv[sizeof ymv];           /* the FM values (move/dmk_ym.c) */
 } un_t;
 static struct {
     un_t s[UN_N + 1];
@@ -165,6 +183,7 @@ static void un_take(un_t *u)
         u->follow[s] = ch.follow[s];
     }
     memcpy(u->val, ui.val, sizeof u->val);
+    memcpy(u->ymv, ymv, sizeof u->ymv);
     u->mute = pat_mute;
 }
 static void un_put(const un_t *u)
@@ -177,6 +196,7 @@ static void un_put(const un_t *u)
         psnd_follow(s, u->follow[s]);  /* (its chord let go or joined: audit I2) */
     }
     memcpy(ui.val, u->val, sizeof u->val);
+    memcpy(ymv, u->ymv, sizeof u->ymv);
     pat_mute = u->mute;
     for (int s = 0; s < DMK_SYNTHS; s++) psnd_glide_stop(s);   /* (a switch's glide: the values put back win) */
     roll_cur_in();
@@ -600,7 +620,7 @@ static int pad_note(int p)
 
 static void mv_page(int i)
 {
-    if (i == mc.page) { mc.row[i] = (uint8_t)((mp_row() + 1) % MP[i].rows); }
+    if (i == mc.page) { mc.row[i] = (uint8_t)((mp_row() + 1) % mp_of()->rows); }
     else mc.page = (uint8_t)i;
     mc.plist = 0;
     ui.page = MP[i].core;
@@ -668,6 +688,99 @@ static void mv_pad(int p, int vel, int down)
 
 /* ----------------------------------------------------------------------------------------------- the knobs */
 
+/* the FM page's own knobs (PG_YM): each a place in a list of n, kept in the sound's FM values as the chip takes them.
+ * Turned right is more: louder, longer, slower to rise (the chip's rates are the other way round) */
+enum { YK_PLAIN, YK_INV, YK_AR, YK_DT, YK_SIGNED, YK_ALG, YK_MUL, YK_NAMES, YK_OFF };
+typedef struct { const char *name; uint8_t at, n, how; const char *const *names; } ymk_t;   /* at: YV_*, or an
+                                                           operator's YO_* on its row */
+static const char *const YK_CHIP[2] = {"Clean", "Grit"}, *const YK_RATE[2] = {"Smooth", "Raw"};
+static const uint8_t YK_DT_CODE[7] = {7, 6, 5, 0, 1, 2, 3};   /* the detune -3..+3 as the chip's codes */
+static const ymk_t YMK_MAIN[8] = {
+    {0}, {"Algorithm", YV_ALG, 8, YK_ALG, 0}, {"Feedback", YV_FB, 8, YK_PLAIN, 0},
+    {"Bright", YV_BRIGHT, 2 * YM_BRIGHT_MID, YK_SIGNED, 0}, {"Ratio", YV_RATIO, 2 * YM_RATIO_MID + 1, YK_SIGNED, 0},
+    {"Detune", YV_DETUNE, YM_DETUNE_MAX + 1, YK_PLAIN, 0}, {"Decay", YV_DECAY, 2 * YM_DECAY_MID, YK_SIGNED, 0},
+    {"Release", YV_RELEASE, 2 * YM_REL_MID, YK_SIGNED, 0}};
+static const ymk_t YMK_OP[8] = {
+    {"Level", YO_TL, YM_TL_MAX + 1, YK_INV, 0}, {"Ratio", YO_MUL, YM_MUL_MAX + 1, YK_MUL, 0},
+    {"Detune", YO_DT, 7, YK_DT, 0}, {"Attack", YO_AR, YM_RATE_MAX, YK_AR, 0},
+    {"Decay", YO_D1R, YM_RATE_MAX + 1, YK_INV, 0}, {"Sustain", YO_SL, 16, YK_INV, 0},
+    {"Decay 2", YO_D2R, YM_RATE_MAX + 1, YK_INV, 0}, {"Release", YO_RR, YM_RR_MAX + 1, YK_INV, 0}};
+static const ymk_t YMK_CHIP[8] = {
+    {"Chip", YV_GRIT, 2, YK_NAMES, YK_CHIP}, {"Rate", YV_RAW, 2, YK_NAMES, YK_RATE}, {0}, {0},
+    {"LFO", YV_LFO, YM_LFO_RATES + 1, YK_OFF, 0}, {"Vibrato", YV_VIB, YM_VIB_MAX + 1, YK_PLAIN, 0},
+    {"Tremolo", YV_TREM, YM_TREM_MAX + 1, YK_PLAIN, 0}, {0}};
+enum { YR_MAIN, YR_OP1, YR_OP4 = YR_OP1 + 3, YR_CHIP };   /* the FM page's rows */
+
+static const ymk_t *ymk_of(kref_t r)
+{
+    const ymk_t *d = r.row == YR_MAIN ? &YMK_MAIN[r.k] : r.row == YR_CHIP ? &YMK_CHIP[r.k] : &YMK_OP[r.k];
+    return d->name ? d : 0;
+}
+static int ymk_at(kref_t r, const ymk_t *d) { return r.row >= YR_OP1 && r.row <= YR_OP4 ? YV_OP + (r.row - YR_OP1) * YO_N + d->at : d->at; }
+static int ymk_u(const ymk_t *d, int raw)               /* the chip's value as the knob's place */
+{
+    switch (d->how) {
+    case YK_INV: return d->n - 1 - raw;
+    case YK_AR: return YM_RATE_MAX - (raw ? raw : 1);
+    case YK_DT: for (int i = 0; i < 7; i++) if (YK_DT_CODE[i] == raw) return i; return 3;   /* (4, "down by 0": none) */
+    default: return raw;
+    }
+}
+static int ymk_raw(const ymk_t *d, int u)               /* and back */
+{
+    u = clampi(u, 0, d->n - 1);
+    switch (d->how) {
+    case YK_INV: return d->n - 1 - u;
+    case YK_AR: return YM_RATE_MAX - u;
+    case YK_DT: return YK_DT_CODE[u];
+    default: return u;
+    }
+}
+static void ymk_text(char *o, const ymk_t *d, int u)
+{
+    switch (d->how) {
+    case YK_ALG: fmt_int(o, u + 1); break;
+    case YK_SIGNED: { const int x = u - d->n / 2; if (x > 0) *o++ = '+'; fmt_int(o, x); break; }
+    case YK_DT: { const int x = u - 3; if (x > 0) *o++ = '+'; fmt_int(o, x); break; }
+    case YK_MUL: if (u) fmt_int(o, u); else str_cat(o, "0.5"); break;
+    case YK_NAMES: str_cat(o, d->names[u]); break;
+    case YK_OFF: if (u) fmt_int(o, u); else str_cat(o, "Off"); break;
+    default: fmt_int(o, u); break;
+    }
+}
+static void ym_turn(kref_t r, int d)
+{
+    const ymk_t *k = ymk_of(r);
+    if (!k) return;
+    uint8_t *v = &ymv[vsyn()][ymk_at(r, k)];
+    *v = (uint8_t)ymk_raw(k, ymk_u(k, *v) + d);
+    sp_sync();
+}
+static void ym_knob_reset(kref_t r)                     /* Delete + an FM knob: the patch's own value, a macro at rest */
+{
+    const ymk_t *k = ymk_of(r);
+    const int s = vsyn();
+    uint8_t t[YV_N];
+    if (!k || !ymv[s][YV_FROM]) return;
+    ym_vals_of(t, ymv[s][YV_FROM] - 1);
+    ymv[s][ymk_at(r, k)] = t[ymk_at(r, k)];
+    sp_sync();
+}
+static void ym_knob_view(mv_knob_t *o, kref_t r)
+{
+    const ymk_t *k = ymk_of(r);
+    char v[24];
+    if (!k) { o->on = 0; return; }
+    const int u = ymk_u(k, ymv[vsyn()][ymk_at(r, k)]);
+    ascii(o->name, k->name, sizeof o->name);
+    v[0] = 0;
+    ymk_text(v, k, u);
+    ascii(o->val, v, sizeof o->val);
+    o->n = (uint8_t)(k->n <= 6 ? k->n : 0);             /* (a short list as dots) */
+    o->idx = (uint8_t)u;
+    o->raw = (uint8_t)(k->n > 1 ? u * 127 / (k->n - 1) : 0);
+}
+
 /* one list step at a time: the core's lists and the roll's move a step a call */
 static int turn_steps(kref_t r)
 {
@@ -677,6 +790,7 @@ static int turn_steps(kref_t r)
 static void mv_turn(kref_t r, int d)
 {
     if (r.pg < 0 || !d) return;
+    if (r.pg == PG_YM) { ym_turn(r, d); return; }
     const int pg = ui.page, row = ui.row[r.pg], enc = r.k == 4 ? E_ALGO : E_K1 + r.k;
     ui.page = (uint8_t)r.pg;
     ui.row[r.pg] = (uint8_t)r.row;
@@ -734,6 +848,7 @@ static void mv_touch(int i, int on)
     const kref_t r = mp_knob(i);
     if (r.pg < 0) return;
     focus_on(i);
+    if (mc.del && r.pg == PG_YM) { mc.used = 1; undo_mark(0); ym_knob_reset(r); return; }
     if (mc.del && r.pg != PG_ARR && r.pg != PG_DISCS && !(r.pg == PG_ROLL && r.row == 0)) {   /* the value back to its start */
         uint8_t *v = vp(r.pg, r.row, r.k);
         const size_t at = (size_t)(v - &ui.val[0][0][0][0]);
@@ -818,12 +933,33 @@ static void mv_jog(int d)
         mc.pat_sel = (uint8_t)clampi(mc.pat_sel + d, 0, SYN_PATS - 1);
         return;
     }
-    /* the synth's sound, loading at once: PRESETS on Home's rule */
+    /* the synth's sound, loading at once: the recordings, the YM2612's patches (when no other synth plays the chip),
+     * then the library's (PRESETS on Home's rule, with the patches between) */
     undo_mark(0x8001u);
-    const int pg = ui.page, dir = d > 0 ? 1 : -1;
-    ui.page = PG_HOME;
-    for (int n = d > 0 ? d : -d; n > 0 && n <= 8; n--) ui_encoder(E_PRESET, dir);
-    ui.page = (uint8_t)pg;
+    for (int n = d > 0 ? d : -d; n > 0 && n <= 8; n--) jog_sound(d > 0 ? 1 : -1);
+}
+
+/* the Sound page's jog, a step: where the synth's sound is in the list (recordings, patches, library), then the next */
+static void jog_sound(int dir)
+{
+    const int s = vsyn(), o = ym_owner(), fm = o < 0 || o == s ? YM_PATCHES : 0, lib = lib_count();
+    const int tot = DMK_SAMPLES_N + fm + lib;
+    uint8_t *sv = &ui.val[s][PG_SOUND][0][0], *pr = &ui.preset[s];
+    int at = *pr >= DMK_SAMPLES_N ? DMK_SAMPLES_N + fm + (*pr - DMK_SAMPLES_N) : *sv < DMK_SAMPLES_N + fm ? *sv : DMK_SAMPLES_N - 1;
+    at = wrap(at + dir, tot);
+    if (at < DMK_SAMPLES_N + fm) {
+        *sv = (uint8_t)at;
+        *pr = (uint8_t)(at < DMK_SAMPLES_N ? at : 0);    /* (an FM sound: no library mark) */
+        notice(at < DMK_SAMPLES_N ? DMK_SAMPLES[at].name : YM_PATCH[at - DMK_SAMPLES_N].name);
+    } else {
+        char t[16];
+        const int nth = at - DMK_SAMPLES_N - fm, slot = lib_nth(nth);
+        lib_load(s, slot);
+        *pr = (uint8_t)(DMK_SAMPLES_N + nth);
+        fmt_int(str_cat(t, slot < 9 ? "User 0" : "User "), slot + 1);
+        notice(t);
+    }
+    sp_sync();
 }
 
 static void mv_opened(void)             /* a project opened or new: what Undo and Delete + a knob go back to */
@@ -835,7 +971,10 @@ static void mv_opened(void)             /* a project opened or new: what Undo an
     mc.plist = 0;
     for (int s = 0; s < DMK_SYNTHS; s++) mc.pcur[s] = (uint8_t)syn_pat(s);
     style_of_prog();
-    for (int s = 0; s < DMK_SYNTHS; s++) { mc.bar[s] = 0; if (ui.preset[s] >= DMK_SAMPLES_N) ui.preset[s] = ui.val[s][PG_SOUND][0][0]; }
+    for (int s = 0; s < DMK_SYNTHS; s++) {             /* (an FM sound's number is past the recordings: never a library mark) */
+        mc.bar[s] = 0;
+        if (ui.preset[s] >= DMK_SAMPLES_N) ui.preset[s] = ui.val[s][PG_SOUND][0][0] < DMK_SAMPLES_N ? ui.val[s][PG_SOUND][0][0] : 0;
+    }
 }
 
 static void jog_click(void)
@@ -1132,6 +1271,24 @@ static const char *knob_label(kref_t r)
     return l;
 }
 
+/* the knobs that hold a recording's number (0 to DMK_SAMPLES_N - 1), not a value from 0 to 127: Sound, and the layer's
+ * Sound (the core's VS(s, PG_SOUND, 0, 0) and VS(s, PG_SOUND, 1, 4)) */
+static int holds_rec(kref_t r) { return r.pg == PG_SOUND && ((r.row == 0 && r.k == 0) || (r.row == 1 && r.k == 4)); }
+
+/* a meter's place, 0 at its first and 127 at its last: a list's by its place in the list (a choice keeps the middle of
+ * its place, short of either end), a recording's by its number, anything else its value (the owner, 2026-11-18: Sound's
+ * meter went only to the middle) */
+static uint8_t meter_raw(kref_t r, const choice_t *c, int idx)
+{
+    const int x = *vp(r.pg, r.row, r.k);
+    if (c) return (uint8_t)(c->n > 1 ? idx * 127 / (c->n - 1) : 0);
+    if (holds_rec(r)) {                                 /* (Sound's list goes on into the YM2612's patches) */
+        const int top = r.row == 0 ? DMK_SAMPLES_N + YM_PATCHES - 1 : DMK_SAMPLES_N - 1;
+        return (uint8_t)(clampi(x, 0, top) * 127 / top);
+    }
+    return (uint8_t)clampi(x, 0, 127);
+}
+
 static void knob_view(mv_knob_t *o, kref_t r, int i)
 {
     char v[24];
@@ -1139,11 +1296,10 @@ static void knob_view(mv_knob_t *o, kref_t r, int i)
     v[0] = 0;
     if (r.pg < 0) { o->on = 0; return; }
     o->on = 1;
-    {
-        const choice_t *c = r.pg == PG_ARR || r.pg == PG_DISCS ? 0 : choice_of(r.pg, r.row, r.k);
-        o->n = c ? c->n : 0;
-        o->idx = c ? (uint8_t)choice_index(c, *vp(r.pg, r.row, r.k)) : 0;
-    }
+    if (r.pg == PG_YM) { ym_knob_view(o, r); return; }
+    const choice_t *c = r.pg == PG_ARR || r.pg == PG_DISCS ? 0 : choice_of(r.pg, r.row, r.k);
+    o->n = c ? c->n : 0;
+    o->idx = c ? (uint8_t)choice_index(c, *vp(r.pg, r.row, r.k)) : 0;
     ascii(o->name, knob_label(r), sizeof o->name);
     if (r.pg == PG_ROLL && r.row == 0 && r.k < 4) {
         static const char *const FW_SHORT[FW_COUNT] = {"Free", "Key", "Chord", "Root", "Plays", "With 1", "With 2", "With 3", "With 4"};
@@ -1175,7 +1331,7 @@ static void knob_view(mv_knob_t *o, kref_t r, int i)
         o->raw = (uint8_t)clampi((int)b / 25, 0, 127);
     } else {
         val_text(v, r.pg, r.row, r.k);
-        o->raw = (uint8_t)clampi(*vp(r.pg, r.row, r.k), 0, 127);
+        o->raw = meter_raw(r, c, o->idx);
     }
     ascii(o->val, v, sizeof o->val);
 }
@@ -1185,6 +1341,7 @@ static int knob_kind(kref_t r, int i)
 {
     if (r.pg < 0) return MV_KK_NONE;
     if (is_tempo(i)) return MV_KK_TEMPO;
+    if (r.pg == PG_YM) { const ymk_t *k = ymk_of(r); return !k ? MV_KK_NONE : k->n <= 32 ? MV_KK_CHOICE : MV_KK_RANGE; }
     if (r.pg == PG_ARR || r.pg == PG_DISCS || (r.pg == PG_ROLL && r.row == 0 && r.k >= 2)) return MV_KK_CHOICE;
     const choice_t *c = choice_of(r.pg, r.row, r.k);
     return c && c->n <= 32 ? MV_KK_CHOICE : MV_KK_RANGE;
@@ -1327,6 +1484,7 @@ static void roll_view(mv_view_t *v)
 /* a synth's sound: its recording's name, or its place in the library */
 static void sound_name(char *o, int t, int n)
 {
+    if (syn[t].ym) { ascii(o, YM_PATCH[syn[t].ym - 1].name, n); return; }
     if (ui.preset[t] >= DMK_SAMPLES_N) {
         const int slot = lib_nth(ui.preset[t] - DMK_SAMPLES_N);
         o[0] = 0;
@@ -1414,6 +1572,24 @@ static void pic_chord(mv_pic_t *p)
         if (!writing && ch_shown != -2 && j == now) p->now = (uint8_t)i;
         if (writing && j == ch_cur) p->cur = (uint8_t)i;
     }
+}
+
+/* an FM sound: its name, its algorithm, each operator's level as the chip has it (Bright on the modulators), the ones
+ * heard marked; on an operator's row, that one */
+static void pic_fm(mv_pic_t *p)
+{
+    const int s = vsyn(), alg = ymv[s][YV_ALG] & 7, bright = ymv[s][YV_BRIGHT] - YM_BRIGHT_MID, row = mp_row();
+    p->kind = PIC_FM;
+    p->on = 1;
+    ascii(p->name, YM_PATCH[syn[s].ym - 1].name, sizeof p->name);
+    fmt_int(str_cat(p->tag, "Algorithm "), alg + 1);
+    p->p[4] = YM_CARRIERS[alg];
+    for (int o = 0; o < 4; o++) {
+        int tl = ymv[s][YV_OP + o * YO_N + YO_TL];
+        if (!(YM_CARRIERS[alg] >> o & 1)) tl = clampi(tl - bright, 0, YM_TL_MAX);
+        p->p[o] = (uint8_t)(YM_TL_MAX - tl);
+    }
+    p->cur = (uint8_t)(row >= YR_OP1 && row <= YR_OP4 ? row - YR_OP1 : 0xFF);
 }
 
 /* the sound's own shape, the loop's ends, where it starts, each voice playing it */
@@ -1528,7 +1704,7 @@ static void pic_sounds(mv_pic_t *p)
     for (int t = 0; t < DMK_SYNTHS; t++) {
         const int v = VS(t, PG_SOUND, 0, 0), user = ui.preset[t] >= DMK_SAMPLES_N ? lib_nth(ui.preset[t] - DMK_SAMPLES_N) : -1;
         p->num[t] = (uint8_t)(t + 1);
-        ascii(p->line[t], DMK_SAMPLES[v < DMK_SAMPLES_N ? v : 0].name, sizeof p->line[t]);
+        ascii(p->line[t], syn[t].ym ? YM_PATCH[syn[t].ym - 1].name : DMK_SAMPLES[v < DMK_SAMPLES_N ? v : 0].name, sizeof p->line[t]);
         if (user >= 0) fmt_int(str_cat(p->cell[t].name, user < 9 ? "User 0" : "User "), user + 1);
     }
 }
@@ -1587,7 +1763,7 @@ static void pic_build(mv_view_t *v)
     case MP_HOME: if (row == 1) pic_pan(v); else if (row == 2) pic_song(p); break;
     case MP_ROLL: if (row) pic_arp(p); else { p->kind = PIC_ROLL; roll_view(v); } break;
     case MP_CHORD: pic_chord(p); break;
-    case MP_SOUND: pic_sound(p); break;
+    case MP_SOUND: if (syn[vsyn()].ym) pic_fm(p); else pic_sound(p); break;
     case MP_FILTAMP: pic_shapes(p); break;
     case MP_LFO: pic_lfo(p); break;
     case MP_FX: pic_effect(p, row == 0 ? PIC_TAIL : row == 1 ? PIC_ECHO : PIC_MOTION, PG_FX, row); break;
@@ -1608,7 +1784,8 @@ static void mv_view_build(mv_view_t *v)
     v->land = (uint8_t)scene_of(s);
     for (int t = 0; t < DMK_SYNTHS; t++) {
         int i;
-        v->letters[t] = DMK_SAMPLES[VS(t, PG_SOUND, 0, 0) < DMK_SAMPLES_N ? VS(t, PG_SOUND, 0, 0) : 0].name[0];
+        v->letters[t] = syn[t].ym ? YM_PATCH[syn[t].ym - 1].name[0]
+                                  : DMK_SAMPLES[VS(t, PG_SOUND, 0, 0) < DMK_SAMPLES_N ? VS(t, PG_SOUND, 0, 0) : 0].name[0];
         for (i = 0; i < DMK_VOICES; i++) if (vc[i].on && vc[i].sy == t) v->lights |= (uint8_t)(1u << t);
     }
     ascii(v->page, mp_of()->name, sizeof v->page);

@@ -112,6 +112,9 @@ typedef struct {
     uint32_t lrate;
     int32_t ldepth;
     uint16_t lfade;
+#ifdef DMK_MOVE
+    uint8_t ym;                    /* the Move's YM2612 (move/dmk_ym.c): its patch + 1; 0, a recording */
+#endif
 } synth_t;
 enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's targets */
 static synth_t syn[DMK_SYNTHS];
@@ -144,6 +147,9 @@ typedef struct {
     uint8_t lay;                   /* the note has a layer: blended to its end and past it (to silence, not cut) */
     uint16_t blocks;               /* blocks since the note began: vibrato's fade-in */
     uint8_t stage, note, sy, on, src, vel;   /* stage: 0 silent, 1 attack, 2 decay and sustain, 3 release */
+#ifdef DMK_MOVE
+    uint8_t ych;                   /* the YM2612's channel it reads + 1 (move/dmk_ym.c); 0, its recording */
+#endif
 } voice_t;
 static voice_t vc[DMK_VOICES];
 /* the render's passes: up to VB_MAX frames, the voices first, then each synth's chain in place, vbuf[0] its left after,
@@ -152,6 +158,21 @@ static voice_t vc[DMK_VOICES];
 static int32_t vbuf[2][DMK_SYNTHS][VB_MAX] POOL;
 
 static uint32_t vc_clock;
+#ifdef DMK_MOVE
+/* the Move's YM2612 (move/dmk_ym.c, after the core): a voice takes one of its channels instead of a recording, and goes
+ * through its filter, envelope and velocity as a recording's would */
+#define YM_PATCHES 16                                   /* the Sound list's after the recordings */
+#define YV_N 49                                         /* the FM values a sound keeps (move/dmk_ym.c's YV_*) */
+static uint8_t ymv[DMK_SYNTHS][YV_N];                   /* each synth's: in its patterns' sounds and its song */
+static void ym_sync(void);
+static int ym_owner(void);
+static void ym_reset(void);
+static int ym_note_on(int sy, voice_t *o, int n);
+static void ym_note_off(voice_t *o);
+static void ym_run(int frames);
+static void ym_voice(voice_t *o, const synth_t *p, int32_t *out, int b, int32_t e0, int32_t de, int32_t f, int32_t f2,
+                     int32_t q, int32_t q1, int open, int32_t c);
+#endif
 /* who started a voice: the keys, a roll, the chord machine; a note off ends only its own source's (the progression's
  * chord change never cuts a note the hands hold, nor the reverse) */
 enum { SRC_KEY, SRC_ROLL, SRC_CHORD, SRC_ARP, SRC_MIDI };   /* (MIDI in's: never sent back out, or a loop sang on) */
@@ -326,6 +347,10 @@ static void note_on_vel(int sy, int n, int src, int vel)
         if (best < 0) best = 0;                         /* (none sounding: the cap at none) */
         vc_tail[vc[best].sy] += vc[best].lastv;         /* what it was sounding fades out, not cut */
     }
+#ifdef DMK_MOVE
+    if (vc[best].stage && vc[best].ych) ym_note_off(&vc[best]);
+    vc[best].ych = 0;
+#endif
     o = &vc[best];
     st = p->start;
     if (p->ltarget == LT_START && p->ldepth) {          /* the LFO moves where each note starts, around START, faded */
@@ -351,6 +376,9 @@ static void note_on_vel(int sy, int n, int src, int vel)
     o->env = 0; o->stage = 1;
     o->lp = o->bp = o->lp2 = o->bp2 = 0;
     o->note = (uint8_t)n; o->sy = (uint8_t)sy; o->on = 1; o->age = vc_clock++; o->src = (uint8_t)src; o->lastv = 0;
+#ifdef DMK_MOVE
+    if (p->ym) { o->lay = 0; o->m.on = 0; if (!ym_note_on(sy, o, n)) o->stage = 0; }   /* (no channel: silent) */
+#endif
     if (midi_out & 1u && src != SRC_MIDI) mq_put(0x90 | sy, n, vel);
 }
 #define VEL_KEY 100                                     /* the keys' velocity, as the roll writes it */
@@ -382,6 +410,9 @@ static void note_off_src(int sy, int n, int src)
     if (best < 0 && src != SRC_ARP && sy >= 0 && sy < DMK_SYNTHS && arp_drop(sy, n)) return;
     if (midi_out & 1u && src != SRC_MIDI && n >= 0 && n < 128) mq_put(0x80 | sy, n, 0);
     if (best >= 0) { vc[best].on = 0; if (vc[best].stage) vc[best].stage = 3; }
+#ifdef DMK_MOVE
+    if (best >= 0 && vc[best].ych) ym_note_off(&vc[best]);   /* (its release rings: the channel stays the voice's) */
+#endif
 }
 #ifdef DMK_MOVE
 static void note_on_s(int sy, int n) { note_on_vel(sy, n, SRC_KEY, KEY_VEL); }
@@ -1801,6 +1832,7 @@ DMK_SMALL static void dsp_reset(void)
     gm_lg[0] = gm_lg[1] = 32768;                        /* (the rider at rest: a loud song's riding left a new one quiet) */
 #ifdef DMK_MOVE
     poly_g = poly_was = 32768;
+    ym_reset();
 #endif
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) {                  /* the delays: off (as set, they come in from silence), their
@@ -1938,6 +1970,9 @@ static void voices_run(int half)
                 f = T_SVF[clampi(((VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8) + gi, 0, 255)];
                 f2 = T_SVF[clampi(((VOW[a][1] * (256 - t) + VOW[z][1] * t) >> 8) + gi, 0, 255)];
             }
+#ifdef DMK_MOVE
+            if (o->ych) { ym_voice(o, p, out, b, e0, de, f, f2, q, q1, open, c); if (o->stage) o->env = e1; continue; }
+#endif
             if (gs == 1 && !o->lay && p->drive <= 256 && o->vg >= 32768) {   /* the plain voice: as it was, no cost */
                 for (i = 0; i < DMK_SUB; i++) {
                     int32_t x, y;
@@ -2126,6 +2161,9 @@ static void dsp_render(int16_t *lr, int frames)
         n = frames - at > VB_MAX ? VB_MAX : frames - at;
         v_frames = n;
         nb = n / DMK_SUB;
+#ifdef DMK_MOVE
+        ym_run(n);                                      /* the YM2612's channels for this run, before its voices read them */
+#endif
         for (s = 0; s < DMK_SYNTHS; s++) lfo_run(s, nb);   /* the LFOs: both cores read them */
         for (s = 0; s < DMK_SYNTHS; s++)                /* the vibrato's LFO, a block at a time, before the split */
             for (b = 0; b < nb; b++) {

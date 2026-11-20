@@ -52,7 +52,7 @@ typedef struct {
 
 /* the page's one picture: which, and what it is drawn from */
 enum { PIC_NONE, PIC_ROLL, PIC_ARP, PIC_PAN, PIC_SONG, PIC_CHORD, PIC_SOUND, PIC_SHAPES, PIC_LFO, PIC_TAIL, PIC_ECHO,
-       PIC_MOTION, PIC_COLOUR, PIC_MEDIA, PIC_PROJECTS, PIC_SOUNDS, PIC_PATS };
+       PIC_MOTION, PIC_COLOUR, PIC_MEDIA, PIC_PROJECTS, PIC_SOUNDS, PIC_PATS, PIC_FM };
 enum { TL_PLAIN, TL_BLOOM, TL_SHIMMER, TL_REVERSE, TL_FREEZE };   /* a tail's shape: the reverbs' and the Space's types */
 typedef struct {
     char name[8];                      /* a chord, a scene's number; a sound's library number */
