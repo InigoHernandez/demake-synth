@@ -6,7 +6,8 @@
  * the frame read every two panel frames (34.83 ms, ~28.7 a second, evenly, never caught up after a stall) and painted
  * by rows and runs (only the rows that changed, nothing for the same frame), the LEDs at most 16 a tick and to the
  * right notes and CCs (the 32 pads on 68.., the page pads among them; Sample on 118, Capture on 52), a failed send
- * kept, the parked tick, the resume. The knobs' curve (Demake's own:
+ * kept, an LED the host's full buffer refused sent again, the sweep (every LED again in ~1.3 s, for a pad painted
+ * over), the parked tick, the resume. The knobs' curve (Demake's own:
  * slow turns half a step a detent, a fast burst capped, a reversal starting fresh, a full sweep's detents, a short list
  * slower, the tempo in tenths and whole BPM, Shift + knob 1 the tempo); the tempo asked of Move written to
  * desired-tempo (host_write_file mocked): after the knob rests, at most once a second while turning, never two writes
@@ -19,7 +20,7 @@ const src = readFileSync(new URL('../ui.js', import.meta.url), 'utf8')
 
 let clock = 1000;
 const sets = [], gets = [], fills = [], leds = [], writes = [];
-let clears = 0, prints = 0, setOk = true, writeOk = true;
+let clears = 0, prints = 0, setOk = true, writeOk = true, ledOk = true, refused = 0;
 
 /* the DSP's frame: "DMK1", its number, 64 rows of 22 characters, the LEDs (65, two hex digits each), the knobs' kinds
  * (8), the tempo asked: its number (2 hex), tenths (4 hex) */
@@ -46,8 +47,15 @@ const ctx = {
     MoveBack: 51, MoveMainKnob: 14, MoveMaster: 79,
     MoveSteps: Array.from({ length: 16 }, (_, i) => 16 + i),
     MovePads: Array.from({ length: 32 }, (_, i) => 68 + i),
-    setLED: (n, c) => leds.push(['n', n, c]),
-    setButtonLED: (n, c) => leds.push(['cc', n, c]),
+    MidiNoteOn: 0x90, MidiCC: 0xB0,
+    setLED: () => { throw new Error('setLED: the LEDs go through move_midi_internal_send'); },
+    setButtonLED: () => { throw new Error('setButtonLED: the LEDs go through move_midi_internal_send'); },
+    /* the host's MIDI out: false (dropped) while ledOk is false, as when its buffer is full */
+    move_midi_internal_send: (m) => {
+        if (!ledOk) { refused++; return false; }
+        leds.push([m[0] === 0x09 && m[1] === 0x90 ? 'n' : m[0] === 0x0b && m[1] === 0xB0 ? 'cc' : '?', m[2], m[3]]);
+        return true;
+    },
     invalidateLedCache: () => {},
     decodeDelta: (v) => (v >= 1 && v <= 63 ? v : v >= 65 && v <= 127 ? v - 128 : 0),
     host_write_file: (path, content) => { writes.push([clock, path, content]); return writeOk; },
@@ -115,7 +123,8 @@ leds.length = 0;
 const per = [];
 for (let i = 0; i < 6; i++) { const n = leds.length; tick(1, 35); per.push(leds.length - n); }
 check(Math.max(...per) <= 16, `LEDs at most 16 a tick (${per.join(', ')})`);
-check(leds.length === NLED, `every LED sent once over the ticks (${leds.length})`);
+check(new Set(leds.map((l) => l[0] + l[1])).size === NLED && leds.length <= NLED + per.length,
+      `every LED sent over the ticks, the sweep's one a tick at most beside them (${leds.length})`);
 const step1 = leds.find((l) => l[0] === 'n' && l[1] === 16), pad1 = leds.find((l) => l[0] === 'n' && l[1] === 68);
 const trk1 = leds.find((l) => l[0] === 'cc' && l[1] === 43), rec = leds.find((l) => l[0] === 'cc' && l[1] === 86);
 const pad17 = leds.find((l) => l[0] === 'n' && l[1] === 84), pad32 = leds.find((l) => l[0] === 'n' && l[1] === 99);
@@ -127,7 +136,26 @@ check(sample && sample[2] === 64 && capture && capture[2] === 65, 'Sample on CC 
 check(!leds.some((l) => l[0] === 'cc' && l[1] === 85), "PLAY's LED left to Move");
 leds.length = 0;
 tick(3, 35);
-check(leds.length === 0, 'unchanged LEDs: nothing sent');
+const want = (l) => { const k = l[0] === 'n' ? (l[1] < 68 ? l[1] - 16 : 16 + l[1] - 68) : null; return k === null || frameLeds[k] === l[2]; };
+check(leds.length === 3 && leds.every(want), `unchanged LEDs: only the sweep, one a tick 20 ms or more apart, as they are (${leds.length})`);
+
+/* a full buffer: what it refused is sent again once it takes them, nothing recorded as lit that was not */
+frameLeds = frameLeds.map((c) => (c % 100) + 2);
+frameSeq++;
+leds.length = 0; refused = 0;
+ledOk = false;
+tick(3, 35);
+check(leds.length === 0 && refused === 3, `the buffer full: one refused a tick, the tick stops there (${refused} refused)`);
+ledOk = true;
+for (let i = 0; i < 6; i++) tick(1, 35);
+const lastOf = new Map(leds.map((l) => [l[0] + l[1], l[2]]));
+check(lastOf.size === NLED && [...lastOf.values()].every((c, i) => c >= 2), `then every LED sent, the refused ones too (${lastOf.size} of ${NLED})`);
+
+/* painted over (Schwung or Move repaint a pad under Demake): the sweep sends each one again within ~1.3 s */
+leds.length = 0;
+tick(70, 20);
+const sweptLeds = new Set(leds.map((l) => l[0] + l[1]));
+check(sweptLeds.size === NLED && leds.every(want), `the sweep: every LED again within ${70 * 20} ms, as it is (${sweptLeds.size} of ${NLED})`);
 
 /* the controls */
 sets.length = 0;
@@ -299,7 +327,8 @@ ctx.onResume();
 fills.length = 0;
 leds.length = 0;
 tick(10, 35);
-check(fills.filter((x) => x[2] === 128).length === 64 && leds.length === NLED, 'resumed: every row and LED again');
+check(fills.filter((x) => x[2] === 128).length === 64 && new Set(leds.map((x) => x[0] + x[1])).size === NLED,
+      'resumed: every row and LED again');
 
 if (fails) { console.log(`${fails} failed`); process.exit(1); }
 console.log('ui.js: all passed');

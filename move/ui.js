@@ -3,8 +3,8 @@
  * screen/dmk_screen.c). This file forwards the controls the DSP does not hear itself (the knobs, the jog, the buttons,
  * the knobs' touch: the pads, the steps and Move's clock go to it straight, through its on_midi), reads one frame every
  * two of the OLED's frames (~28.7 a second: the 128 x 64 page and the LEDs, one bulk get), paints the rows that
- * changed and sets the LEDs that changed, at most 16 a tick. No sequencing, sound or page logic lives here. Two things
- * do: the knobs' feel (their detents into steps, Demake's own curve: below) and the tempo asked of Move, written to
+ * changed and sets the LEDs that changed, at most 16 a tick, one more every 20 ms in turn (a light lost comes back).
+ * No sequencing, sound or page logic lives here. Two things do: the knobs' feel (their detents into steps, Demake's own curve: below) and the tempo asked of Move, written to
  * Schwung's desired-tempo file (the DSP may not touch a file: it names the tempo in its frame, this writes it).
  *
  * The pace (README, The screen): the overtake tick runs every 2 ms (Schwung's shadow_ui.c), the OLED takes one of its
@@ -17,7 +17,7 @@
  * volume knob + jog click) and Shift + Capture (Schwung's skipback). PLAY reaches Move too (module.json's button_passthrough), so one press starts both and
  * Move keeps its LED; Demake follows Move's start and stop, or plays alone if Move sends no clock. */
 import {
-    MoveBack, MoveMainKnob, MoveMaster, MoveSteps, MovePads
+    MoveBack, MoveMainKnob, MoveMaster, MoveSteps, MovePads, MidiNoteOn, MidiCC
 } from '/data/UserData/schwung/shared/constants.mjs';
 import {
     setLED, setButtonLED, invalidateLedCache, decodeDelta
@@ -53,6 +53,9 @@ const TEMPO_REST_MS = 250;     /* the knob at rest this long: its value written 
 
 const FRAME_MS = 2 * 6 * 128 * 1000 / 44100;   /* 34.83 ms: two panel frames (six slices, one each 128 samples) */
 const LED_BUDGET = 16;         /* LED messages a tick at most; the rest wait for the next */
+const LED_SWEEP_MS = 20;       /* one LED sent again every 20 ms whatever was sent before: all 65 in about 1.3 s, so a
+                                * light something else painted over (Schwung, Move) comes back within that */
+const USB_NOTE = 0x09, USB_CC = 0x0b;                      /* USB-MIDI code index: a note on, a CC (cable 0) */
 const MUTE_MOVE = false;       /* Move's own audio under Demake: mixed (false) or muted (the owner's call) */
 const ROWS = 64, ROW_CH = 22, HEAD = 12;                  /* the frame: "DMK1", its number (8 hex), 64 rows of 22 */
 const TRACK_CC = [43, 42, 41, 40];                         /* tracks 1..4 (with Shift 5..8): the DSP's order */
@@ -72,7 +75,8 @@ let events = [];               /* controls to send, in order, as one "in" value 
 let rows = new Array(ROWS).fill(null);   /* each row as last painted */
 let lastSeq = "";
 let want = null;               /* the LEDs as the DSP wants them: [{key, kind, id, color}] */
-let shown = {};                /* LED key -> colour as last sent */
+let shown = {};                /* LED key -> colour as last sent and taken (a send refused is not recorded) */
+let sweepAt = 0, nextSweep = 0;   /* the LED the sweep sends next, and when */
 let kinds = "00000000";        /* how each knob turns (KK_*), from the frame */
 let shiftHeld = false;         /* Shift (as sent to the DSP, in order): knob 1 is the tempo */
 let knobs = [];                /* each knob's turn: {dir, last, acc, mode, kind, hist} */
@@ -256,20 +260,40 @@ function poll(now) {
 
 /* -------------------------------------------------------------------------------------------------- the LEDs */
 
-function leds() {
+/* one LED message, straight to the host: false when its MIDI-out buffer was full and the message was dropped.
+ * (Schwung's setLED and setButtonLED keep a cache of their own and say nothing of a drop: a pad recorded as lit but
+ * never sent stayed dark until its colour changed, the owner's "pads switch off, a tap lights them again", 2026-11-18) */
+function send(l) {
+    if (typeof move_midi_internal_send !== "function") {
+        if (l.note) setLED(l.id, l.color, true); else setButtonLED(l.id, l.color, true);
+        return true;
+    }
+    const msg = l.note ? [USB_NOTE, MidiNoteOn, l.id, l.color] : [USB_CC, MidiCC, l.id, l.color];
+    return move_midi_internal_send(msg) !== false;
+}
+
+/* what changed first, at most LED_BUDGET a tick, stopping at a full buffer (the rest next tick); then, every
+ * LED_SWEEP_MS, one LED again in turn, as the record says it is */
+function leds(now) {
     if (!want) return;
     let n = 0;
     for (const l of want) {
-        if (n >= LED_BUDGET) break;
+        if (n >= LED_BUDGET) return;
         if (shown[l.key] === l.color) continue;
-        if (l.note) setLED(l.id, l.color); else setButtonLED(l.id, l.color);
+        if (!send(l)) return;
         shown[l.key] = l.color;
         n++;
     }
+    if (now < nextSweep) return;
+    nextSweep = now + LED_SWEEP_MS;
+    sweepAt = (sweepAt + 1) % want.length;
+    const l = want[sweepAt];
+    if (!send(l)) delete shown[l.key];
 }
 
 function resetAll() {
     shown = {};
+    nextSweep = 0;
     rows = new Array(ROWS).fill(null);
     lastSeq = "";
     if (typeof invalidateLedCache === "function") invalidateLedCache();
@@ -303,7 +327,7 @@ globalThis.tick = function () {
         poll(now);
     }
     tempoTick(now);
-    leds();
+    leds(now);
 };
 
 globalThis.onMidiMessageInternal = function (data) {
