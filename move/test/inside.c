@@ -990,7 +990,7 @@ static void fm(const char *dir)
     check(song_save(0) == 0, "a song with FM sounds saved");
     memset(ymv, 0, sizeof ymv);
     ui.val[FM_SY][PG_SOUND][0][0] = 0;
-    check(song_load(0) == 0 && st_ver == 20u && ui.val[FM_SY][PG_SOUND][0][0] == DMK_SAMPLES_N + 4 && ymv[FM_SY][YV_ALG] == a0
+    check(song_load(0) == 0 && st_ver == ST_VER && ui.val[FM_SY][PG_SOUND][0][0] == DMK_SAMPLES_N + 4 && ymv[FM_SY][YV_ALG] == a0
           && ymv[FM_SY][YV_GRIT] == 1 && syn[FM_SY].ym == 5, "and opened (format 20): the FM sound playing as it was");
     pat_pick_syn(FM_SY, 1);
     check(ui.val[FM_SY][PG_SOUND][0][0] == DMK_SAMPLES_N + 12 && ymv[FM_SY][YV_ALG] == a1, "and pattern 2's FM sound with it");
@@ -1002,11 +1002,11 @@ static void fm(const char *dir)
     sp_sync();
     mc.page = MP_SOUND; ui.page = PG_SOUND; mc.row[MP_SOUND] = 0;
     mv_knob(0, 1);
-    check(ui.val[0][PG_SOUND][0][0] == 0 && !syn[0].ym && ym_owner() == FM_SY,
-          "synth 1 past its last recording: its first again, the chip synth 4's");
+    check(ui.val[0][PG_SOUND][0][0] == DMK_SAMPLES_N + YM_PATCHES && !syn[0].ym && syn[0].lp == 1 && ym_owner() == FM_SY,
+          "synth 1 past its last recording: over the patches to the first loop, the chip synth 4's");
     ui.val[0][PG_SOUND][0][0] = DMK_SAMPLES_N - 1; ui.preset[0] = DMK_SAMPLES_N - 1;
     jog_sound(1);
-    check(!syn[0].ym && (ui.val[0][PG_SOUND][0][0] == 0 || ui.preset[0] >= DMK_SAMPLES_N), "and the jog: past the patches");
+    check(!syn[0].ym && ui.val[0][PG_SOUND][0][0] == DMK_SAMPLES_N + YM_PATCHES, "and the jog: over the patches to the first loop");
     ui.val[FM_SY][PG_SOUND][0][0] = 0;                  /* synth 4 back to a recording: the chip free */
     sp_sync();
     ui.val[0][PG_SOUND][0][0] = DMK_SAMPLES_N - 1; ui.preset[0] = DMK_SAMPLES_N - 1;
@@ -1016,6 +1016,82 @@ static void fm(const char *dir)
     int rec = 1;
     for (int i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == FM_SY && vc[i].on) rec &= !vc[i].ych;
     check(rec && ym_owner() == 0, "synth 4 back to a recording, synth 1 on the chip");
+    v2_destroy(in);
+}
+
+/* loops (move/dmk_loop.c, the owner's 2026-11-21): REC on a loop's page records Demake's mix (but its own synth) on the
+ * bar for its length, then it plays with the transport, locked to it; an overdub's old layer kept by Overdub; speed and
+ * reverse; Delete + REC clears it; Shift + jog the next kind of sound; a song keeps the loop values (format 21) */
+static int64_t out_energy(const int16_t *o, int n) { int64_t e = 0; for (int i = 0; i < n * 2; i++) e += (int64_t)o[i] * o[i]; return e; }
+static int64_t loop_energy(int k) { int64_t e = 0; for (uint32_t f = 0; f < lps[k].len; f++) e += (int64_t)lp_buf[k][f][0] * lp_buf[k][f][0]; return e; }
+static void loops(const char *dir)
+{
+    enum { LS = DMK_SYNTHS - 1, LRUN = 128, LBARS_MAX = 4000 };
+    static int16_t out[LRUN * 2];
+    clear_store(dir);
+    void *in = open_at(dir);
+    seq_play(0);
+    for (int s = 0; s < DMK_SYNTHS; s++) { sq[s].count = 0; ch.follow[s] = FW_FREE; }
+    ui.synth = LS;
+    ui.val[LS][PG_SOUND][0][0] = DMK_SAMPLES_N + YM_PATCHES;   /* synth 4: Loop 1 */
+    sp_sync();
+    to_page(MP_SOUND);
+    check(syn[LS].lp == 1 && lpv[LS][LV_SET] && lpv[LS][LV_SPEED] == LP_SPEED_ONE && mp_of() == &MP_LOOP && lps[0].state == LS_EMPTY,
+          "a synth on Loop 1: its values new, its page the Loop's, the loop empty");
+    /* synth 1 holds a chord; REC stopped waits for PLAY's first bar */
+    ui.val[0][PG_AMP][0][0] = 0; ui.val[0][PG_AMP][0][2] = 127; sp_sync();
+    for (int n = 0; n < 3; n++) note_on_vel(0, 57 + n * 4, SRC_KEY, 110);
+    lpv[LS][LV_BARS] = 0;                               /* one bar */
+    mv_button(86, 127); mv_button(86, 0);
+    check(lps[0].state == LS_ARMED && lps[0].steps == LP_STEPS_BAR && lps[0].start == 0, "REC, stopped: armed for the first bar, one bar long");
+    seq_play(1);
+    int r = 0, recs = 0, skip_ok = 1;
+    for (; r < LBARS_MAX && lps[0].state != LS_PLAY; r++) { dmk_render(out, LRUN); if (lps[0].state == LS_REC) { recs++; skip_ok &= lp_skip[LS] && !lp_skip[0]; } }
+    check(recs > 0 && skip_ok, "recording: the mix of every synth but synth 4");
+    const uint32_t bar = (uint32_t)((uint64_t)LP_STEPS_BAR * seq_per() / 256u);
+    check(lps[0].state == LS_PLAY && lps[0].len == bar && loop_energy(0) > 0, "after one bar: playing, a bar's frames, the chord in them");
+    /* synth 1 silent: what sounds is the loop, locked to the bar */
+    for (int v = 0; v < DMK_VOICES; v++) vc[v].stage = 0, vc[v].on = 0;
+    for (int k = 0; k < 40; k++) dmk_render(out, LRUN);
+    int64_t e1 = 0;
+    for (int k = 0; k < 40; k++) { dmk_render(out, LRUN); e1 += out_energy(out, LRUN); }
+    const uint32_t f0 = lp_frame_q8(0, lp_t0, 1, 1, 0) >> 8, f1 = lp_frame_q8(0, lp_t0 + ((uint64_t)LP_STEPS_BAR << 32), 1, 1, 0) >> 8;
+    check(e1 > 0 && f0 == f1, "synth 1 silent: the loop heard, a bar later at the same place in it");
+    check((lp_frame_q8(0, (uint64_t)8 << 32, 1, 2, 0) >> 8) == bar / 4 && (lp_frame_q8(0, (uint64_t)4 << 32, 1, 1, 1) >> 8) == bar - 1 - bar / 4,
+          "speed a half: half a bar's steps in, a quarter of the loop; reversed, from its end");
+    /* an overdub keeping nothing, nothing coming in (Gain at none: synth 1's tails still ring): silent after its pass */
+    lpv[LS][LV_KEEP] = 0; lpv[LS][LV_GAIN] = 0;
+    mv_button(86, 127); mv_button(86, 0);
+    check(lps[0].state == LS_ODUB_ARMED, "REC playing: an overdub armed for the next bar");
+    for (r = 0; r < LBARS_MAX && lps[0].state != LS_ODUB; r++) dmk_render(out, LRUN);
+    {                                                   /* (a frame a sample: never two, the overdub's whole pass) */
+        int skips = 0;
+        uint32_t last = lp_frame_q8(0, lp_t0, 1, 1, 0) >> 8;
+        for (int i = 1; i < (int)lp_frames; i++) {
+            const uint32_t f = lp_frame_q8(0, lp_t0 + lp_span * (uint64_t)i / lp_frames, 1, 1, 0) >> 8;
+            skips += f != last && f != last + 1 && f != 0;
+            last = f;
+        }
+        check(!skips, "the loop's frame from the transport: a step of one frame or none, never two");
+    }
+    for (r = 0; r < LBARS_MAX && lps[0].state != LS_PLAY; r++) dmk_render(out, LRUN);
+    check(lps[0].state == LS_PLAY && loop_energy(0) == 0, "after its pass, Overdub and Gain at none: the old layer gone");
+    /* Delete + REC clears; Shift + jog the next kind */
+    mc.del = 1; mv_button(86, 127); mv_button(86, 0); mc.del = 0;
+    check(lps[0].state == LS_EMPTY && !lps[0].len, "Delete + REC: the loop cleared");
+    mc.shift = 1; mv_jog(1); mc.shift = 0;
+    check(snd_kind(ui.val[LS][PG_SOUND][0][0]) == 0 && !syn[LS].lp, "Shift + jog: on to the recordings (the kinds round)");
+    mc.shift = 1; mv_jog(1); mc.shift = 0;
+    check(snd_kind(ui.val[LS][PG_SOUND][0][0]) == 1 && syn[LS].ym, "again: the patches");
+    mc.shift = 1; mv_jog(1); mc.shift = 0;
+    check(ui.val[LS][PG_SOUND][0][0] == DMK_SAMPLES_N + YM_PATCHES && syn[LS].lp == 1, "again: the loop it was on");
+    /* a song keeps a pattern's loop values */
+    seq_play(0);
+    lpv[LS][LV_SRC] = LSRC_JACK; lpv[LS][LV_REV] = 1;
+    check(song_save(0) == 0, "a song with a loop sound saved");
+    lpv[LS][LV_SRC] = LSRC_MIX; lpv[LS][LV_REV] = 0; ui.val[LS][PG_SOUND][0][0] = 0;
+    check(song_load(0) == 0 && st_ver == 21u && ui.val[LS][PG_SOUND][0][0] == DMK_SAMPLES_N + YM_PATCHES && lpv[LS][LV_SRC] == LSRC_JACK
+          && lpv[LS][LV_REV] == 1, "and opened (format 21): the loop sound and its values");
     v2_destroy(in);
 }
 
@@ -1076,6 +1152,7 @@ int main(int argc, char **argv)
     chordmode(argv[1]);
     meters(argv[1]);
     fm(argv[1]);
+    loops(argv[1]);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

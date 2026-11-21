@@ -665,6 +665,8 @@ static void v2_render(void *inst, int16_t *out, int frames)
         return;
     }
     const uint32_t t0 = now_us();
+    lp_jack = host && host->mapped_memory && host->audio_in_offset > 0   /* (the audio in, for a loop recording it) */
+        ? (const int16_t *)(const void *)(host->mapped_memory + host->audio_in_offset) : 0;
     mv_block(out, frames);
     sv_step();
     const uint32_t x = atomic_load(&sv.failed);

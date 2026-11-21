@@ -103,6 +103,24 @@ static void jam_fm(void)
     sp_sync();
     for (int n = 0; n < 6; n++) note_on_s(DMK_SYNTHS - 1, 48 + n * 5);   /* (and six held: the chip full however the chords go) */
 }
+/* a loop (move/dmk_loop.c) on the last synth, four bars of noise playing at half speed, reversed, its filter open,
+ * beside the jam */
+#ifndef DMK_MOVE
+static void jam_loop(void) { jam(0); }                  /* (the FM-1's core has no loops: the jam again) */
+#else
+static void jam_loop(void)
+{
+    jam(0);
+    V(DMK_SYNTHS - 1, PG_SOUND, 0, 0) = DMK_SAMPLES_N + YM_PATCHES;
+    sp_sync();
+    lpv[DMK_SYNTHS - 1][LV_SPEED] = 1; lpv[DMK_SYNTHS - 1][LV_REV] = 1;
+    lps[0].steps = 4 * LP_STEPS_BAR;
+    lps[0].len = (uint32_t)((uint64_t)lps[0].steps * seq_per() / 256u);
+    uint32_t r = 7;
+    for (uint32_t f = 0; f < lps[0].len; f++) { r = r * 1664525u + 1013904223u; lp_buf[0][f][0] = (int16_t)(r >> 17); lp_buf[0][f][1] = (int16_t)(r >> 1); }
+    lps[0].state = LS_PLAY;
+}
+#endif
 static void worst_fm(void)
 {
     heavy_base();
@@ -115,7 +133,7 @@ static void worst_fm(void)
 }
 
 /* case i into the core; its name (0: no such case). The heavy ones first, the sweep of every type after */
-#define HC_HEAVY 8                      /* the ones the device's CPU is read on */
+#define HC_HEAVY 9                      /* the ones the device's CPU is read on */
 static const char *heavy_case(int i)
 {
     static char nm[48];
@@ -130,6 +148,7 @@ static const char *heavy_case(int i)
     case 5: worst(31); return "worst voices, Ailanthus";
     case 6: jam_fm(); return "jam + YM2612, six notes";
     case 7: worst_fm(); return "worst voices + YM2612";
+    case 8: jam_loop(); return "jam + a loop";
     }
     k -= HC_HEAVY;
     if (k < SP_N) { heavy_base(); glob(FC_LOSSY, k, FM_VHS); heavy_go(); return NM("Space", k); }

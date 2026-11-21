@@ -29,6 +29,7 @@ static void ui_yield(void) { if (dmk_yield) dmk_yield(); }
 #include "dmk_store.c"
 #ifdef DMK_MOVE
 #include "../../move/dmk_ym.c"                          /* the Move's YM2612 (the core's voices take its channels) */
+#include "../../move/dmk_loop.c"                        /* the Move's loops (a synth plays one with the transport) */
 #endif
 
 static uint32_t samples;

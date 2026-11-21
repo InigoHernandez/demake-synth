@@ -23,8 +23,8 @@
 #define ST_MAGIC_LIB 0x4C4B4D44u                        /* "DMKL" */
 #define ST_MAGIC_SONG 0x4E4B4D44u                       /* "DMKN" */
 #ifdef DMK_MOVE
-#define ST_VER 20u  /* the Move's alone, its songs never reach the FM-1: 20: the YM2612's values in each pattern's
-                       sound (the open one's are the sound playing); 19: eleven progressions more; 18: each pattern its sound; 17: four
+#define ST_VER 21u  /* the Move's alone, its songs never reach the FM-1: 21: the loops' values in each pattern's sound;
+                       20: the YM2612's values in each pattern's sound (the open one's are the sound playing); 19: eleven progressions more; 18: each pattern its sound; 17: four
                        synths; 16: a roll's count two bytes */
 #define ST_SYN (st_ver >= 17u ? DMK_SYNTHS : 3)        /* synths a song holds: three before 17 */
 #else
@@ -283,6 +283,7 @@ static void synth_new(int s)
     for (g = 0; g < SCENES; g++) scn[g].pat[s] = 0;
     psnd_reset(s);
     __builtin_memset(ymv[s], 0, sizeof ymv[s]);
+    __builtin_memset(lpv[s], 0, sizeof lpv[s]);
 }
 #endif
 #ifdef DMK_MOVE
@@ -402,6 +403,7 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     for (s = 0; s < ST_SYN; s++) ch.hint[s] = 2;    /* (before 4 none were kept: the last project's stayed) */
 #ifdef DMK_MOVE
     __builtin_memset(ymv, 0, sizeof ymv);              /* (a song before 20 has no FM values: none of the last's stay) */
+    __builtin_memset(lpv, 0, sizeof lpv);
     for (s = ST_SYN; s < DMK_SYNTHS; s++) synth_new(s);   /* a synth the song did not have (the fourth, before 17): new */
 #endif
     for (s = 0; s < ST_SYN; s++) for (g = 0; g < PG_SAVED; g++) for (r = 0; r < 4; r++) for (k = 0; k < 5; k++) ui.val[s][g][r][k] = *p++;
@@ -585,7 +587,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
                     if (e - p < 2) return -1;
                     d->follow = *p++ < FW_COUNT ? p[-1] : FW_FREE; d->hint = *p++;
                     {
-                        const int nv = st_ver >= 20u ? PSND_VALS : PSND_VALS_19;   /* (before 20: no FM values) */
+                        const int nv = st_ver >= 21u ? PSND_VALS : st_ver >= 20u ? PSND_VALS_20 : PSND_VALS_19;   /* (before
+                                                           20 no FM values, before 21 no loop values) */
                         if (e - p < nv) return -1;
                         __builtin_memcpy(d->v, p, (size_t)nv);
                         __builtin_memset(d->v + nv, 0, (size_t)(PSND_VALS - nv));
@@ -615,7 +618,8 @@ DMK_SMALL static int song_unpack(const uint8_t *p, uint32_t n)    /* 0: the song
     for (s = 0; s < ST_SYN; s++) if (ui.roll_cur[s] >= sq[s].steps) ui.roll_cur[s] = 0;
     for (s = 0; s < ST_SYN; s++) {
 #ifdef DMK_MOVE
-        if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N + YM_PATCHES) ui.val[s][PG_SOUND][0][0] = 0;   /* (the YM2612's kept) */
+        if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N + YM_PATCHES + LP_N) ui.val[s][PG_SOUND][0][0] = 0;   /* (the
+                                                           YM2612's and the loops kept) */
 #else
         if (ui.val[s][PG_SOUND][0][0] >= DMK_SAMPLES_N) ui.val[s][PG_SOUND][0][0] = 0;
 #endif

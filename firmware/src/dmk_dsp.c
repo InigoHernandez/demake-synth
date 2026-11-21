@@ -114,6 +114,7 @@ typedef struct {
     uint16_t lfade;
 #ifdef DMK_MOVE
     uint8_t ym;                    /* the Move's YM2612 (move/dmk_ym.c): its patch + 1; 0, a recording */
+    uint8_t lp;                    /* the Move's loop it plays (move/dmk_loop.c) + 1; 0 none */
 #endif
 } synth_t;
 enum { LT_PITCH, LT_CUTOFF, LT_LEVEL, LT_PAN, LT_START };         /* the LFO's targets */
@@ -167,6 +168,21 @@ static uint8_t ymv[DMK_SYNTHS][YV_N];                   /* each synth's: in its 
 static void ym_sync(void);
 static int ym_owner(void);
 static void ym_reset(void);
+/* the Move's loops (move/dmk_loop.c): a synth set to one plays it with the transport; the mix every synth but its own
+ * gathered while one is written */
+#define LP_N 4                                          /* the Sound list's after the YM2612's patches */
+#define LV_N 7                                          /* the loop values a sound keeps (dmk_loop.c's LV_*) */
+static uint8_t lpv[DMK_SYNTHS][LV_N];
+static int32_t lp_mix[2][VB_MAX];                       /* this pass's mix, the loop's source */
+static uint8_t lp_skip[DMK_SYNTHS], lp_writing;         /* synths the loop being written does not hear; one is */
+static void lp_touch(void);
+static void lp_sync(void);
+static void lp_begin(int frames);
+static void lp_play(int at, int n);
+static void lp_pass_begin(int n);
+static void lp_write(int at, int n);
+static int snd_step(int s, int v, int dir);
+static int snd_kind(int v);
 static int ym_note_on(int sy, voice_t *o, int n);
 static void ym_note_off(voice_t *o);
 static void ym_run(int frames);
@@ -327,6 +343,9 @@ static void note_on_vel(int sy, int n, int src, int vel)
     const synth_t *p = &syn[sy];
     voice_t *o;
     if (n < 0 || n > 127 || sy < 0 || sy >= DMK_SYNTHS) return;
+#ifdef DMK_MOVE
+    if (p->lp) return;                                  /* (a loop plays with the transport, not from notes) */
+#endif
     vel = clampi(vel, 1, 127);
     if (src != SRC_ARP && arp_take(sy, n, vel)) return;   /* the ARP's: the note into its pool, it plays them */
     for (i = 0; i < DMK_VOICES; i++) if (vc[i].stage && vc[i].sy == sy) first = 0;
@@ -1833,6 +1852,7 @@ DMK_SMALL static void dsp_reset(void)
 #ifdef DMK_MOVE
     poly_g = poly_was = 32768;
     ym_reset();
+    lp_touch();
 #endif
     for (i = 0; i < 2 * TP_LEN; i++) tp_buf[i / TP_LEN][i % TP_LEN] = 0;
     for (i = 0; i < DMK_SYNTHS; i++) {                  /* the delays: off (as set, they come in from silence), their
@@ -2155,6 +2175,9 @@ static void chain_job(void)
 static void dsp_render(int16_t *lr, int frames)
 {
     int b, i, s, n, at;
+#ifdef DMK_MOVE
+    lp_begin(frames);                                   /* where the transport is: the loops' time */
+#endif
     for (at = 0; at < frames; at += n) {
         int nb, par, rv_on = 0, sp_on, r0;
         int32_t mg[VB_MAX / DMK_SUB];
@@ -2173,6 +2196,10 @@ static void dsp_render(int16_t *lr, int frames)
         par = dmk_par_begin && dmk_par_begin(voices_job);
         voices_run(0);
         if (par) dmk_par_end(); else voices_run(1);
+#ifdef DMK_MOVE
+        lp_play(at, n);                                 /* each synth on a loop: it, into its voices' sum */
+        lp_pass_begin(n);
+#endif
         /* the song's fades, a step a block; and each synth's way into its reverb a block (its level, the fade, the LFO's
          * tremolo, its AMOUNT): both before the jobs that run the reverbs */
         for (b = 0; b < nb; b++) {
@@ -2238,6 +2265,12 @@ static void dsp_render(int16_t *lr, int frames)
                     x = (xl + xr) / 2;
                     L[i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
                     R[i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
+#ifdef DMK_MOVE
+                    if (lp_writing && !lp_skip[s]) {   /* (the loop's source: the mix but its own synths) */
+                        lp_mix[0][b * DMK_SUB + i] += (xl * (gl0 + (gl1 - gl0) * i / DMK_SUB)) >> 15;
+                        lp_mix[1][b * DMK_SUB + i] += (xr * (gr0 + (gr1 - gr0) * i / DMK_SUB)) >> 15;
+                    }
+#endif
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 } else for (i = 0; i < DMK_SUB; i++) {      /* (held: the pan where it is, the LFO's too: PAN's own here
                                                            left the LFO's swing heard only on the blocks it stepped) */
@@ -2245,6 +2278,9 @@ static void dsp_render(int16_t *lr, int frames)
                     int32_t xr = clampi((clampi(sr[i], -65535, 65535) * lvl) >> 14, -65535, 65535), x = (xl + xr) / 2;   /* back up */
                     L[i] += (xl * gl1) >> 15;
                     R[i] += (xr * gr1) >> 15;
+#ifdef DMK_MOVE
+                    if (lp_writing && !lp_skip[s]) { lp_mix[0][b * DMK_SUB + i] += (xl * gl1) >> 15; lp_mix[1][b * DMK_SUB + i] += (xr * gr1) >> 15; }
+#endif
                     if (x > pk) pk = x; else if (-x > pk) pk = -x;
                 }
                 syn_peak[s] = pk > syn_peak[s] ? pk : syn_peak[s] - (syn_peak[s] >> 6);
@@ -2254,6 +2290,9 @@ static void dsp_render(int16_t *lr, int frames)
             bench_block(DMK_SUB);
 #endif
         }
+#ifdef DMK_MOVE
+        lp_write(at, n);                                /* the loops being written: this pass's mix, or the audio in */
+#endif
         if (rv_busy(1)) rv_run(1, rv_out[0], rv_out[1]);
         if (par) dmk_par_end(); else if (sp_on || r0) sp_job();
         if (r0) for (i = 0; i < n / 2; i++) { rv_out[0][i] += rv_out1[0][i]; rv_out[1][i] += rv_out1[1][i]; }

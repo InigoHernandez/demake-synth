@@ -184,8 +184,14 @@ YM=move/dmk_ym.c
 core "Bright never on the chip" $YM "s#else { mul = clampi(mul + ratio, 0, YM_MUL_MAX); tl = clampi(tl - bright, 0, YM_TL_MAX); }#else { mul = clampi(mul + ratio, 0, YM_MUL_MAX); tl = clampi(tl, 0, YM_TL_MAX); }#"
 core "a stolen channel keeps its voice" $YM "s#        v->stage = 0; v->ych = 0; v->lastv = 0;#        v->lastv = 0;#"
 core "the chip never asleep" $YM "s#        if (ym.idle >= YM_IDLE) return;#        if (0) return;#"
-core "each pattern without its FM values" $FUI "s#    return \&ymv\[s\]\[i - PSND_CHORD\];#    return \&ymv[0][0];#"
-core "two synths on the chip" $FUI "s#n = DMK_SAMPLES_N + (o < 0 || o == ui.synth ? YM_PATCHES : 0);#n = DMK_SAMPLES_N + YM_PATCHES;#"
+core "each pattern without its FM values" $FUI "s#    return i < YV_N ? \&ymv\[s\]\[i\] : \&lpv\[s\]\[i - YV_N\];#    return i < YV_N ? \&ymv[0][0] : \&lpv[s][i - YV_N];#"
+core "two synths on the chip" move/dmk_loop.c "s#    do v = wrap(v + dir, top); while (!fm \&\& snd_kind(v) == 1);#    do v = wrap(v + dir, top); while (0 \&\& fm);#"
+LP=move/dmk_loop.c
+core "a loop records its own synth" $LP "s#        for (int s = 0; s < DMK_SYNTHS; s++) if (syn\[s\].lp == k + 1) lp_skip\[s\] = 1;#        ;#"
+core "an overdub keeps the old layer whole" $LP "s#            if (lps\[k\].state == LS_ODUB) { il += (w\[0\] \* keep) >> 15; ir += (w\[1\] \* keep) >> 15; }#            if (lps[k].state == LS_ODUB) { il += w[0]; ir += w[1]; }#"
+core "a loop never stops recording" $LP "s#                lps\[k\].state = LS_PLAY;#                lps[k].state = lps[k].state;#"
+core "a loop off the transport" $LP "s#    const uint64_t L = (uint64_t)lps\[k\].steps << 32, pos = (t \* (uint64_t)num / (uint64_t)den) % L;#    const uint64_t L = (uint64_t)lps[k].steps << 32, pos = (t * (uint64_t)num / (uint64_t)den + ((uint64_t)3 << 32)) % L;#"
+core "rounded down again" $LP "s#((lp_frame_q8(k, t, 1, 1, 0) + 128u) >> 8) % lps\[k\].len;#(lp_frame_q8(k, t, 1, 1, 0) >> 8) % lps[k].len;#"
 core "Delete leaves an FM value" move/dmk_move_ui.c "s#    ymv\[s\]\[ymk_at(r, k)\] = t\[ymk_at(r, k)\];#    (void)t;#"
 exit $bad
 '

@@ -1149,6 +1149,11 @@ static int do_draw(const char *d)
     }
     page(MP_SOUND);
     A_set("in", "T 3 1"); snap_scr(d, "fm_knob"); A_set("in", "T 3 0");
+    /* on to a loop (Shift + jog: the next kind), its page, empty */
+    held(49); jog(1); lift(49); blocks(600);
+    snap_scr(d, "loop0");
+    check(vint("pic") == PIC_SOUND && view_row() == 0 && lit_rows(10, 52) > 20, "Shift + jog: the loops, the Loop page");
+    held(49); jog(1); lift(49);                         /* (round to the recordings) */
     for (int t = 0; t < 2 * 80 && vint("pic") == PIC_FM; t++) { A_set("in", "K 0 -1"); blocks(2); }   /* (back to a recording) */
     tap(43);
     page(MP_ROLL);

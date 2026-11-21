@@ -107,6 +107,14 @@ static const mpage_t MP_FM = {"Sound", PG_SOUND, 6, {"Main", "Op 1", "Op 2", "Op
      {YK(5, 0), YK(5, 1), KR(SOUND, 0, 3), KR(SOUND, 0, 4), YK(5, 4), YK(5, 5), YK(5, 6), KN}},
     {KN, KN, KN, KN, KN, KN}};
 
+/* the Sound page of a synth on a loop (move/dmk_loop.c; the owner's, 2026-11-21): its sound, how it records (from the
+ * mix or the audio in, how long, how much of the old layer an overdub keeps, how loud it comes in), how it plays
+ * (speed, reverse). REC on this page records it, Delete + REC clears it */
+#define PG_LP (PG_COUNT + 1)            /* (the Move's alone, as PG_YM) */
+#define LK(r, c) {PG_LP, r, c}
+static const mpage_t MP_LOOP = {"Sound", PG_SOUND, 1, {"Loop"},
+    {{KR(SOUND, 0, 0), LK(0, 1), LK(0, 2), LK(0, 3), LK(0, 4), LK(0, 5), LK(0, 6), KN}}, {KN}};
+
 /* the pad in each column of the top row, and each page's colours lit and dim: the song blue, the sound rose, the mix pink */
 static const uint8_t PAGE_LIT[MP_SAVE] = {L_BLUE, L_BLUE, L_BLUE, L_ROSE, L_ROSE, L_ROSE, L_PINK, L_PINK};
 static const uint8_t PAGE_DIM[MP_SAVE] = {L_DBLUE, L_DBLUE, L_DBLUE, L_DROSE, L_DROSE, L_DROSE, L_DPINK, L_DPINK};
@@ -148,8 +156,14 @@ static void mv_turn(kref_t r, int d);
 static void mv_save_request(void);
 static void ascii(char *o, const char *s, int n);
 static void jog_sound(int dir);
+static void jog_kind(int dir);
 
-static const mpage_t *mp_of(void) { return mc.page == MP_SOUND && syn[ui.synth].ym ? &MP_FM : &MP[mc.page]; }
+static const mpage_t *mp_of(void)
+{
+    if (mc.page == MP_SOUND && syn[ui.synth].ym) return &MP_FM;
+    if (mc.page == MP_SOUND && syn[ui.synth].lp) return &MP_LOOP;
+    return &MP[mc.page];
+}
 static int mp_row(void) { return mc.row[mc.page] < mp_of()->rows ? mc.row[mc.page] : 0; }
 static kref_t mp_knob(int i) { return mp_of()->k[mp_row()][i]; }
 static int song_row(void) { return mc.page == MP_HOME && mp_row() == 2; }
@@ -166,6 +180,7 @@ typedef struct {
     struct { snote_t n[SEQ_NOTES]; seq_n_t count; uint16_t steps; } r[DMK_SYNTHS];
     uint8_t val[sizeof ui.val], mute, follow[DMK_SYNTHS];
     uint8_t ymv[sizeof ymv];           /* the FM values (move/dmk_ym.c) */
+    uint8_t lpv[sizeof lpv];           /* the loop values (move/dmk_loop.c) */
 } un_t;
 static struct {
     un_t s[UN_N + 1];
@@ -184,6 +199,7 @@ static void un_take(un_t *u)
     }
     memcpy(u->val, ui.val, sizeof u->val);
     memcpy(u->ymv, ymv, sizeof u->ymv);
+    memcpy(u->lpv, lpv, sizeof u->lpv);
     u->mute = pat_mute;
 }
 static void un_put(const un_t *u)
@@ -197,6 +213,7 @@ static void un_put(const un_t *u)
     }
     memcpy(ui.val, u->val, sizeof u->val);
     memcpy(ymv, u->ymv, sizeof u->ymv);
+    memcpy(lpv, u->lpv, sizeof u->lpv);
     pat_mute = u->mute;
     for (int s = 0; s < DMK_SYNTHS; s++) psnd_glide_stop(s);   /* (a switch's glide: the values put back win) */
     roll_cur_in();
@@ -690,7 +707,7 @@ static void mv_pad(int p, int vel, int down)
 
 /* the FM page's own knobs (PG_YM): each a place in a list of n, kept in the sound's FM values as the chip takes them.
  * Turned right is more: louder, longer, slower to rise (the chip's rates are the other way round) */
-enum { YK_PLAIN, YK_INV, YK_AR, YK_DT, YK_SIGNED, YK_ALG, YK_MUL, YK_NAMES, YK_OFF };
+enum { YK_PLAIN, YK_INV, YK_AR, YK_DT, YK_SIGNED, YK_ALG, YK_MUL, YK_NAMES, YK_OFF, YK_PCT, YK_GAIN };
 typedef struct { const char *name; uint8_t at, n, how; const char *const *names; } ymk_t;   /* at: YV_*, or an
                                                            operator's YO_* on its row */
 static const char *const YK_CHIP[2] = {"Clean", "Grit"}, *const YK_RATE[2] = {"Smooth", "Raw"};
@@ -710,13 +727,22 @@ static const ymk_t YMK_CHIP[8] = {
     {"LFO", YV_LFO, YM_LFO_RATES + 1, YK_OFF, 0}, {"Vibrato", YV_VIB, YM_VIB_MAX + 1, YK_PLAIN, 0},
     {"Tremolo", YV_TREM, YM_TREM_MAX + 1, YK_PLAIN, 0}, {0}};
 enum { YR_MAIN, YR_OP1, YR_OP4 = YR_OP1 + 3, YR_CHIP };   /* the FM page's rows */
+static const char *const LK_SRC[2] = {"Mix", "Jack"}, *const LK_REV[2] = {"Off", "On"};
+static const char *const LK_BARS[LP_BARS_N] = {"1 bar", "2 bars", "4 bars", "8 bars", "16 bars"};
+static const char *const LK_SPEED[LP_SPEED_N] = {"1/4", "1/2", "1", "2", "4"};
+static const ymk_t LPK_MAIN[8] = {
+    {0}, {"Source", LV_SRC, 2, YK_NAMES, LK_SRC}, {"Length", LV_BARS, LP_BARS_N, YK_NAMES, LK_BARS},
+    {"Overdub", LV_KEEP, LP_KEEP_ALL + 1, YK_PCT, 0}, {"Speed", LV_SPEED, LP_SPEED_N, YK_NAMES, LK_SPEED},
+    {"Reverse", LV_REV, 2, YK_NAMES, LK_REV}, {"Gain", LV_GAIN, 2 * LP_GAIN_ONE, YK_GAIN, 0}, {0}};
 
+static int own_knob(kref_t r) { return r.pg == PG_YM || r.pg == PG_LP; }   /* the Move's own pages' knobs */
 static const ymk_t *ymk_of(kref_t r)
 {
-    const ymk_t *d = r.row == YR_MAIN ? &YMK_MAIN[r.k] : r.row == YR_CHIP ? &YMK_CHIP[r.k] : &YMK_OP[r.k];
+    const ymk_t *d = r.pg == PG_LP ? &LPK_MAIN[r.k] : r.row == YR_MAIN ? &YMK_MAIN[r.k] : r.row == YR_CHIP ? &YMK_CHIP[r.k] : &YMK_OP[r.k];
     return d->name ? d : 0;
 }
 static int ymk_at(kref_t r, const ymk_t *d) { return r.row >= YR_OP1 && r.row <= YR_OP4 ? YV_OP + (r.row - YR_OP1) * YO_N + d->at : d->at; }
+static uint8_t *knob_val(kref_t r, const ymk_t *d) { return r.pg == PG_LP ? &lpv[vsyn()][d->at] : &ymv[vsyn()][ymk_at(r, d)]; }
 static int ymk_u(const ymk_t *d, int raw)               /* the chip's value as the knob's place */
 {
     switch (d->how) {
@@ -745,6 +771,8 @@ static void ymk_text(char *o, const ymk_t *d, int u)
     case YK_MUL: if (u) fmt_int(o, u); else str_cat(o, "0.5"); break;
     case YK_NAMES: str_cat(o, d->names[u]); break;
     case YK_OFF: if (u) fmt_int(o, u); else str_cat(o, "Off"); break;
+    case YK_PCT: str_cat(fmt_int(o, u * 100 / (d->n - 1)), "%"); break;
+    case YK_GAIN: str_cat(fmt_int(o, u * 100 / LP_GAIN_ONE), "%"); break;
     default: fmt_int(o, u); break;
     }
 }
@@ -752,7 +780,7 @@ static void ym_turn(kref_t r, int d)
 {
     const ymk_t *k = ymk_of(r);
     if (!k) return;
-    uint8_t *v = &ymv[vsyn()][ymk_at(r, k)];
+    uint8_t *v = knob_val(r, k);
     *v = (uint8_t)ymk_raw(k, ymk_u(k, *v) + d);
     sp_sync();
 }
@@ -760,8 +788,18 @@ static void ym_knob_reset(kref_t r)                     /* Delete + an FM knob: 
 {
     const ymk_t *k = ymk_of(r);
     const int s = vsyn();
+    if (!k) return;
+    if (r.pg == PG_LP) {                                /* a loop's: as a sound first picked has it */
+        const uint8_t keep[LV_N] = {lpv[s][0], lpv[s][1], lpv[s][2], lpv[s][3], lpv[s][4], lpv[s][5], lpv[s][6]};
+        lp_vals_new(s);
+        const uint8_t now = lpv[s][k->at];
+        memcpy(lpv[s], keep, sizeof keep);
+        lpv[s][k->at] = now;
+        sp_sync();
+        return;
+    }
     uint8_t t[YV_N];
-    if (!k || !ymv[s][YV_FROM]) return;
+    if (!ymv[s][YV_FROM]) return;
     ym_vals_of(t, ymv[s][YV_FROM] - 1);
     ymv[s][ymk_at(r, k)] = t[ymk_at(r, k)];
     sp_sync();
@@ -771,7 +809,7 @@ static void ym_knob_view(mv_knob_t *o, kref_t r)
     const ymk_t *k = ymk_of(r);
     char v[24];
     if (!k) { o->on = 0; return; }
-    const int u = ymk_u(k, ymv[vsyn()][ymk_at(r, k)]);
+    const int u = ymk_u(k, *knob_val(r, k));
     ascii(o->name, k->name, sizeof o->name);
     v[0] = 0;
     ymk_text(v, k, u);
@@ -790,7 +828,7 @@ static int turn_steps(kref_t r)
 static void mv_turn(kref_t r, int d)
 {
     if (r.pg < 0 || !d) return;
-    if (r.pg == PG_YM) { ym_turn(r, d); return; }
+    if (own_knob(r)) { ym_turn(r, d); return; }
     const int pg = ui.page, row = ui.row[r.pg], enc = r.k == 4 ? E_ALGO : E_K1 + r.k;
     ui.page = (uint8_t)r.pg;
     ui.row[r.pg] = (uint8_t)r.row;
@@ -848,7 +886,7 @@ static void mv_touch(int i, int on)
     const kref_t r = mp_knob(i);
     if (r.pg < 0) return;
     focus_on(i);
-    if (mc.del && r.pg == PG_YM) { mc.used = 1; undo_mark(0); ym_knob_reset(r); return; }
+    if (mc.del && own_knob(r)) { mc.used = 1; undo_mark(0); ym_knob_reset(r); return; }
     if (mc.del && r.pg != PG_ARR && r.pg != PG_DISCS && !(r.pg == PG_ROLL && r.row == 0)) {   /* the value back to its start */
         uint8_t *v = vp(r.pg, r.row, r.k);
         const size_t at = (size_t)(v - &ui.val[0][0][0][0]);
@@ -924,6 +962,7 @@ static void mv_jog(int d)
     }
     if (mc.shift) {
         mc.used = 1;
+        if (mc.page == MP_SOUND) { undo_mark(0x8002u); jog_kind(d > 0 ? 1 : -1); return; }   /* the next kind of sound */
         const kref_t r = mp_of()->jog[mp_row()];
         if (r.pg >= 0) { undo_mark(0x8000u); mv_turn(r, d); }
         return;
@@ -939,26 +978,55 @@ static void mv_jog(int d)
     for (int n = d > 0 ? d : -d; n > 0 && n <= 8; n--) jog_sound(d > 0 ? 1 : -1);
 }
 
-/* the Sound page's jog, a step: where the synth's sound is in the list (recordings, patches, library), then the next */
+/* a sound's name in the list: a recording's, a patch's, a loop's */
+static void snd_name(char *t, int v)
+{
+    if (v < DMK_SAMPLES_N) str_cat(t, DMK_SAMPLES[v].name);
+    else if (v < DMK_SAMPLES_N + YM_PATCHES) str_cat(t, YM_PATCH[v - DMK_SAMPLES_N].name);
+    else fmt_int(str_cat(t, "Loop "), v - DMK_SAMPLES_N - YM_PATCHES + 1);
+}
+
+/* the Sound page's jog, a step: the recordings, the patches (snd_step skips them while another synth plays the chip),
+ * the loops, then the library's, then round */
 static void jog_sound(int dir)
 {
-    const int s = vsyn(), o = ym_owner(), fm = o < 0 || o == s ? YM_PATCHES : 0, lib = lib_count();
-    const int tot = DMK_SAMPLES_N + fm + lib;
+    const int s = vsyn(), lib = lib_count();
     uint8_t *sv = &ui.val[s][PG_SOUND][0][0], *pr = &ui.preset[s];
-    int at = *pr >= DMK_SAMPLES_N ? DMK_SAMPLES_N + fm + (*pr - DMK_SAMPLES_N) : *sv < DMK_SAMPLES_N + fm ? *sv : DMK_SAMPLES_N - 1;
-    at = wrap(at + dir, tot);
-    if (at < DMK_SAMPLES_N + fm) {
-        *sv = (uint8_t)at;
-        *pr = (uint8_t)(at < DMK_SAMPLES_N ? at : 0);    /* (an FM sound: no library mark) */
-        notice(at < DMK_SAMPLES_N ? DMK_SAMPLES[at].name : YM_PATCH[at - DMK_SAMPLES_N].name);
+    char t[24] = "";
+    int nth = *pr >= DMK_SAMPLES_N && *pr - DMK_SAMPLES_N < lib ? *pr - DMK_SAMPLES_N : -1, v = *sv;
+    if (nth >= 0) {                                     /* in the library: on, or out of it at either end */
+        nth += dir;
+        if (nth >= lib) { nth = -1; v = snd_step(s, -1, 1); }
+        else if (nth < 0) v = snd_step(s, 0, -1);
     } else {
-        char t[16];
-        const int nth = at - DMK_SAMPLES_N - fm, slot = lib_nth(nth);
+        const int nv = snd_step(s, v, dir);
+        if (lib && ((dir > 0 && nv <= v) || (dir < 0 && nv >= v))) nth = dir > 0 ? 0 : lib - 1;   /* (past an end) */
+        else v = nv;
+    }
+    if (nth >= 0) {
+        const int slot = lib_nth(nth);
         lib_load(s, slot);
         *pr = (uint8_t)(DMK_SAMPLES_N + nth);
         fmt_int(str_cat(t, slot < 9 ? "User 0" : "User "), slot + 1);
-        notice(t);
+    } else {
+        *sv = (uint8_t)v;
+        *pr = (uint8_t)(v < DMK_SAMPLES_N ? v : 0);      /* (a patch or a loop: no library mark) */
+        snd_name(t, v);
     }
+    notice(t);
+    sp_sync();
+}
+
+/* Shift + jog on the Sound page: the next kind of sound (the recordings, the patches, the loops), the last one of it */
+static void jog_kind(int dir)
+{
+    const int s = vsyn();
+    uint8_t *sv = &ui.val[s][PG_SOUND][0][0];
+    char t[24] = "";
+    *sv = (uint8_t)snd_jump(s, *sv, dir);
+    ui.preset[s] = (uint8_t)(*sv < DMK_SAMPLES_N ? *sv : 0);
+    snd_name(t, *sv);
+    notice(t);
     sp_sync();
 }
 
@@ -1138,8 +1206,13 @@ static void mv_button(int cc, int v)
         else { mc.prev = mc.page; mc.page = MP_SAVE; save_open(); ui.row[PG_DISCS] = 0; mc.row[MP_SAVE] = 0; }
         mc.focus = -1;
         break;
-    case 86:                           /* Rec; Shift + Rec saves */
+    case 86:                           /* Rec; Shift + Rec saves; on a loop's Sound page its own (Delete + Rec clears it) */
         if (mc.shift) { mc.used = 1; mv_save(); break; }
+        if (mc.page == MP_SOUND && syn[vsyn()].lp) {
+            if (mc.del) { mc.used = 1; lp_clear(vsyn()); notice("Loop cleared"); }
+            else lp_rec_press(vsyn());
+            break;
+        }
         dmk_button(B_REC, 1);
         dmk_button(B_REC, 0);
         break;
@@ -1296,7 +1369,7 @@ static void knob_view(mv_knob_t *o, kref_t r, int i)
     v[0] = 0;
     if (r.pg < 0) { o->on = 0; return; }
     o->on = 1;
-    if (r.pg == PG_YM) { ym_knob_view(o, r); return; }
+    if (own_knob(r)) { ym_knob_view(o, r); return; }
     const choice_t *c = r.pg == PG_ARR || r.pg == PG_DISCS ? 0 : choice_of(r.pg, r.row, r.k);
     o->n = c ? c->n : 0;
     o->idx = c ? (uint8_t)choice_index(c, *vp(r.pg, r.row, r.k)) : 0;
@@ -1341,7 +1414,7 @@ static int knob_kind(kref_t r, int i)
 {
     if (r.pg < 0) return MV_KK_NONE;
     if (is_tempo(i)) return MV_KK_TEMPO;
-    if (r.pg == PG_YM) { const ymk_t *k = ymk_of(r); return !k ? MV_KK_NONE : k->n <= 32 ? MV_KK_CHOICE : MV_KK_RANGE; }
+    if (own_knob(r)) { const ymk_t *k = ymk_of(r); return !k ? MV_KK_NONE : k->n <= 32 ? MV_KK_CHOICE : MV_KK_RANGE; }
     if (r.pg == PG_ARR || r.pg == PG_DISCS || (r.pg == PG_ROLL && r.row == 0 && r.k >= 2)) return MV_KK_CHOICE;
     const choice_t *c = choice_of(r.pg, r.row, r.k);
     return c && c->n <= 32 ? MV_KK_CHOICE : MV_KK_RANGE;
@@ -1439,6 +1512,10 @@ static void mv_leds(mv_view_t *v)
     for (int t = 0; t < DMK_SYNTHS; t++)
         l->trk[t] = mc.shift ? (ch.keys >> t & 1u ? L_WHITE : L_OFF) : t == s ? L_WHITE : pat_mute >> t & 1u ? L_OFF : L_DARK;
     l->btn[MB_REC] = seq_rec && !(v->ready && ui.now / 250u & 1u) ? L_RED : L_OFF;
+    if (mc.page == MP_SOUND && syn[vsyn()].lp) {      /* a loop's page: REC is the loop's (lit writing, blinking armed) */
+        const int st = lps[syn[vsyn()].lp - 1].state;
+        l->btn[MB_REC] = st == LS_REC || st == LS_ODUB || ((st == LS_ARMED || st == LS_ODUB_ARMED) && ui.now / 250u & 1u) ? L_RED : L_OFF;
+    }
     l->btn[MB_MUTE] = pat_mute >> s & 1u ? W_ON : W_DIM;
     l->btn[MB_UNDO] = un.at ? W_MID : W_DIM;
     l->btn[MB_COPY] = mc.copy ? W_ON : W_DIM;
@@ -1485,6 +1562,7 @@ static void roll_view(mv_view_t *v)
 static void sound_name(char *o, int t, int n)
 {
     if (syn[t].ym) { ascii(o, YM_PATCH[syn[t].ym - 1].name, n); return; }
+    if (syn[t].lp) { char w[12] = ""; snd_name(w, DMK_SAMPLES_N + YM_PATCHES + syn[t].lp - 1); ascii(o, w, n); return; }
     if (ui.preset[t] >= DMK_SAMPLES_N) {
         const int slot = lib_nth(ui.preset[t] - DMK_SAMPLES_N);
         o[0] = 0;
@@ -1590,6 +1668,23 @@ static void pic_fm(mv_pic_t *p)
         p->p[o] = (uint8_t)(YM_TL_MAX - tl);
     }
     p->cur = (uint8_t)(row >= YR_OP1 && row <= YR_OP4 ? row - YR_OP1 : 0xFF);
+}
+
+/* a loop: its shape as recorded, where it is playing, what it is doing */
+static void pic_loop(mv_pic_t *p)
+{
+    const int s = vsyn(), k = syn[s].lp - 1, sp = lpv[s][LV_SPEED] < LP_SPEED_N ? lpv[s][LV_SPEED] : LP_SPEED_ONE;
+    static const char *const SAY[] = {"Empty", "Next bar", "Recording", "", "Overdub next", "Overdub"};
+    p->kind = PIC_SOUND;
+    p->on = (uint8_t)(lps[k].len != 0);
+    snd_name(p->name, DMK_SAMPLES_N + YM_PATCHES + k);
+    if (lps[k].state == LS_PLAY) str_cat(fmt_int(p->tag, lps[k].steps / LP_STEPS_BAR), lps[k].steps == LP_STEPS_BAR ? " bar" : " bars");
+    else str_cat(p->tag, SAY[lps[k].state]);
+    for (int i = 0; i < LP_PEAKS; i++) p->env[i] = lps[k].peak[i];
+    if (lp_run_ok && lps[k].len) {
+        const uint32_t f = lp_frame_q8(k, lp_t0, LP_SPEED_NUM[sp], LP_SPEED_DEN[sp], lpv[s][LV_REV]) >> 8;
+        p->head[0] = (uint8_t)(1 + (uint64_t)f * 127 / lps[k].len);
+    }
 }
 
 /* the sound's own shape, the loop's ends, where it starts, each voice playing it */
@@ -1704,7 +1799,11 @@ static void pic_sounds(mv_pic_t *p)
     for (int t = 0; t < DMK_SYNTHS; t++) {
         const int v = VS(t, PG_SOUND, 0, 0), user = ui.preset[t] >= DMK_SAMPLES_N ? lib_nth(ui.preset[t] - DMK_SAMPLES_N) : -1;
         p->num[t] = (uint8_t)(t + 1);
-        ascii(p->line[t], syn[t].ym ? YM_PATCH[syn[t].ym - 1].name : DMK_SAMPLES[v < DMK_SAMPLES_N ? v : 0].name, sizeof p->line[t]);
+        {
+            char w[24] = "";
+            snd_name(w, v < DMK_SAMPLES_N + YM_PATCHES + LP_N ? v : 0);
+            ascii(p->line[t], w, sizeof p->line[t]);
+        }
         if (user >= 0) fmt_int(str_cat(p->cell[t].name, user < 9 ? "User 0" : "User "), user + 1);
     }
 }
@@ -1763,7 +1862,7 @@ static void pic_build(mv_view_t *v)
     case MP_HOME: if (row == 1) pic_pan(v); else if (row == 2) pic_song(p); break;
     case MP_ROLL: if (row) pic_arp(p); else { p->kind = PIC_ROLL; roll_view(v); } break;
     case MP_CHORD: pic_chord(p); break;
-    case MP_SOUND: if (syn[vsyn()].ym) pic_fm(p); else pic_sound(p); break;
+    case MP_SOUND: if (syn[vsyn()].ym) pic_fm(p); else if (syn[vsyn()].lp) pic_loop(p); else pic_sound(p); break;
     case MP_FILTAMP: pic_shapes(p); break;
     case MP_LFO: pic_lfo(p); break;
     case MP_FX: pic_effect(p, row == 0 ? PIC_TAIL : row == 1 ? PIC_ECHO : PIC_MOTION, PG_FX, row); break;
@@ -1784,7 +1883,7 @@ static void mv_view_build(mv_view_t *v)
     v->land = (uint8_t)scene_of(s);
     for (int t = 0; t < DMK_SYNTHS; t++) {
         int i;
-        v->letters[t] = syn[t].ym ? YM_PATCH[syn[t].ym - 1].name[0]
+        v->letters[t] = syn[t].ym ? YM_PATCH[syn[t].ym - 1].name[0] : syn[t].lp ? 'L'
                                   : DMK_SAMPLES[VS(t, PG_SOUND, 0, 0) < DMK_SAMPLES_N ? VS(t, PG_SOUND, 0, 0) : 0].name[0];
         for (i = 0; i < DMK_VOICES; i++) if (vc[i].on && vc[i].sy == t) v->lights |= (uint8_t)(1u << t);
     }
