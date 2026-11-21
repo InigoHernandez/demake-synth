@@ -10,7 +10,14 @@
  *
  * Time is the transport's: steps since PLAY in Q32, so a loop recorded at one tempo plays at another bar for bar
  * (varispeed), and recording and playing find a sample by the same rule, its place in the loop. The buffers are big
- * (64 s of stereo each): they are touched once when Demake opens, never faulted in during a block. */
+ * (64 s of stereo each): they are touched once when Demake opens, never faulted in during a block.
+ *
+ * Step 2 (the owner's mangling: pitch apart from speed, a granular cloud). Pitch is Haizea's HEGAN (the owner's, MIT)
+ * reading the loop instead of a line: two taps sweeping a short window round the playhead, crossfaded, so the loop climbs
+ * without moving faster. The cloud is Clouds' granular mode (Emilie Gillet, MIT; its algorithm, none of its code):
+ * grains of the loop from about the playhead (or where Freeze held it), Size long, Density a second, Spray scattering
+ * them back through the loop, Shape their rise, Shimmer some an octave up, Flip some backwards, each at Speed and Pitch.
+ * Integer, nothing allocated; at Pitch 0 and Cloud 0 the loop plays exactly as step 1 played it. */
 
 #define LP_SEC       64                 /* a loop's longest: 16 bars at 60 BPM */
 #define LP_FRAMES    (LP_SEC * DMK_SR)
@@ -25,13 +32,26 @@
 #define LP_BACK_Q8   724                /* a loop into its synth, Q8 (2.83): the chain's quarter, full level's twice and the
                                            middle pan's 0.71 undone, so at full level, panned middle, it plays as loud as it
                                            was recorded */
+#define LP_PITCH_MID 24                 /* Pitch at its middle: as Speed plays it (-24..+24 semitones) */
+#define LP_SHIFT_W   1536               /* Pitch's taps' window, frames (~35 ms: HEGAN's, short so it waits little) */
+#define LP_GRAINS    16                 /* a synth's cloud at once (more asked: the ones over wait) */
+#define LP_GR_MIN    441                /* Size at its least, frames (10 ms) */
+#define LP_SIZE_N    57                 /* Size: 10 ms x 2^(u/8), to 1.28 s */
+#define LP_DENS_MIN  128                /* Density at its least, grains a second Q8 (0.5) */
+#define LP_DENS_N    64                 /* Density: 0.5 x 2^(u/8) a second, to ~117 */
+#define LP_SHAPE_N   5                  /* Shape: Smooth, Soft, Even, Sharp, Click */
+#define LP_AMT_ALL   127                /* Cloud, Spray, Shimmer, Flip at the top */
+#define LP_OVER_FREE 512                /* grains overlapping (Q8) heard as they are; past two, the sum held by its power */
+#define LP_Q24       (1u << 24)         /* a grain's half window */
 
 enum { LS_EMPTY, LS_ARMED, LS_REC, LS_PLAY, LS_ODUB_ARMED, LS_ODUB };   /* a loop's state */
-enum { LV_SET, LV_SRC, LV_BARS, LV_KEEP, LV_SPEED, LV_REV, LV_GAIN, LV_COUNT };   /* the sound's loop values (lpv) */
+enum { LV_SET, LV_SRC, LV_BARS, LV_KEEP, LV_SPEED, LV_REV, LV_GAIN, LV_PITCH,   /* the sound's loop values (lpv) */
+       LV_CLOUD, LV_SIZE, LV_DENS, LV_SPRAY, LV_SHAPE, LV_SHIM, LV_FLIP, LV_FREEZE, LV_COUNT };
 _Static_assert(LV_COUNT == LV_N, "dmk_dsp.c's LV_N is the loop values' count");
 enum { LSRC_MIX, LSRC_JACK };
 
 static const uint8_t LP_SPEED_NUM[LP_SPEED_N] = {1, 1, 1, 2, 4}, LP_SPEED_DEN[LP_SPEED_N] = {4, 2, 1, 1, 1};
+static const uint8_t LP_SHAPE_RISE[LP_SHAPE_N] = {128, 77, 38, 15, 5};   /* each Shape's rise, of the grain, Q8 */
 
 static int16_t lp_buf[LP_N][LP_FRAMES][2];
 static struct {
@@ -42,6 +62,21 @@ static struct {
     uint8_t peak[LP_PEAKS];
 } lps[LP_N];
 static voice_t lp_vf[DMK_SYNTHS];       /* each synth's filter state for its loop (vfilt's) */
+typedef struct {
+    int64_t pos;                        /* where it reads in its loop, frames Q16 */
+    int32_t inc;                        /* a sample's step, Q16 (below 0: backwards) */
+    uint32_t ph, up, down;              /* its window: the phase in its half (Q24), the rise's and the fall's steps */
+    uint8_t on, fall;
+} lp_grain_t;
+typedef struct {                        /* each synth's pitch and cloud */
+    lp_grain_t g[LP_GRAINS];
+    int32_t wait;                       /* samples to the next grain */
+    uint32_t rnd;                       /* its dice (xorshift: the same cloud every render) */
+    uint32_t phi;                       /* Pitch's taps: where in their window, Q32 */
+    uint32_t frz;                       /* Freeze's place (frame Q8), held while it is on */
+    uint8_t frz_on;
+} lp_cloud_t;
+static lp_cloud_t lpc[DMK_SYNTHS];
 static uint64_t lp_t0, lp_span;         /* the transport at the block's first sample, and how far it goes: Q32 steps */
 static uint32_t lp_frames;              /* the block's samples */
 static uint8_t lp_run_ok;               /* the transport has a place (playing, past PLAY) */
@@ -52,6 +87,7 @@ static void lp_touch(void)              /* at create, off the audio thread: ever
 {
     memset(lp_buf, 0, sizeof lp_buf);
     memset(lps, 0, sizeof lps);
+    memset(lpc, 0, sizeof lpc);
     lp_ready = 1;
 }
 
@@ -59,7 +95,9 @@ static void lp_vals_new(int s)          /* a sound's loop values as first picked
 {
     uint8_t *v = lpv[s];
     v[LV_SET] = 1; v[LV_SRC] = LSRC_MIX; v[LV_BARS] = 2; v[LV_KEEP] = LP_KEEP_ALL * 3 / 4; v[LV_SPEED] = LP_SPEED_ONE;
-    v[LV_REV] = 0; v[LV_GAIN] = LP_GAIN_ONE;
+    v[LV_REV] = 0; v[LV_GAIN] = LP_GAIN_ONE; v[LV_PITCH] = LP_PITCH_MID;
+    v[LV_CLOUD] = 0; v[LV_SIZE] = 27; v[LV_DENS] = 40; v[LV_SPRAY] = 16;   /* (~100 ms grains, 16 a second: no gaps) */
+    v[LV_SHAPE] = 0; v[LV_SHIM] = 0; v[LV_FLIP] = 0; v[LV_FREEZE] = 0;
 }
 
 /* the Sound list: the recordings, the YM2612's patches (when no other synth plays the chip), the loops; a step on */
@@ -112,7 +150,86 @@ static uint32_t lp_frame_q8(int k, uint64_t t, int num, int den, int rev)
     return f;
 }
 
-/* each synth on a loop: its loop at this pass's samples, through its filter, into its voices' sum (vbuf[0]) */
+static uint32_t lp_rand(uint32_t *r)    /* xorshift32 */
+{
+    uint32_t x = *r ? *r : 2463534242u;
+    x ^= x << 13; x ^= x >> 17; x ^= x << 5;
+    return *r = x;
+}
+static uint32_t lp_exp2(int x64) { return T_EXP2[64 - (x64 & 63)] << ((x64 >> 6) + 1); }   /* 2^(x64/64), Q16, x64 >= 0 */
+static uint32_t lp_size(int u) { return (uint32_t)(((uint64_t)LP_GR_MIN * lp_exp2(u * 8)) >> 16); }   /* Size's frames */
+static uint32_t lp_rate(int u) { return (uint32_t)(((uint64_t)LP_DENS_MIN * lp_exp2(u * 8)) >> 16); }  /* Density, Q8 */
+
+/* a loop's frame a0 and the next, fr (Q8) between them, in mono */
+static int32_t lp_mono(int k, uint32_t a0, int32_t fr)
+{
+    const uint32_t a1 = a0 + 1 < lps[k].len ? a0 + 1 : 0;
+    const int32_t m0 = (lp_buf[k][a0][0] + lp_buf[k][a0][1]) / 2, m1 = (lp_buf[k][a1][0] + lp_buf[k][a1][1]) / 2;
+    return m0 + (((m1 - m0) * fr) >> 8);
+}
+static int32_t lp_at_q8(int k, int64_t q8)   /* at any place (Q8) round the loop */
+{
+    const int64_t L = (int64_t)lps[k].len << 8;
+    while (q8 >= L) q8 -= L;
+    while (q8 < 0) q8 += L;
+    return lp_mono(k, (uint32_t)(q8 >> 8), (int32_t)(q8 & 255));
+}
+
+/* Pitch: two taps half a window apart round the playhead fq, each fading in as it passes the middle, so neither's jump
+ * back is heard. At phi 0 the second is the playhead itself, the first silent: a pitch picked starts where step 1 played */
+static int32_t lp_shifted(int k, uint32_t phi, uint32_t fq)
+{
+    const int32_t dA = (int32_t)(phi - 0x80000000u), dB = (int32_t)phi;
+    const int64_t oA = ((int64_t)dA * (LP_SHIFT_W * 256)) >> 32, oB = ((int64_t)dB * (LP_SHIFT_W * 256)) >> 32;
+    const int32_t gA = 32768 - (int32_t)((dA < 0 ? -(int64_t)dA : (int64_t)dA) >> 16);
+    const int32_t a = lp_at_q8(k, (int64_t)fq + oA), b = lp_at_q8(k, (int64_t)fq + oB);
+    return b + (((a - b) * (gA >> 1)) >> 14);
+}
+
+/* a grain from about centre (frame Q8): Spray back through the loop, Shimmer an octave up, Flip backwards */
+static void lp_grain_start(int s, int k, uint32_t centre, int32_t inc)
+{
+    const uint8_t *v = lpv[s];
+    lp_grain_t *g = 0;
+    for (int j = 0; j < LP_GRAINS && !g; j++) if (!lpc[s].g[j].on) g = &lpc[s].g[j];
+    if (!g) return;
+    uint32_t *r = &lpc[s].rnd;
+    const uint32_t len = lps[k].len, spray = (uint32_t)((uint64_t)len * v[LV_SPRAY] / (2u * LP_AMT_ALL));
+    uint32_t size = lp_size(v[LV_SIZE] < LP_SIZE_N ? v[LV_SIZE] : 0);
+    if (size > len) size = len;
+    if (size < 2) size = 2;
+    const uint32_t back = spray ? lp_rand(r) % (spray + 1u) : 0;
+    const int64_t L = (int64_t)len << 16;
+    int64_t p = ((int64_t)centre << 8) - ((int64_t)back << 16);
+    while (p < 0) p += L;
+    while (p >= L) p -= L;
+    if (lp_rand(r) % LP_AMT_ALL < v[LV_SHIM]) inc *= 2;
+    if (lp_rand(r) % LP_AMT_ALL < v[LV_FLIP]) inc = -inc;
+    uint32_t rise = (uint32_t)((uint64_t)size * LP_SHAPE_RISE[v[LV_SHAPE] < LP_SHAPE_N ? v[LV_SHAPE] : 0] >> 8);
+    if (rise < 1) rise = 1;
+    if (rise >= size) rise = size - 1;
+    g->pos = p; g->inc = inc; g->ph = 0; g->fall = 0;
+    g->up = LP_Q24 / rise; g->down = LP_Q24 / (size - rise);
+    g->on = 1;
+}
+/* a grain's next n samples into wet: its window a raised cosine (T_SIN's first quarter, squared) up, then down */
+static void lp_grain_run(int k, lp_grain_t *g, int32_t *wet, int n)
+{
+    const int64_t L = (int64_t)lps[k].len << 16;
+    for (int i = 0; i < n && g->on; i++) {
+        if (g->pos >= L || g->pos < 0) { g->pos %= L; if (g->pos < 0) g->pos += L; }   /* (its loop shorter since) */
+        const uint32_t x = g->fall ? LP_Q24 - g->ph : g->ph, ix = x >> 16;
+        const int32_t fx = (int32_t)((x >> 8) & 255u), sv = T_SIN[ix] + (((T_SIN[ix + 1] - T_SIN[ix]) * fx) >> 8);
+        const int32_t w = (sv * sv) >> 15;
+        wet[i] += (lp_mono(k, (uint32_t)(g->pos >> 16), (int32_t)((g->pos >> 8) & 255)) * w) >> 15;
+        g->pos += g->inc;
+        g->ph += g->fall ? g->down : g->up;
+        if (g->ph >= LP_Q24) { if (g->fall) g->on = 0; else { g->fall = 1; g->ph -= LP_Q24; } }
+    }
+}
+
+/* each synth on a loop: its loop at this pass's samples (Pitch's taps or the playhead, the cloud mixed in), through its
+ * filter, into its voices' sum (vbuf[0]) */
 static void lp_play(int at, int n)
 {
     if (!lp_run_ok) return;
@@ -122,7 +239,28 @@ static void lp_play(int at, int n)
         if (k < 0 || !lps[k].len || lps[k].state == LS_REC) continue;
         const uint8_t *v = lpv[s];
         const int sp = v[LV_SPEED] < LP_SPEED_N ? v[LV_SPEED] : LP_SPEED_ONE, rev = v[LV_REV];
+        const int pitch = clampi(v[LV_PITCH], 0, 2 * LP_PITCH_MID) - LP_PITCH_MID, cloud = v[LV_CLOUD];
+        const int64_t ratio = T_SEMI[48 + pitch], num = LP_SPEED_NUM[sp] * (rev ? -1 : 1), den = LP_SPEED_DEN[sp];
+        const int32_t dphi = (int32_t)(((ratio - 65536) * num * 65536) / (den * LP_SHIFT_W));
+        const int32_t inc = (int32_t)(ratio * num / den);             /* a grain's step, Q16: Speed and Pitch */
         voice_t *o = &lp_vf[s];
+        lp_cloud_t *c = &lpc[s];
+        int32_t gnorm = 32768, gdry = 0, gwet = 0, every = 0;
+        if (!pitch) c->phi = 0;
+        if (!cloud) for (int j = 0; j < LP_GRAINS; j++) c->g[j].on = 0;
+        else {                                                        /* grains overlapping: their sum held by power */
+            const uint32_t rate = lp_rate(v[LV_DENS] < LP_DENS_N ? v[LV_DENS] : 0);
+            uint32_t size = lp_size(v[LV_SIZE] < LP_SIZE_N ? v[LV_SIZE] : 0);
+            if (size > lps[k].len) size = lps[k].len;
+            uint64_t over = (uint64_t)rate * size / DMK_SR;
+            if (over > (uint64_t)LP_GRAINS << 8) over = (uint64_t)LP_GRAINS << 8;
+            if (over > LP_OVER_FREE) gnorm = (int32_t)isqrt32((uint32_t)((1ull << 39) / over));
+            gwet = T_SIN[cloud * 256 / LP_AMT_ALL]; gdry = T_SIN[256 - cloud * 256 / LP_AMT_ALL];   /* (by power, as
+                                                           Clouds blends: grains and loop apart, no dip at the middle) */
+            every = (int32_t)((uint32_t)DMK_SR * 256u / rate);
+        }
+        if (!v[LV_FREEZE]) c->frz_on = 0;
+        else if (!c->frz_on) { c->frz = lp_frame_q8(k, lp_t(at), LP_SPEED_NUM[sp], LP_SPEED_DEN[sp], rev); c->frz_on = 1; }
         for (int b = 0; b < n / DMK_SUB; b++) {
             int idx = clampi(p->cut + lfo_cut[s][at / DMK_SUB + b], 0, 255);
             int32_t f = T_SVF[idx], f2 = 0, q = p->resq, q1 = q < 11469 ? 11469 : q;
@@ -132,14 +270,30 @@ static void lp_play(int at, int n)
                 f = T_SVF[(VOW[a][0] * (256 - t) + VOW[z][0] * t) >> 8];
                 f2 = T_SVF[(VOW[a][1] * (256 - t) + VOW[z][1] * t) >> 8];
             }
-            int32_t *out = &vbuf[0][s][b * DMK_SUB];
+            int32_t xs[DMK_SUB], wet[DMK_SUB];
+            uint32_t fq0 = 0;
             for (int i = 0; i < DMK_SUB; i++) {
                 const uint64_t t = lp_t(at + b * DMK_SUB + i);
                 const uint32_t fq = lp_frame_q8(k, t, LP_SPEED_NUM[sp], LP_SPEED_DEN[sp], rev);
-                const uint32_t a0 = fq >> 8, a1 = a0 + 1 < lps[k].len ? a0 + 1 : 0;
-                const int32_t fr = (int32_t)(fq & 255u);
-                const int32_t m0 = (lp_buf[k][a0][0] + lp_buf[k][a0][1]) / 2, m1 = (lp_buf[k][a1][0] + lp_buf[k][a1][1]) / 2;
-                int32_t x = ((m0 + (((m1 - m0) * fr) >> 8)) * LP_BACK_Q8) >> 8, y;
+                if (!i) fq0 = fq;
+                if (pitch) { xs[i] = lp_shifted(k, c->phi, fq); c->phi += (uint32_t)dphi; }
+                else xs[i] = lp_mono(k, fq >> 8, (int32_t)(fq & 255u));
+            }
+            if (cloud) {
+                c->wait -= DMK_SUB;
+                if (c->wait <= 0) {                                   /* (every 0.5x to 1.5x its interval) */
+                    lp_grain_start(s, k, c->frz_on ? c->frz : fq0, inc);
+                    c->wait += (int32_t)(((int64_t)every * (128 + (lp_rand(&c->rnd) & 255))) >> 8);
+                    if (c->wait <= 0) c->wait = every;
+                }
+                memset(wet, 0, sizeof wet);
+                for (int j = 0; j < LP_GRAINS; j++) if (c->g[j].on) lp_grain_run(k, &c->g[j], wet, DMK_SUB);
+                for (int i = 0; i < DMK_SUB; i++)
+                    xs[i] = (int32_t)(((int64_t)xs[i] * gdry + (((int64_t)wet[i] * gnorm) >> 15) * gwet) >> 15);
+            }
+            int32_t *out = &vbuf[0][s][b * DMK_SUB];
+            for (int i = 0; i < DMK_SUB; i++) {
+                int32_t x = (xs[i] * LP_BACK_Q8) >> 8, y;
                 if (p->drive > 256) x = (curve(T_SAT, (x * p->drive) >> 8) * p->dcomp) >> 8;
                 y = vfilt(o, p->ftype, x, f, f2, q, q1);
                 if (open) y += ((x - y) * open) >> 4;

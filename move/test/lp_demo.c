@@ -2,14 +2,16 @@
 /* A loop as the owner will hear it (move/dmk_loop.c), in one WAV: two bars of Demake's first song recorded into Loop 1
  * on synth 4 (the mix of the other three, with their own effects), the song's synths then muted and the loop played:
  * as recorded, at half speed, reversed, its filter swept by its LFO, then overdubbed with a line on synth 1 (75% of the
- * old layer kept) and played back. Each part two bars.
+ * old layer kept) and played back; then step 2: Pitch +7, half speed an octave up (slower, the same pitch), the cloud
+ * mixed in, the cloud alone (long grains, some an octave up), frozen (grains of one place, some backwards). Each part two
+ * bars.
  *   lp_demo FILE.wav      (built as move/test/ym_patches.c is: with move/dmk_ymfm.cpp's object, linked with c++) */
 #include <stdio.h>
 #include <stdlib.h>
 #include "dmk_core.c"
 
 #define V(s, pg, r, k) ui.val[s][pg][r][k]
-enum { LD_SY = DMK_SYNTHS - 1, LD_RUN = 128, LD_PARTS = 7, LD_BARS = 2, LD_MAX_S = 120 };
+enum { LD_SY = DMK_SYNTHS - 1, LD_RUN = 128, LD_PARTS = 12, LD_BARS = 2, LD_MAX_S = 120 };
 
 static int16_t *out;
 static int at, cap;
@@ -72,6 +74,15 @@ int main(int argc, char **argv)
     pat_mute = (uint8_t)((1u << LD_SY) - 1u);           /* 7: the loop with its new layer */
     for (int v = 0; v < DMK_VOICES; v++) if (vc[v].sy != LD_SY) { vc[v].on = 0; if (vc[v].stage) vc[v].stage = 3; }
     run_bars(LD_BARS);
+    uint8_t *v = lpv[LD_SY];
+    v[LV_PITCH] = LP_PITCH_MID + 7; run_bars(LD_BARS);                         /* 8: Pitch +7 */
+    v[LV_SPEED] = 1; v[LV_PITCH] = LP_PITCH_MID + 12; run_bars(LD_BARS);       /* 9: half speed, an octave up */
+    v[LV_SPEED] = LP_SPEED_ONE; v[LV_PITCH] = LP_PITCH_MID;
+    v[LV_CLOUD] = 70; v[LV_SPRAY] = 30; run_bars(LD_BARS);                     /* 10: the cloud mixed in */
+    v[LV_CLOUD] = LP_AMT_ALL; v[LV_SIZE] = 43; v[LV_DENS] = 40; v[LV_SPRAY] = 60;
+    v[LV_SHIM] = 40; run_bars(LD_BARS);                                        /* 11: the cloud alone, long grains */
+    v[LV_SHIM] = 0; v[LV_SIZE] = 35; v[LV_FLIP] = 40; v[LV_SPRAY] = 8;
+    v[LV_FREEZE] = 1; run_bars(LD_BARS);                                       /* 12: frozen */
     wav(argv[1]);
     printf("%s: %.1f s, a bar %.2f s, loop 1 %u frames, state %d\n", argv[1], at / (double)DMK_SR, bar_frames() / (double)DMK_SR,
            lps[0].len, lps[0].state);

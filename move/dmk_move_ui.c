@@ -107,13 +107,15 @@ static const mpage_t MP_FM = {"Sound", PG_SOUND, 6, {"Main", "Op 1", "Op 2", "Op
      {YK(5, 0), YK(5, 1), KR(SOUND, 0, 3), KR(SOUND, 0, 4), YK(5, 4), YK(5, 5), YK(5, 6), KN}},
     {KN, KN, KN, KN, KN, KN}};
 
-/* the Sound page of a synth on a loop (move/dmk_loop.c; the owner's, 2026-11-21): its sound, how it records (from the
- * mix or the audio in, how long, how much of the old layer an overdub keeps, how loud it comes in), how it plays
- * (speed, reverse). REC on this page records it, Delete + REC clears it */
+/* the Sound page of a synth on a loop (move/dmk_loop.c; the owner's, 2026-11-21): Loop its sound, how it records (from
+ * the mix or the audio in, how long, how much of the old layer an overdub keeps, how loud it comes in), how it plays
+ * (speed, reverse, pitch); Cloud its grains. REC on this page records it, Delete + REC clears it */
 #define PG_LP (PG_COUNT + 1)            /* (the Move's alone, as PG_YM) */
 #define LK(r, c) {PG_LP, r, c}
-static const mpage_t MP_LOOP = {"Sound", PG_SOUND, 1, {"Loop"},
-    {{KR(SOUND, 0, 0), LK(0, 1), LK(0, 2), LK(0, 3), LK(0, 4), LK(0, 5), LK(0, 6), KN}}, {KN}};
+static const mpage_t MP_LOOP = {"Sound", PG_SOUND, 2, {"Loop", "Cloud"},
+    {{KR(SOUND, 0, 0), LK(0, 1), LK(0, 2), LK(0, 3), LK(0, 4), LK(0, 5), LK(0, 6), LK(0, 7)},
+     {LK(1, 0), LK(1, 1), LK(1, 2), LK(1, 3), LK(1, 4), LK(1, 5), LK(1, 6), LK(1, 7)}},
+    {KN, KN}};
 
 /* the pad in each column of the top row, and each page's colours lit and dim: the song blue, the sound rose, the mix pink */
 static const uint8_t PAGE_LIT[MP_SAVE] = {L_BLUE, L_BLUE, L_BLUE, L_ROSE, L_ROSE, L_ROSE, L_PINK, L_PINK};
@@ -707,7 +709,7 @@ static void mv_pad(int p, int vel, int down)
 
 /* the FM page's own knobs (PG_YM): each a place in a list of n, kept in the sound's FM values as the chip takes them.
  * Turned right is more: louder, longer, slower to rise (the chip's rates are the other way round) */
-enum { YK_PLAIN, YK_INV, YK_AR, YK_DT, YK_SIGNED, YK_ALG, YK_MUL, YK_NAMES, YK_OFF, YK_PCT, YK_GAIN };
+enum { YK_PLAIN, YK_INV, YK_AR, YK_DT, YK_SIGNED, YK_ALG, YK_MUL, YK_NAMES, YK_OFF, YK_PCT, YK_GAIN, YK_MS, YK_PERSEC };
 typedef struct { const char *name; uint8_t at, n, how; const char *const *names; } ymk_t;   /* at: YV_*, or an
                                                            operator's YO_* on its row */
 static const char *const YK_CHIP[2] = {"Clean", "Grit"}, *const YK_RATE[2] = {"Smooth", "Raw"};
@@ -730,15 +732,22 @@ enum { YR_MAIN, YR_OP1, YR_OP4 = YR_OP1 + 3, YR_CHIP };   /* the FM page's rows 
 static const char *const LK_SRC[2] = {"Mix", "Jack"}, *const LK_REV[2] = {"Off", "On"};
 static const char *const LK_BARS[LP_BARS_N] = {"1 bar", "2 bars", "4 bars", "8 bars", "16 bars"};
 static const char *const LK_SPEED[LP_SPEED_N] = {"1/4", "1/2", "1", "2", "4"};
+static const char *const LK_SHAPE[LP_SHAPE_N] = {"Smooth", "Soft", "Even", "Sharp", "Click"};
 static const ymk_t LPK_MAIN[8] = {
     {0}, {"Source", LV_SRC, 2, YK_NAMES, LK_SRC}, {"Length", LV_BARS, LP_BARS_N, YK_NAMES, LK_BARS},
     {"Overdub", LV_KEEP, LP_KEEP_ALL + 1, YK_PCT, 0}, {"Speed", LV_SPEED, LP_SPEED_N, YK_NAMES, LK_SPEED},
-    {"Reverse", LV_REV, 2, YK_NAMES, LK_REV}, {"Gain", LV_GAIN, 2 * LP_GAIN_ONE, YK_GAIN, 0}, {0}};
+    {"Reverse", LV_REV, 2, YK_NAMES, LK_REV}, {"Gain", LV_GAIN, 2 * LP_GAIN_ONE, YK_GAIN, 0},
+    {"Pitch", LV_PITCH, 2 * LP_PITCH_MID + 1, YK_SIGNED, 0}};
+static const ymk_t LPK_CLOUD[8] = {
+    {"Cloud", LV_CLOUD, LP_AMT_ALL + 1, YK_PCT, 0}, {"Size", LV_SIZE, LP_SIZE_N, YK_MS, 0},
+    {"Density", LV_DENS, LP_DENS_N, YK_PERSEC, 0}, {"Spray", LV_SPRAY, LP_AMT_ALL + 1, YK_PCT, 0},
+    {"Shape", LV_SHAPE, LP_SHAPE_N, YK_NAMES, LK_SHAPE}, {"Shimmer", LV_SHIM, LP_AMT_ALL + 1, YK_PCT, 0},
+    {"Flip", LV_FLIP, LP_AMT_ALL + 1, YK_PCT, 0}, {"Freeze", LV_FREEZE, 2, YK_NAMES, LK_REV}};
 
 static int own_knob(kref_t r) { return r.pg == PG_YM || r.pg == PG_LP; }   /* the Move's own pages' knobs */
 static const ymk_t *ymk_of(kref_t r)
 {
-    const ymk_t *d = r.pg == PG_LP ? &LPK_MAIN[r.k] : r.row == YR_MAIN ? &YMK_MAIN[r.k] : r.row == YR_CHIP ? &YMK_CHIP[r.k] : &YMK_OP[r.k];
+    const ymk_t *d = r.pg == PG_LP ? (r.row ? &LPK_CLOUD[r.k] : &LPK_MAIN[r.k]) : r.row == YR_MAIN ? &YMK_MAIN[r.k] : r.row == YR_CHIP ? &YMK_CHIP[r.k] : &YMK_OP[r.k];
     return d->name ? d : 0;
 }
 static int ymk_at(kref_t r, const ymk_t *d) { return r.row >= YR_OP1 && r.row <= YR_OP4 ? YV_OP + (r.row - YR_OP1) * YO_N + d->at : d->at; }
@@ -773,6 +782,18 @@ static void ymk_text(char *o, const ymk_t *d, int u)
     case YK_OFF: if (u) fmt_int(o, u); else str_cat(o, "Off"); break;
     case YK_PCT: str_cat(fmt_int(o, u * 100 / (d->n - 1)), "%"); break;
     case YK_GAIN: str_cat(fmt_int(o, u * 100 / LP_GAIN_ONE), "%"); break;
+    case YK_MS: {                                       /* a grain's length: ms, then seconds and a tenth */
+        const uint32_t ms = lp_size(u) * 1000u / DMK_SR;
+        if (ms < 1000u) str_cat(fmt_int(o, (int)ms), " ms");
+        else { o = fmt_int(o, (int)(ms / 1000u)); *o++ = '.'; str_cat(fmt_int(o, (int)(ms % 1000u / 100u)), " s"); }
+        break;
+    }
+    case YK_PERSEC: {                                   /* grains a second, a tenth while under ten */
+        const uint32_t r = lp_rate(u);
+        if (r < 10u * 256u) { o = fmt_int(o, (int)(r >> 8)); *o++ = '.'; str_cat(fmt_int(o, (int)((r & 255u) * 10u >> 8)), "/s"); }
+        else str_cat(fmt_int(o, (int)((r + 128u) >> 8)), "/s");
+        break;
+    }
     default: fmt_int(o, u); break;
     }
 }
@@ -790,7 +811,8 @@ static void ym_knob_reset(kref_t r)                     /* Delete + an FM knob: 
     const int s = vsyn();
     if (!k) return;
     if (r.pg == PG_LP) {                                /* a loop's: as a sound first picked has it */
-        const uint8_t keep[LV_N] = {lpv[s][0], lpv[s][1], lpv[s][2], lpv[s][3], lpv[s][4], lpv[s][5], lpv[s][6]};
+        uint8_t keep[LV_N];
+        memcpy(keep, lpv[s], sizeof keep);
         lp_vals_new(s);
         const uint8_t now = lpv[s][k->at];
         memcpy(lpv[s], keep, sizeof keep);
@@ -1684,6 +1706,11 @@ static void pic_loop(mv_pic_t *p)
     if (lp_run_ok && lps[k].len) {
         const uint32_t f = lp_frame_q8(k, lp_t0, LP_SPEED_NUM[sp], LP_SPEED_DEN[sp], lpv[s][LV_REV]) >> 8;
         p->head[0] = (uint8_t)(1 + (uint64_t)f * 127 / lps[k].len);
+        for (int j = 0, h = 1; j < LP_GRAINS && h < (int)sizeof p->head; j++)   /* (and its first grains, where they read) */
+            if (lpv[s][LV_CLOUD] && lpc[s].g[j].on) {
+                const uint64_t gf = (uint64_t)(lpc[s].g[j].pos >> 16) % lps[k].len;
+                p->head[h++] = (uint8_t)(1 + gf * 127 / lps[k].len);
+            }
     }
 }
 

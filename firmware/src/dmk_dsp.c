@@ -171,7 +171,7 @@ static void ym_reset(void);
 /* the Move's loops (move/dmk_loop.c): a synth set to one plays it with the transport; the mix every synth but its own
  * gathered while one is written */
 #define LP_N 4                                          /* the Sound list's after the YM2612's patches */
-#define LV_N 7                                          /* the loop values a sound keeps (dmk_loop.c's LV_*) */
+#define LV_N 16                                         /* the loop values a sound keeps (dmk_loop.c's LV_*) */
 static uint8_t lpv[DMK_SYNTHS][LV_N];
 static int32_t lp_mix[2][VB_MAX];                       /* this pass's mix, the loop's source */
 static uint8_t lp_skip[DMK_SYNTHS], lp_writing;         /* synths the loop being written does not hear; one is */

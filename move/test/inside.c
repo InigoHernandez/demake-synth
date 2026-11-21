@@ -1095,6 +1095,201 @@ static void loops(const char *dir)
     v2_destroy(in);
 }
 
+/* step 2: Pitch apart from Speed, the cloud. Each measured on the loop's synth alone, straight from lp_play (no chain,
+ * no Global): a loop filled by hand, the transport placed by hand */
+enum { CL_SY = DMK_SYNTHS - 1, CL_RUN = 128, CL_PERIOD = 100, CL_AMP = 12000, CL_DC = 10000 };
+static int32_t cl_out[DMK_SR];
+static void cl_fill(int kind)                           /* loop 1: a sine of CL_PERIOD frames, noise, or a level */
+{
+    uint32_t r = 11;
+    for (uint32_t f = 0; f < lps[0].len; f++) {
+        r = r * 1664525u + 1013904223u;
+        const int16_t x = kind == 0 ? (int16_t)(T_SIN[(f % CL_PERIOD) * 1024 / CL_PERIOD] * CL_AMP / 32767)
+                        : kind == 1 ? (int16_t)((int32_t)(r >> 16) - 32768) / 4 : (int16_t)CL_DC;
+        lp_buf[0][f][0] = lp_buf[0][f][1] = x;
+    }
+}
+static void cl_take(int n)                              /* n samples of synth 4's loop into cl_out */
+{
+    memset(lfo_cut, 0, sizeof lfo_cut);
+    for (int at = 0; at + CL_RUN <= n; at += CL_RUN) {
+        memset(vbuf[0][CL_SY], 0, sizeof vbuf[0][CL_SY]);
+        lp_frames = CL_RUN; lp_span = ((uint64_t)CL_RUN * 256u << 32) / seq_per(); lp_run_ok = 1;
+        lp_play(0, CL_RUN);
+        memcpy(&cl_out[at], vbuf[0][CL_SY], CL_RUN * sizeof cl_out[0]);
+        lp_t0 += lp_span;
+    }
+}
+static int cl_hz(void)                                  /* a second's upward zero crossings, its second half twice */
+{
+    cl_take(DMK_SR);
+    int ups = 0;
+    for (int i = DMK_SR / 2 + 1; i < DMK_SR; i++) ups += cl_out[i - 1] < 0 && cl_out[i] >= 0;
+    return ups * 2;
+}
+static double cl_db(void)                               /* its level, dB from the sine's as recorded */
+{
+    cl_take(DMK_SR);
+    double e = 0;
+    for (int i = DMK_SR / 2; i < DMK_SR; i++) e += (double)cl_out[i] * cl_out[i];
+    const double ref = (double)CL_AMP * LP_BACK_Q8 / 256.0;
+    return 10.0 * log10(e / (DMK_SR / 2) / (ref * ref / 2.0) + 1e-12);
+}
+static int cl_grains(void) { int n = 0; for (int j = 0; j < LP_GRAINS; j++) n += lpc[CL_SY].g[j].on; return n; }
+static void clouds(const char *dir)
+{
+    char what[200];
+    clear_store(dir);
+    void *in = open_at(dir);
+    seq_play(0);
+    for (int s = 0; s < DMK_SYNTHS; s++) sq[s].count = 0;
+    ui.synth = CL_SY;
+    ui.val[CL_SY][PG_SOUND][0][0] = DMK_SAMPLES_N + YM_PATCHES;   /* synth 4: Loop 1, its filter open, no drive */
+    ui.val[CL_SY][PG_FILTER][0][4] = choice_val(FT_LP24, 8); ui.val[CL_SY][PG_FILTER][0][0] = 127; ui.val[CL_SY][PG_FILTER][0][1] = 0;
+    sp_sync();
+    uint8_t *v = lpv[CL_SY];
+    lps[0].steps = LP_STEPS_BAR;
+    lps[0].len = (uint32_t)((uint64_t)LP_STEPS_BAR * seq_per() / 256u);
+    lps[0].state = LS_PLAY;
+    lp_t0 = 0;
+    cl_fill(0);
+    const int hz0 = DMK_SR / CL_PERIOD;
+#define NEAR(x, want) ((x) * 100 >= (want) * 95 && (x) * 100 <= (want) * 105)
+    const int a = cl_hz();
+    v[LV_PITCH] = LP_PITCH_MID + 12; const int up = cl_hz();
+    v[LV_PITCH] = LP_PITCH_MID - 12; const int down = cl_hz();
+    v[LV_SPEED] = LP_SPEED_ONE + 1; const int both = cl_hz();   /* twice the speed, an octave down: the pitch as it was */
+    v[LV_REV] = 1; const int back = cl_hz();
+    snprintf(what, sizeof what, "Pitch apart from Speed: %d Hz as recorded, +12 %d, -12 %d, Speed 2 and -12 %d, reversed %d (%d)",
+             a, up, down, both, back, hz0);
+    check(NEAR(a, hz0) && NEAR(up, 2 * hz0) && NEAR(down, hz0 / 2) && NEAR(both, hz0) && NEAR(back, hz0), what);
+    v[LV_SPEED] = LP_SPEED_ONE; v[LV_REV] = 0; v[LV_PITCH] = LP_PITCH_MID;
+
+    /* the cloud: grains at Speed and Pitch, from the playhead; the same cloud every time */
+    v[LV_CLOUD] = LP_AMT_ALL; v[LV_SPRAY] = 0; v[LV_PITCH] = LP_PITCH_MID + 12;
+    cl_take(DMK_SR / 2);
+    int on = cl_grains(), inc_ok = on > 0;
+    for (int j = 0; j < LP_GRAINS; j++) if (lpc[CL_SY].g[j].on) inc_ok &= lpc[CL_SY].g[j].inc == 2 * 65536;
+    check(inc_ok, "the cloud's grains at Pitch: +12, each reads two frames a sample");
+    v[LV_PITCH] = LP_PITCH_MID; v[LV_DENS] = 48;        /* (32 a second: grains overlapping, no gap read as a lower pitch) */
+    const int hzc = cl_hz();
+    snprintf(what, sizeof what, "the cloud alone, Pitch 0: the loop's pitch, %d Hz (%d)", hzc, hz0);
+    check(NEAR(hzc, hz0), what);
+    v[LV_DENS] = 32;
+    {                                                   /* sparse, short grains: one or two at once, none left on */
+        v[LV_DENS] = 0; v[LV_SIZE] = 0;
+        memset(lpc, 0, sizeof lpc);                     /* (none left from the denser cloud before) */
+        int most = 0;
+        for (int r = 0; r < 4 * DMK_SR / CL_RUN; r++) { cl_take(CL_RUN); if (cl_grains() > most) most = cl_grains(); }
+        snprintf(what, sizeof what, "a sparse cloud (0.5 a second, 10 ms): at most %d grain at once", most);
+        check(most == 1, what);
+        v[LV_DENS] = 32; v[LV_SIZE] = 27;
+    }
+    cl_fill(2);                                         /* a level: a grain's window rises from nothing, never a step */
+    {
+        memset(lpc, 0, sizeof lpc);
+        int32_t jump = 0, prev = 0;
+        for (int r = 0; r < DMK_SR / CL_RUN; r++) {
+            cl_take(CL_RUN);
+            for (int i = 0; i < CL_RUN; i++) { const int32_t d = cl_out[i] - prev; if ((d < 0 ? -d : d) > jump) jump = d < 0 ? -d : d; prev = cl_out[i]; }
+        }
+        snprintf(what, sizeof what, "grains of a level fade in and out: the largest step %d (a hard edge %d)", jump, CL_DC * LP_BACK_Q8 / 256);
+        check(jump < CL_DC * LP_BACK_Q8 / 256 / 8, what);
+    }
+    cl_fill(1);
+    {
+        memset(lpc, 0, sizeof lpc); const uint32_t t0 = (uint32_t)lp_t0;
+        cl_take(DMK_SR / 2); const int32_t one = cl_out[DMK_SR / 2 - 1];
+        memset(lpc, 0, sizeof lpc); lp_t0 = t0;
+        cl_take(DMK_SR / 2);
+        check(cl_out[DMK_SR / 2 - 1] == one, "the same cloud from the same start (its dice seeded)");
+    }
+    {                                                   /* (noise: grains of it add by power, a sine's by chance) */
+        cl_fill(1);
+        v[LV_CLOUD] = 0;
+        const double nd = cl_db();
+        v[LV_CLOUD] = LP_AMT_ALL; v[LV_SPRAY] = 16; v[LV_DENS] = 40;   /* (as first picked) */
+        const double soft = cl_db();
+        v[LV_DENS] = LP_DENS_N - 1; v[LV_SIZE] = LP_SIZE_N - 1;
+        const double dense = cl_db();
+        const int full = cl_grains();
+        snprintf(what, sizeof what, "the cloud's level near the loop's: %.1f dB as recorded, %.1f the cloud, %.1f dense (%d grains)",
+                 nd, soft, dense, full);
+        check(fabs(soft - nd) < 4.0 && fabs(dense - nd) < 4.0 && full == LP_GRAINS, what);
+        v[LV_DENS] = 32; v[LV_SIZE] = 27;
+        cl_fill(0);
+    }
+
+    /* Shimmer and Flip all the way: every grain an octave up, backwards. Freeze: every grain from the place it held */
+    v[LV_SHIM] = LP_AMT_ALL; v[LV_FLIP] = LP_AMT_ALL;
+    cl_take(DMK_SR / 2);
+    int sf = cl_grains() > 0;
+    for (int j = 0; j < LP_GRAINS; j++) if (lpc[CL_SY].g[j].on) sf &= lpc[CL_SY].g[j].inc == -2 * 65536;
+    check(sf, "Shimmer and Flip at the top: every grain an octave up and backwards");
+    v[LV_SHIM] = 0; v[LV_FLIP] = 0; v[LV_SPRAY] = 0; v[LV_FREEZE] = 1;
+    cl_take(DMK_SR / 4);                                /* (the grains from before it gone) */
+    const uint32_t held = lpc[CL_SY].frz;
+    int frz_ok = lpc[CL_SY].frz_on, seen = 0;
+    const uint32_t size = lp_size(v[LV_SIZE]);
+    for (int r = 0; r < 2 * DMK_SR / CL_RUN; r++) {
+        cl_take(CL_RUN);
+        for (int j = 0; j < LP_GRAINS; j++) {
+            const lp_grain_t *g = &lpc[CL_SY].g[j];
+            if (!g->on) continue;
+            const uint32_t d = (uint32_t)(((g->pos >> 16) - (int64_t)(held >> 8) + lps[0].len) % lps[0].len);
+            frz_ok &= d <= size + 1; seen++;
+        }
+    }
+    const uint32_t now = lp_frame_q8(0, lp_t0, 1, 1, 0);
+    snprintf(what, sizeof what, "Freeze: every grain from the place held (%d seen) while the playhead went on", seen);
+    check(frz_ok && seen && lpc[CL_SY].frz == held && (now >> 8) != (held >> 8), what);
+    v[LV_FREEZE] = 0; v[LV_CLOUD] = 0;
+    cl_take(CL_RUN);
+    check(!cl_grains() && !lpc[CL_SY].frz_on, "Cloud at none: no grain left, Freeze let go");
+
+    /* its page: Loop and Cloud, every knob end to end and named; Delete + a knob its value as first picked */
+    to_page(MP_SOUND);
+    check(mp_of() == &MP_LOOP && MP_LOOP.rows == 2, "a loop's Sound page: Loop and Cloud");
+    {
+        char bad[600] = "";
+        int all = 1, knobs = 0;
+        static mv_knob_t o;
+        for (int row = 0; row < MP_LOOP.rows; row++) {
+            mc.row[MP_SOUND] = (uint8_t)row;
+            for (int k = 0; k < 8; k++) {
+                const kref_t r = mp_knob(k);
+                if (r.pg != PG_LP) continue;
+                int top = 0, bottom = 127;
+                for (int t = 0; t < 200; t++) { mv_knob(k, 1); knob_view(&o, r, k); if (o.raw > top) top = o.raw; }
+                for (int t = 0; t < 200; t++) { mv_knob(k, -1); knob_view(&o, r, k); if (o.raw < bottom) bottom = o.raw; }
+                knobs++;
+                if (top != 127 || bottom != 0 || !o.name[0] || !o.val[0]) {
+                    char one[48];
+                    snprintf(one, sizeof one, " %s/%s %d..%d", MP_LOOP.rname[row], o.name, bottom, top);
+                    if (strlen(bad) + strlen(one) < sizeof bad) strcat(bad, one);
+                    all = 0;
+                }
+            }
+        }
+        snprintf(what, sizeof what, "every loop knob end to end, named, %d of them%s%s", knobs, all ? "" : ": not", bad);
+        check(all && knobs == 7 + 8, what);
+    }
+    mc.row[MP_SOUND] = 1;
+    v[LV_SIZE] = 3;
+    mc.del = 1; mv_touch(1, 1); mv_touch(1, 0); mc.del = 0;
+    check(v[LV_SIZE] == 27, "Delete + Size: its value as first picked");
+    mc.row[MP_SOUND] = 0;
+    /* a song keeps them */
+    v[LV_PITCH] = LP_PITCH_MID - 5; v[LV_CLOUD] = 90; v[LV_FREEZE] = 1; v[LV_SHAPE] = 3;
+    check(song_save(0) == 0, "a song with a clouded loop saved");
+    v[LV_PITCH] = LP_PITCH_MID; v[LV_CLOUD] = 0; v[LV_FREEZE] = 0; v[LV_SHAPE] = 0;
+    check(song_load(0) == 0 && v[LV_PITCH] == LP_PITCH_MID - 5 && v[LV_CLOUD] == 90 && v[LV_FREEZE] == 1 && v[LV_SHAPE] == 3,
+          "and opened: its pitch and cloud");
+    lps[0].state = LS_EMPTY; lps[0].len = 0; lps[0].steps = 0;
+    v2_destroy(in);
+#undef NEAR
+}
+
 /* every knob's meter: turned all the way up it reaches the end, all the way down the start, wherever its value is
  * kept (the owner, 2026-11-18: Sound at its 64th recording drew its meter only to the middle) */
 static void meters(const char *dir)
@@ -1153,6 +1348,7 @@ int main(int argc, char **argv)
     meters(argv[1]);
     fm(argv[1]);
     loops(argv[1]);
+    clouds(argv[1]);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }

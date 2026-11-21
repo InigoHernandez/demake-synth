@@ -1153,6 +1153,10 @@ static int do_draw(const char *d)
     held(49); jog(1); lift(49); blocks(600);
     snap_scr(d, "loop0");
     check(vint("pic") == PIC_SOUND && view_row() == 0 && lit_rows(10, 52) > 20, "Shift + jog: the loops, the Loop page");
+    page(MP_SOUND); blocks(600);                        /* (its second row: the cloud) */
+    snap_scr(d, "loop1");
+    check(vint("pic") == PIC_SOUND && view_row() == 1 && lit_rows(10, 52) > 20, "the loop's Cloud row");
+    page(MP_SOUND);                                     /* (round to Loop) */
     held(49); jog(1); lift(49);                         /* (round to the recordings) */
     for (int t = 0; t < 2 * 80 && vint("pic") == PIC_FM; t++) { A_set("in", "K 0 -1"); blocks(2); }   /* (back to a recording) */
     tap(43);

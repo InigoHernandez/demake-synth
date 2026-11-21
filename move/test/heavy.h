@@ -104,7 +104,7 @@ static void jam_fm(void)
     for (int n = 0; n < 6; n++) note_on_s(DMK_SYNTHS - 1, 48 + n * 5);   /* (and six held: the chip full however the chords go) */
 }
 /* a loop (move/dmk_loop.c) on the last synth, four bars of noise playing at half speed, reversed, its filter open,
- * beside the jam */
+ * beside the jam: at its heaviest, Pitch's taps on and a cloud always full (16 long grains, some an octave up) */
 #ifndef DMK_MOVE
 static void jam_loop(void) { jam(0); }                  /* (the FM-1's core has no loops: the jam again) */
 #else
@@ -113,7 +113,10 @@ static void jam_loop(void)
     jam(0);
     V(DMK_SYNTHS - 1, PG_SOUND, 0, 0) = DMK_SAMPLES_N + YM_PATCHES;
     sp_sync();
-    lpv[DMK_SYNTHS - 1][LV_SPEED] = 1; lpv[DMK_SYNTHS - 1][LV_REV] = 1;
+    uint8_t *v = lpv[DMK_SYNTHS - 1];
+    v[LV_SPEED] = 1; v[LV_REV] = 1; v[LV_PITCH] = LP_PITCH_MID + 7;
+    v[LV_CLOUD] = LP_AMT_ALL; v[LV_DENS] = LP_DENS_N - 1; v[LV_SIZE] = LP_SIZE_N - 1; v[LV_SPRAY] = LP_AMT_ALL / 2;
+    v[LV_SHIM] = LP_AMT_ALL / 2;
     lps[0].steps = 4 * LP_STEPS_BAR;
     lps[0].len = (uint32_t)((uint64_t)lps[0].steps * seq_per() / 256u);
     uint32_t r = 7;
@@ -148,7 +151,7 @@ static const char *heavy_case(int i)
     case 5: worst(31); return "worst voices, Ailanthus";
     case 6: jam_fm(); return "jam + YM2612, six notes";
     case 7: worst_fm(); return "worst voices + YM2612";
-    case 8: jam_loop(); return "jam + a loop";
+    case 8: jam_loop(); return "jam + a clouded loop";
     }
     k -= HC_HEAVY;
     if (k < SP_N) { heavy_base(); glob(FC_LOSSY, k, FM_VHS); heavy_go(); return NM("Space", k); }

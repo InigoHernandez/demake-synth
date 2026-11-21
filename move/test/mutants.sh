@@ -192,6 +192,14 @@ core "an overdub keeps the old layer whole" $LP "s#            if (lps\[k\].stat
 core "a loop never stops recording" $LP "s#                lps\[k\].state = LS_PLAY;#                lps[k].state = lps[k].state;#"
 core "a loop off the transport" $LP "s#    const uint64_t L = (uint64_t)lps\[k\].steps << 32, pos = (t \* (uint64_t)num / (uint64_t)den) % L;#    const uint64_t L = (uint64_t)lps[k].steps << 32, pos = (t * (uint64_t)num / (uint64_t)den + ((uint64_t)3 << 32)) % L;#"
 core "rounded down again" $LP "s#((lp_frame_q8(k, t, 1, 1, 0) + 128u) >> 8) % lps\[k\].len;#(lp_frame_q8(k, t, 1, 1, 0) >> 8) % lps[k].len;#"
+# loops step 2, Pitch and the cloud: clouds() in move/test/inside.c must catch each
+core "Pitch never moves the taps" $LP "s#c->phi += (uint32_t)dphi;#c->phi += 0u;#"
+core "grains deaf to Pitch" $LP "s#(int32_t)(ratio \* num / den)#(int32_t)(65536 * num / den)#"
+core "Freeze holds nothing" $LP "s#c->frz_on ? c->frz : fq0#fq0#"
+core "a grain without its window" $LP "s#const int32_t w = (sv \* sv) >> 15;#const int32_t w = 32767 + 0 * sv;#"
+core "a grain that never ends" $LP "s#if (g->fall) g->on = 0;#if (g->fall) g->ph = 0;#"
+core "Flip turns nothing" $LP "s#inc = -inc;#inc = inc;#"
+core "the cloud summed whole" $LP "s#if (over > LP_OVER_FREE) gnorm#if (0 \&\& over) gnorm#"
 core "Delete leaves an FM value" move/dmk_move_ui.c "s#    ymv\[s\]\[ymk_at(r, k)\] = t\[ymk_at(r, k)\];#    (void)t;#"
 exit $bad
 '
