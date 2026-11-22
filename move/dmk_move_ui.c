@@ -1052,8 +1052,9 @@ static void jog_kind(int dir)
     sp_sync();
 }
 
-static void mv_opened(void)             /* a project opened or new: what Undo and Delete + a knob go back to */
+static void mv_opened(void)             /* a project opened or new: what Undo and Delete + a knob go back to; its loops */
 {
+    lp_open(ui.song, store_on() && song_used(ui.song));
     un_reset();
     memcpy(mc.base, ui.val, sizeof mc.base);
     mc.scale_n = SCALE_N;
@@ -1098,6 +1099,7 @@ static void mv_save_project(void)       /* the project open into its slot (Shift
     str_cat(str_cat(m, "Saved: "), song_name(at));
     notice(m);
     mv_save_request();
+    lp_save(at);                        /* (its loops' files, changed ones, on the saver's thread) */
 }
 static void mv_save(void)               /* Shift + Rec: the project open, or the sound on Save's Sounds row */
 {
@@ -1700,7 +1702,8 @@ static void pic_loop(mv_pic_t *p)
     p->kind = PIC_SOUND;
     p->on = (uint8_t)(lps[k].len != 0);
     snd_name(p->name, DMK_SAMPLES_N + YM_PATCHES + k);
-    if (lps[k].state == LS_PLAY) str_cat(fmt_int(p->tag, lps[k].steps / LP_STEPS_BAR), lps[k].steps == LP_STEPS_BAR ? " bar" : " bars");
+    if (lp_wait[k]) str_cat(p->tag, lp_wait_op[k] == LJ_LOAD ? "Loading" : "Saving");
+    else if (lps[k].state == LS_PLAY) str_cat(fmt_int(p->tag, lps[k].steps / LP_STEPS_BAR), lps[k].steps == LP_STEPS_BAR ? " bar" : " bars");
     else str_cat(p->tag, SAY[lps[k].state]);
     for (int i = 0; i < LP_PEAKS; i++) p->env[i] = lps[k].peak[i];
     if (lp_run_ok && lps[k].len) {
@@ -1907,7 +1910,10 @@ static void mv_view_build(mv_view_t *v)
     v->mp = mc.page;
     v->mrow = (uint8_t)mp_row();
     v->rows = mp_of()->rows;
-    v->land = (uint8_t)scene_of(s);
+    {                                   /* (an FM patch or a loop: the landscape of the last recording the synth had) */
+        const int snd = VS(s, PG_SOUND, 0, 0), last = snd_last[s][0] ? snd_last[s][0] - 1 : 0, c = DMK_SAMPLES[last].scene;
+        v->land = (uint8_t)(snd < DMK_SAMPLES_N ? scene_of(s) : c < DMK_SCENES ? c : 0);
+    }
     for (int t = 0; t < DMK_SYNTHS; t++) {
         int i;
         v->letters[t] = syn[t].ym ? YM_PATCH[syn[t].ym - 1].name[0] : syn[t].lp ? 'L'

@@ -181,6 +181,8 @@ static void lp_begin(int frames);
 static void lp_play(int at, int n);
 static void lp_pass_begin(int n);
 static void lp_write(int at, int n);
+static int lp_dirty(void);
+static void lp_erase(int slot);
 static int snd_step(int s, int v, int dir);
 static int snd_kind(int v);
 static int ym_note_on(int sy, voice_t *o, int n);

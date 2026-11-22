@@ -68,7 +68,7 @@ INNER='
     ok="_ITM_deregisterTMCloneTable _ITM_registerTMCloneTable __cxa_finalize __getauxval __gmon_start__ __stack_chk_fail __stack_chk_guard"
     ok="$ok memcpy memmove memset memcmp strlen strstr clock_gettime"
     ok="$ok pthread_create pthread_join sched_setscheduler sched_setaffinity nanosleep"
-    ok="$ok fopen fopen64 fread fwrite fflush fileno fsync fclose rename unlink mkdir"
+    ok="$ok fopen fopen64 fread fseek fwrite fflush fileno fsync fclose rename unlink mkdir"   # (fseek: WAV chunks skipped by the loop files, on the saver)
     bad=""
     for s in $imp; do case " $ok " in *" $s "*) ;; *) bad="$bad $s" ;; esac; done
     [ -z "$bad" ] || { echo "imports not on the list:$bad"; exit 1; }

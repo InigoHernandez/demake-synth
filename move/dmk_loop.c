@@ -17,7 +17,12 @@
  * without moving faster. The cloud is Clouds' granular mode (Emilie Gillet, MIT; its algorithm, none of its code):
  * grains of the loop from about the playhead (or where Freeze held it), Size long, Density a second, Spray scattering
  * them back through the loop, Shape their rise, Shimmer some an octave up, Flip some backwards, each at Speed and Pitch.
- * Integer, nothing allocated; at Pitch 0 and Cloud 0 the loop plays exactly as step 1 played it. */
+ * Integer, nothing allocated; at Pitch 0 and Cloud 0 the loop plays exactly as step 1 played it.
+ *
+ * Step 3: the loops kept with their project, as WAV files beside the store (move/dmk_loopfile.c reads and writes them
+ * on the saver's thread). Here only what the audio thread owns: each loop's version, the version its project's file
+ * holds, the jobs it hands the saver and the results it takes back. A loop being read or written takes no REC. */
+#include <stdatomic.h>
 
 #define LP_SEC       64                 /* a loop's longest: 16 bars at 60 BPM */
 #define LP_FRAMES    (LP_SEC * DMK_SR)
@@ -60,6 +65,7 @@ static struct {
     uint8_t state, src, keep, gain;     /* LS_*; how it records: the recording synth's, taken at REC */
     uint64_t start;                     /* the bar (Q32 steps since PLAY) the recording or the overdub starts on */
     uint8_t peak[LP_PEAKS];
+    uint32_t ver;                       /* its version: up with each pass written, each clear, each load */
 } lps[LP_N];
 static voice_t lp_vf[DMK_SYNTHS];       /* each synth's filter state for its loop (vfilt's) */
 typedef struct {
@@ -83,12 +89,119 @@ static uint8_t lp_run_ok;               /* the transport has a place (playing, p
 static uint8_t lp_ready;                /* the buffers touched */
 static const int16_t *lp_jack;          /* the audio in this block (interleaved, the Move's; 0: none) */
 
+/* the files: the jobs the audio thread hands the saver (a ring, one writer each side), the result of each it takes back
+ * (one a loop, taken at the next block), and what each loop's file in its project holds */
+#define LJ_RING      32
+#define LP_SLOT_NONE 0xFF               /* a loop's file not known: an empty loop saved there deletes it */
+enum { LJ_LOAD, LJ_WRITE, LJ_DELETE };
+enum { LR_NONE, LR_LOADED, LR_EMPTY, LR_DONE, LR_FAILED };
+typedef struct { uint8_t op, k, slot; uint16_t steps; uint32_t len; } lp_job_t;
+static lp_job_t lj_ring[LJ_RING];
+static _Atomic uint32_t lj_head, lj_tail;   /* the audio thread's next, the saver's next */
+static struct {
+    _Atomic int kind;                   /* LR_*: set by the saver, taken (back to LR_NONE) by the audio thread */
+    uint32_t len;
+    uint16_t steps;
+    uint8_t peak[LP_PEAKS];
+} lr[LP_N];
+static struct { uint8_t slot; uint32_t ver; } lpd[LP_N];   /* the project whose file has each loop, at which version */
+static uint8_t lp_wait[LP_N], lp_wait_op[LP_N];            /* its jobs not yet back; the last one's LJ_* */
+
 static void lp_touch(void)              /* at create, off the audio thread: every page of the buffers in memory */
 {
     memset(lp_buf, 0, sizeof lp_buf);
     memset(lps, 0, sizeof lps);
     memset(lpc, 0, sizeof lpc);
+    memset(lp_wait, 0, sizeof lp_wait);
+    for (int k = 0; k < LP_N; k++) { atomic_store(&lr[k].kind, LR_NONE); lpd[k].slot = LP_SLOT_NONE; lpd[k].ver = 0; }
+    atomic_store(&lj_head, 0u);
+    atomic_store(&lj_tail, 0u);
     lp_ready = 1;
+}
+
+static int lj_push(int op, int k, int slot)
+{
+    const uint32_t h = atomic_load_explicit(&lj_head, memory_order_relaxed);
+    if (h - atomic_load_explicit(&lj_tail, memory_order_acquire) >= LJ_RING) return 0;
+    lj_ring[h % LJ_RING] = (lp_job_t){(uint8_t)op, (uint8_t)k, (uint8_t)slot, lps[k].steps, lps[k].len};
+    atomic_store_explicit(&lj_head, h + 1u, memory_order_release);
+    lp_wait[k]++;
+    lp_wait_op[k] = (uint8_t)op;
+    return 1;
+}
+static int lj_pop(lp_job_t *j)          /* (the saver's) */
+{
+    const uint32_t t = atomic_load_explicit(&lj_tail, memory_order_relaxed);
+    if (t == atomic_load_explicit(&lj_head, memory_order_acquire)) return 0;
+    *j = lj_ring[t % LJ_RING];
+    atomic_store_explicit(&lj_tail, t + 1u, memory_order_release);
+    return 1;
+}
+
+/* each block (lp_begin's, playing or not): what the saver finished. A load becomes the loop, as its file has it */
+static void lp_adopt(void)
+{
+    for (int k = 0; k < LP_N; k++) {
+        const int r = atomic_load_explicit(&lr[k].kind, memory_order_acquire);
+        if (r == LR_NONE) continue;
+        if (r == LR_LOADED) {
+            lps[k].len = lr[k].len; lps[k].steps = lr[k].steps;
+            memcpy(lps[k].peak, lr[k].peak, sizeof lps[k].peak);
+            lps[k].state = LS_PLAY;
+            lpd[k].ver = ++lps[k].ver;
+        }
+        if (r == LR_FAILED) { lpd[k].slot = LP_SLOT_NONE; notice("Loop not saved: file not written"); }
+        if (lp_wait[k]) lp_wait[k]--;
+        atomic_store_explicit(&lr[k].kind, LR_NONE, memory_order_release);
+    }
+}
+
+static int lp_writing_state(int k)
+{
+    const int st = lps[k].state;
+    return st == LS_ARMED || st == LS_REC || st == LS_ODUB_ARMED || st == LS_ODUB;
+}
+/* the loops changed since their project's files (song_changed's, on the Move): one being written, one whose file there
+ * holds another version (a pass since, a clear), one with sound and no file there. An empty loop whose file is not
+ * known is no change */
+static int lp_dirty(void)
+{
+    for (int k = 0; k < LP_N; k++) {
+        if (lp_wait[k]) continue;
+        if (lp_writing_state(k)) return 1;
+        if (lpd[k].slot == ui.song ? lpd[k].ver != lps[k].ver : lps[k].len != 0) return 1;
+    }
+    return 0;
+}
+/* a project opened or new (the Move's mv_opened): every loop let go, its project's files asked for */
+static void lp_open(int slot, int used)
+{
+    for (int k = 0; k < LP_N; k++) {
+        lps[k].state = LS_EMPTY; lps[k].len = 0; lps[k].steps = 0;
+        memset(lps[k].peak, 0, sizeof lps[k].peak);
+        lpd[k].ver = ++lps[k].ver;
+        lpd[k].slot = used ? (uint8_t)slot : LP_SLOT_NONE;   /* (an unused slot's files, if any are left: unknown) */
+        if (used) lj_push(LJ_LOAD, k, slot);
+    }
+}
+/* the project saved into slot (the Move's mv_save_project): each loop changed since its file written, an empty one's
+ * file deleted. One being written is left for after its pass (still a change) */
+static void lp_save(int slot)
+{
+    for (int k = 0; k < LP_N; k++) {
+        if (lp_wait[k] || lp_writing_state(k)) continue;
+        if (lpd[k].slot == slot && lpd[k].ver == lps[k].ver) continue;
+        if (!lj_push(lps[k].len ? LJ_WRITE : LJ_DELETE, k, slot)) continue;
+        lpd[k].slot = (uint8_t)slot;
+        lpd[k].ver = lps[k].ver;
+    }
+}
+static void lp_erase(int slot)          /* a project deleted (song_erase's, on the Move): its loops' files with it */
+{
+    for (int k = 0; k < LP_N; k++) {
+        lj_push(LJ_DELETE, k, slot);
+        if (lpd[k].slot == slot) lpd[k].slot = LP_SLOT_NONE;
+    }
 }
 
 static void lp_vals_new(int s)          /* a sound's loop values as first picked */
@@ -127,6 +240,7 @@ static int snd_jump(int s, int v, int dir)
 static void lp_begin(int frames)
 {
     const uint32_t per = seq_per();
+    lp_adopt();
     lp_run_ok = 0;
     if (!seq_on || !seq_ticks || !per || frames <= 0) return;
     const uint64_t end = ((uint64_t)(seq_ticks - 1u) << 32) + ((uint64_t)seq_acc << 32) / per;
@@ -236,7 +350,8 @@ static void lp_play(int at, int n)
     for (int s = 0; s < DMK_SYNTHS; s++) {
         const synth_t *p = &syn[s];
         const int k = p->lp - 1;
-        if (k < 0 || !lps[k].len || lps[k].state == LS_REC) continue;
+        if (k < 0 || !lps[k].len || (lps[k].state != LS_PLAY && lps[k].state != LS_ODUB_ARMED && lps[k].state != LS_ODUB))
+            continue;                                                 /* (armed for a new one: the old frames not heard) */
         const uint8_t *v = lpv[s];
         const int sp = v[LV_SPEED] < LP_SPEED_N ? v[LV_SPEED] : LP_SPEED_ONE, rev = v[LV_REV];
         const int pitch = clampi(v[LV_PITCH], 0, 2 * LP_PITCH_MID) - LP_PITCH_MID, cloud = v[LV_CLOUD];
@@ -334,6 +449,7 @@ static void lp_write(int at, int n)
             if (t < lps[k].start) continue;
             if (t >= end) {                             /* one pass: played from now on */
                 lps[k].state = LS_PLAY;
+                lps[k].ver++;
                 break;
             }
             if (lps[k].state == LS_ARMED) lps[k].state = LS_REC;
@@ -360,7 +476,9 @@ static void lp_rec_press(int s)
 {
     const int k = syn[s].lp - 1;
     if (k < 0 || !lp_ready) return;
-    if (lps[k].state == LS_ARMED || lps[k].state == LS_ODUB_ARMED) { lps[k].state = lps[k].len && lps[k].state == LS_ODUB_ARMED ? LS_PLAY : LS_EMPTY; return; }
+    if (lp_wait[k]) { notice(lp_wait_op[k] == LJ_LOAD ? "Loop loading" : "Loop saving"); return; }
+    if (lps[k].state == LS_ODUB_ARMED) { lps[k].state = LS_PLAY; return; }
+    if (lps[k].state == LS_ARMED) { lps[k].state = LS_EMPTY; lps[k].len = 0; lps[k].steps = 0; return; }
     if (lps[k].state == LS_REC || lps[k].state == LS_ODUB) return;   /* (a pass under way finishes) */
     const uint8_t *v = lpv[s];
     const uint32_t per = seq_per();
@@ -385,7 +503,9 @@ static void lp_clear(int s)             /* Delete + REC: silent, empty (its fram
 {
     const int k = syn[s].lp - 1;
     if (k < 0) return;
+    if (lp_wait[k]) { notice(lp_wait_op[k] == LJ_LOAD ? "Loop loading" : "Loop saving"); return; }
     lps[k].state = LS_EMPTY; lps[k].len = 0; lps[k].steps = 0;
+    lps[k].ver++;
     memset(lps[k].peak, 0, sizeof lps[k].peak);
 }
 

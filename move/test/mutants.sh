@@ -200,6 +200,15 @@ core "a grain without its window" $LP "s#const int32_t w = (sv \* sv) >> 15;#con
 core "a grain that never ends" $LP "s#if (g->fall) g->on = 0;#if (g->fall) g->ph = 0;#"
 core "Flip turns nothing" $LP "s#inc = -inc;#inc = inc;#"
 core "the cloud summed whole" $LP "s#if (over > LP_OVER_FREE) gnorm#if (0 \&\& over) gnorm#"
+# loops step 3, the loops kept as WAV files: loopfiles() in move/test/inside.c must catch each
+LF=move/dmk_loopfile.c
+core "a saved loop never written" $LP "s#lj_push(lps\[k\].len ? LJ_WRITE : LJ_DELETE, k, slot)#lj_push(LJ_DELETE, k, slot)#"
+core "a cleared loop no change" $LP "s#if (lpd\[k\].slot == ui.song ? lpd\[k\].ver != lps\[k\].ver : lps\[k\].len != 0) return 1;#if (lpd[k].slot != ui.song \&\& lps[k].len != 0) return 1;#"
+core "REC while a loop loads" $LP "s#    if (lp_wait\[k\]) { notice#    if (0) { notice#"
+core "the file without its beats" $LF "s#lf_put32(h + 56, beats);#lf_put32(h + 56, beats / 2u);#"
+core "closing forgets the loops" move/dmk_move.c "s#    if (mv.dir\[0\]) lf_run(1);           /\* (and the loops#    if (0) lf_run(1);           /* (and the loops#"
+core "a deleted project keeps its loops" firmware/src/dmk_store.c "s#    lp_erase(i);#    (void)i;#"
+core "a mono file one-sided" $LF "s#lf_tmp\[i \* ch + ch - 1u\]#lf_tmp[i * ch + 1u]#"
 core "Delete leaves an FM value" move/dmk_move_ui.c "s#    ymv\[s\]\[ymk_at(r, k)\] = t\[ymk_at(r, k)\];#    (void)t;#"
 exit $bad
 '

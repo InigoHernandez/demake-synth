@@ -671,7 +671,15 @@ static uint32_t song_check(void)                        /* (packs into st_buf: o
     return n < 0 ? 0 : st_crc(st_buf + ST_HDR, (uint32_t)n) ^ (uint32_t)n;
 }
 static void song_mark(void) { song_kept = song_check(); }
-static int song_changed(void) { uint32_t c = song_check(); return !c || c != song_kept; }
+static int song_changed(void)
+{
+    uint32_t c;
+#ifdef DMK_MOVE
+    if (lp_dirty()) return 1;                           /* (the Move's loops, kept beside it: move/dmk_loop.c) */
+#endif
+    c = song_check();
+    return !c || c != song_kept;
+}
 static const char *song_name(int i) { return song_nm[i][0] ? song_nm[i] : PROGS[choice_index(choice_of(PG_CHORD, 0, 4), song_prog[i])]; }
 
 /* the song open into slot i: 0 saved, -1 not (no store, the write failed), -2 too many notes for its sector */
@@ -725,6 +733,9 @@ static int song_erase(int i)                            /* an empty record: the 
     if (!store_on()) return -1;
     st_put32(st_buf, 0); st_put32(st_buf + 4, 0); st_put32(st_buf + 8, 0); st_put32(st_buf + 12, 0);
     if (dmk_store_write(slot_at(i), st_buf, ST_HDR)) return -1;
+#ifdef DMK_MOVE
+    lp_erase(i);                                        /* (its loops' files with it) */
+#endif
     song_nm[i][0] = 0; song_nmv[i][2] = 0; song_nw[i] = 0;
     song_gen[i] = 0;
     return 0;

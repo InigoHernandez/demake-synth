@@ -269,6 +269,9 @@ static void *draw_main(void *arg)
     return 0;
 }
 
+#include "dmk_loopfile.c"   /* the loops' WAV files (loops step 3): read and written here, on the saver's thread */
+
+/* the saver: the store's file from each snapshot, and the loops' files the audio thread asks for */
 static void *save_main(void *arg)
 {
     (void)arg;
@@ -280,6 +283,7 @@ static void *save_main(void *arg)
             atomic_store_explicit(&sv.state, SV_IDLE, memory_order_release);
             continue;
         }
+        if (lf_run(0)) continue;
         if (atomic_load_explicit(&th_stop, memory_order_acquire)) break;
         nap_ms(20);
     }
@@ -535,6 +539,7 @@ static void *v2_create(const char *module_dir, const char *json_defaults)
     if (mv.dir[0]) { store_load(); dmk_store_read = rs_read; dmk_store_write = rs_write; }
     dmk_init(seed >= 0 ? (uint32_t)seed : clock_seed);
     mv_ready();
+    if (mv.dir[0]) lf_run(1);           /* (the open project's loops, read before the first block) */
     pages_touch(sv_snap, sizeof sv_snap);
     pages_touch(st_buf, sizeof st_buf);
     pages_touch(spat, sizeof spat);
@@ -575,6 +580,7 @@ static void v2_destroy(void *inst)
     if (mv.dir[0] && mv.save_on_close && store_on() && song_changed()) mv_save_project();   /* (the project, whatever the
                                                            Save page shows: its Sounds row would save a sound) */
     if (mv.dir[0] && (sv.want || atomic_load(&sv.state) != SV_IDLE)) sv_write(st_ram);   /* (and a save not yet written) */
+    if (mv.dir[0]) lf_run(1);           /* (and the loops' files not yet written) */
 }
 
 static void v2_on_midi(void *inst, const uint8_t *msg, int len, int source)

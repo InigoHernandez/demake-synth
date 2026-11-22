@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "../dmk_move.c"
 
@@ -36,6 +37,12 @@ static void clear_store(const char *dir)               /* the store's file and e
 {
     unlink(in(dir, SV_FILE));
     for (unsigned k = 0; k < sizeof SV_BEFORE / sizeof SV_BEFORE[0]; k++) unlink(in(dir, SV_BEFORE[k].name));
+    for (int slot = 0; slot < ST_SONGS; slot++)         /* (and the loops' files: move/dmk_loopfile.c) */
+        for (int k = 0; k < LP_N; k++) {
+            char p[512];
+            snprintf(p, sizeof p, "%s/loops/project%02d-loop%d.wav", dir, slot + 1, k + 1);
+            unlink(p);
+        }
 }
 static void *open_at(const char *dir)
 {
@@ -1290,6 +1297,127 @@ static void clouds(const char *dir)
 #undef NEAR
 }
 
+/* step 3: the loops kept with their project as WAV files: saved, opened, closed and opened again, cleared, deleted,
+ * and one written elsewhere taken in */
+enum { LF_SY = DMK_SYNTHS - 1, LF_TRIES = 2500, LF_NAP_US = 2000 };
+static void lf_name(char *p, int n, const char *dir, int slot, int k) { snprintf(p, (size_t)n, "%s/loops/project%02d-loop%d.wav", dir, slot + 1, k + 1); }
+static int lf_there(const char *dir, int slot, int k) { char p[512]; lf_name(p, sizeof p, dir, slot, k); return access(p, F_OK) == 0; }
+static int lf_settle(void)                              /* renders until the saver's thread has every loop job back */
+{
+    static int16_t o[256];
+    for (int r = 0; r < LF_TRIES; r++) {
+        int busy = 0;
+        for (int k = 0; k < LP_N; k++) busy |= lp_wait[k];
+        if (!busy) return 1;
+        dmk_render(o, 128);
+        usleep(LF_NAP_US);
+    }
+    return 0;
+}
+static uint32_t lf_sum(int k)                           /* FNV-1a over the loop's frames */
+{
+    uint32_t h = 2166136261u;
+    const uint8_t *b = (const uint8_t *)lp_buf[k];
+    for (uint32_t i = 0; i < lps[k].len * 4u; i++) h = (h ^ b[i]) * 16777619u;
+    return h;
+}
+static void lf_record(int k, int bars, uint32_t seed)   /* a loop as a recording leaves it: noise, a pass done */
+{
+    lps[k].steps = (uint16_t)(bars * LP_STEPS_BAR);
+    lps[k].len = (uint32_t)((uint64_t)lps[k].steps * seq_per() / 256u);
+    for (uint32_t f = 0; f < lps[k].len; f++) { seed = seed * 1664525u + 1013904223u; lp_buf[k][f][0] = (int16_t)(seed >> 16); lp_buf[k][f][1] = (int16_t)(seed >> 3); }
+    lf_peaks(k, lps[k].len, lps[k].peak);
+    lps[k].state = LS_PLAY;
+    lps[k].ver++;
+}
+static void loopfiles(const char *dir)
+{
+    char what[200], path[512];
+    clear_store(dir);
+    void *in = open_saving(dir);
+    seq_play(0);
+    check(!song_changed(), "a new project, its loops empty: nothing to save");
+    ui.synth = LF_SY;
+    ui.val[LF_SY][PG_SOUND][0][0] = DMK_SAMPLES_N + YM_PATCHES;   /* synth 4: Loop 1 */
+    sp_sync();
+    to_page(MP_SOUND);
+    lf_record(0, 2, 5);
+    const uint32_t len = lps[0].len, sum = lf_sum(0);
+    check(song_changed(), "a loop recorded: the project changed");
+    const int at = ui.song;
+    mv_save_project();
+    check(lf_settle() && lf_there(dir, at, 0) && !lf_there(dir, at, 1) && !song_changed(),
+          "saved: the loop as a file, none for the empty ones, nothing left to save");
+    {                                                   /* its header: the frames exactly, its beats and tempo */
+        uint8_t h[LF_HEAD];
+        lf_name(path, sizeof path, dir, at, 0);
+        FILE *f = fopen(path, "rb");
+        struct stat sb;
+        const int got = f && fread(h, LF_HEAD, 1, f) == 1;
+        if (f) fclose(f);
+        float tempo = 0.0f;
+        uint32_t tb = got ? lf_get32(h + 64) : 0;
+        memcpy(&tempo, &tb, sizeof tempo);
+        const double bpm = seq_per() ? 60.0 * DMK_SR * 256.0 / (4.0 * seq_per()) : 0.0;   /* (a beat: four steps) */
+        snprintf(what, sizeof what, "the file: WAV, 16-bit stereo, %u frames, 8 beats at %.2f BPM (playing %.2f)", got ? lf_get32(h + 72) / 4u : 0u, tempo, bpm);
+        check(got && !stat(path, &sb) && sb.st_size == LF_HEAD + (off_t)len * 4 && !memcmp(h + 36, "acid", 4) && lf_get32(h + 56) == 8u
+              && fabs(tempo - bpm) < 0.05, what);
+    }
+    /* opened again from Projects: loading, silent and deaf to REC, then the loop as saved */
+    memset(lp_buf[0], 0, (size_t)len * 4u);
+    song_load(at);
+    mv_opened();
+    const int waited = lp_wait[0] && !lps[0].len;
+    mv_button(86, 127); mv_button(86, 0);
+    check(waited && lps[0].state == LS_EMPTY, "opening: the loop loading, silent, REC refused");
+    check(lf_settle() && lps[0].len == len && lps[0].steps == 2 * LP_STEPS_BAR && lps[0].state == LS_PLAY && lf_sum(0) == sum
+          && lps[0].peak[0] && !song_changed(), "opened: the loop as saved, frame for frame, its picture, nothing changed");
+    /* closed with the loop changed (closing saves), opened again: the loop before the first block */
+    lp_buf[0][100][0] ^= 0x1234; lps[0].ver++;
+    const uint32_t sum2 = lf_sum(0);
+    v2_destroy(in);
+    in = open_saving(dir);
+    check(ui.song == at && lps[0].len == len && lf_sum(0) == sum2 && !lp_wait[0] && !song_changed(),
+          "closed with the loop changed, opened again: the loop as it was, there from the first block");
+    /* cleared: a change; saved: its file gone */
+    ui.synth = LF_SY; to_page(MP_SOUND);
+    mc.del = 1; mv_button(86, 127); mv_button(86, 0); mc.del = 0;
+    check(!lps[0].len && song_changed(), "Delete + REC on a saved loop: a change");
+    mv_save_project();
+    check(lf_settle() && !lf_there(dir, at, 0) && !song_changed(), "cleared and saved: its file gone");
+    /* a project deleted: its loops' files with it */
+    lf_record(1, 1, 9);
+    mv_save_project();
+    const int had = lf_settle() && lf_there(dir, at, 1);
+    song_erase(at);
+    check(had && lf_settle() && !lf_there(dir, at, 1), "a project deleted: its loops' files with it");
+    /* a WAV from elsewhere: mono, no beats, a LIST chunk before its data, two bars long at the tempo playing */
+    mv_save_project();
+    lf_settle();
+    {
+        const uint32_t n = (uint32_t)(2u * LP_STEPS_BAR * (uint64_t)seq_per() / 256u), list = 10;
+        uint8_t h[12 + 24 + 8 + list + 8];
+        memcpy(h, "RIFF", 4); lf_put32(h + 4, (uint32_t)sizeof h - 8u + n * 2u); memcpy(h + 8, "WAVE", 4);
+        memcpy(h + 12, "fmt ", 4); lf_put32(h + 16, 16u); lf_put16(h + 20, 1u); lf_put16(h + 22, 1u);
+        lf_put32(h + 24, DMK_SR); lf_put32(h + 28, DMK_SR * 2u); lf_put16(h + 32, 2u); lf_put16(h + 34, 16u);
+        memcpy(h + 36, "LIST", 4); lf_put32(h + 40, list); memset(h + 44, 'x', list);
+        memcpy(h + 44 + list, "data", 4); lf_put32(h + 48 + list, n * 2u);
+        lf_name(path, sizeof path, dir, at, 2);
+        FILE *f = fopen(path, "wb");
+        int ok = f && fwrite(h, sizeof h, 1, f) == 1;
+        for (uint32_t i = 0; ok && i < n; i++) { const int16_t x = (int16_t)(i % 2000u * 16u); ok = fwrite(&x, 2, 1, f) == 1; }
+        if (f) fclose(f);
+        song_load(at);
+        mv_opened();
+        const int got = lf_settle();
+        snprintf(what, sizeof what, "a mono WAV from elsewhere, no beats: %u frames, %u steps, both sides alike", lps[2].len, lps[2].steps);
+        check(ok && got && lps[2].len == n && lps[2].steps == 2 * LP_STEPS_BAR && lp_buf[2][1000][0] == 1000 * 16
+              && lp_buf[2][1000][1] == 1000 * 16, what);
+    }
+    v2_destroy(in);
+    clear_store(dir);
+}
+
 /* every knob's meter: turned all the way up it reaches the end, all the way down the start, wherever its value is
  * kept (the owner, 2026-11-18: Sound at its 64th recording drew its meter only to the middle) */
 static void meters(const char *dir)
@@ -1349,6 +1477,7 @@ int main(int argc, char **argv)
     fm(argv[1]);
     loops(argv[1]);
     clouds(argv[1]);
+    loopfiles(argv[1]);
     printf("  %d checks, %d failed\n", checks, fails);
     return fails != 0;
 }
